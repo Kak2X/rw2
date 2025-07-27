@@ -1,0 +1,11 @@
+# build output
+rw2.*
+
+# provide your own comparision rom
+original.*
+
+# not necessary
+tempconv.*
+shell.lnk
+temp
+.cdl

@@ -1,0 +1,20 @@
+; Keys (as bit numbers)
+DEF KEYB_A           EQU 0
+DEF KEYB_B           EQU 1
+DEF KEYB_SELECT      EQU 2
+DEF KEYB_START       EQU 3
+DEF KEYB_RIGHT       EQU 4
+DEF KEYB_LEFT        EQU 5
+DEF KEYB_UP          EQU 6
+DEF KEYB_DOWN        EQU 7
+
+; Keys (values)
+DEF KEY_NONE         EQU 0
+DEF KEY_A            EQU 1 << KEYB_A
+DEF KEY_B            EQU 1 << KEYB_B
+DEF KEY_SELECT       EQU 1 << KEYB_SELECT
+DEF KEY_START        EQU 1 << KEYB_START
+DEF KEY_RIGHT        EQU 1 << KEYB_RIGHT
+DEF KEY_LEFT         EQU 1 << KEYB_LEFT
+DEF KEY_UP           EQU 1 << KEYB_UP
+DEF KEY_DOWN         EQU 1 << KEYB_DOWN
