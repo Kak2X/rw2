@@ -45,7 +45,7 @@ L024045:;R
 	ld   a, [$CF37]
 	ld   b, a
 	ld   a, l
-	add  a, $10
+	add  $10
 	cp   a, b
 	jr   nz, L024005
 	ldh  a, [$FF97]
@@ -53,10 +53,10 @@ L024045:;R
 	ret  nz
 	ld   a, [$CF30]
 	ld   [$CF37], a
-	ret  
+	ret
 L02405B:;C
 	ldh  a, [$FFA0]
-	and  a, $7F
+	and  $7F
 	rst  $00
 L024060: db $60
 L024061: db $41
@@ -316,7 +316,7 @@ L02415E: db $11
 L02415F: db $7C
 L024160:;I
 	ldh  a, [$FFA1]
-	and  a, $7F
+	and  $7F
 	rst  $00
 L024165: db $69
 L024166: db $41
@@ -328,20 +328,20 @@ L024169:;I
 	ld   l, a
 	inc  l
 	ldh  a, [$FFA7]
-	sub  a, [hl]
+	sub  [hl]
 	ldh  [$FFA7], a
 	ld   a, $04
 	ldh  [$FF99], a
 	jp   L001EB1
 L02417C:;I
 	ldh  a, [$FFA2]
-	add  a, $02
-	and  a, $1F
+	add  $02
+	and  $1F
 	ldh  [$FFA2], a
 	srl  a
 	srl  a
 	srl  a
-	and  a, $03
+	and  $03
 	cp   $03
 	ret  nz
 	jp   L00242F
@@ -365,14 +365,14 @@ L0241A2: db $42
 L0241A3:;I
 	ld   c, $01
 	call L001F43
-	ret  
+	ret
 L0241A9:;I
 	ld   h, $CE
 	ld   a, [$CF2F]
 	ld   l, a
 	inc  l
 	ldh  a, [$FFA7]
-	sub  a, [hl]
+	sub  [hl]
 	ldh  [$FFA7], a
 	ld   c, $01
 	call L001F43
@@ -389,10 +389,10 @@ L0241C8:;I
 	ldh  a, [$FFAB]
 	ld   b, a
 	ldh  a, [$FFA6]
-	sub  a, c
+	sub  c
 	ldh  a, [$FFA7]
 	sbc  a, b
-	and  a, $F0
+	and  $F0
 	cp   $00
 	jr   z, L0241E3
 	call L002328
@@ -417,7 +417,7 @@ L024203:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $78
@@ -427,12 +427,12 @@ L024216:;I
 	ld   bc, $0302
 	call L001F5F
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	xor  a
 	ldh  [$FFA0], a
-	ret  
+	ret
 L024227:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -450,7 +450,7 @@ L024239:;I
 	call L001F5F
 	call L002150
 	call L00220A
-	ret  
+	ret
 L024246:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -500,10 +500,10 @@ L02428C:;I
 	call L001F43
 	call L002150
 	ldh  a, [$FFA5]
-	and  a, $F0
+	and  $F0
 	ld   b, a
 	ldh  a, [$FFAC]
-	and  a, $F0
+	and  $F0
 	cp   a, b
 	ret  nz
 	call L001E9C
@@ -517,7 +517,7 @@ L0242AD:;I
 	call L001F43
 	call L00220A
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	cp   $14
 	ret  nz
@@ -530,7 +530,7 @@ L0242C8:;I
 	call L001F43
 	call L00220A
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	cp   $28
 	ret  nz
@@ -540,7 +540,7 @@ L0242E3:;I
 	ld   c, $02
 	call L001F43
 	call L002150
-	ret  
+	ret
 L0242EC:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -572,10 +572,10 @@ L024312:;R
 L024318:;I
 	call L002150
 	ldh  a, [$FFA5]
-	and  a, $F0
+	and  $F0
 	ld   b, a
 	ldh  a, [$FFAC]
-	and  a, $F0
+	and  $F0
 	cp   a, b
 	ret  nz
 	ld   a, $00
@@ -584,7 +584,7 @@ L024318:;I
 L02432D:;I
 	call L00220A
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	cp   $14
 	ret  nz
@@ -593,7 +593,7 @@ L02432D:;I
 L02433F:;I
 	call L00220A
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	cp   $28
 	ret  nz
@@ -627,7 +627,7 @@ L024356:;I
 	ld   a, $0A
 	ld   bc, $0000
 	call L001D35
-	ret  
+	ret
 L02438A:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -639,13 +639,13 @@ L024391: db $D2
 L024392: db $43
 L024393:;I
 	ldh  a, [$FFA2]
-	add  a, $02
-	and  a, $1F
+	add  $02
+	and  $1F
 	ldh  [$FFA2], a
 	srl  a
 	srl  a
 	srl  a
-	and  a, $03
+	and  $03
 	cp   $03
 	ret  nz
 	jp   L001EB1
@@ -658,13 +658,13 @@ L0243A9:;I
 	ld   a, [$CF52]
 	ld   b, a
 	ld   a, [$CF53]
-	or   a, b
+	or   b
 	cp   $10
 	jr   c, L0243CC
 	call L0020CB
 	call L002150
 	call L00220A
-	ret  
+	ret
 L0243CC:;R
 	call L002038
 	jp   L001EB1
@@ -674,7 +674,7 @@ L0243D2:;I
 	ld   c, $02
 	call L001F43
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	cp   $B0
 	jr   c, L0243EA
@@ -686,7 +686,7 @@ L0243EA:;R
 	call L0020CB
 	call L002150
 	call L00220A
-	ret  
+	ret
 L0243F9:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -704,16 +704,16 @@ L024406:;I
 	ld   b, $00
 	call L001F16
 	ldh  a, [$FFA5]
-	add  a, $08
+	add  $08
 	ldh  [$FFA5], a
 	ld   bc, $0200
 	call L001E95
 	jp   L001EB1
 L02441A:;I
-	ld   a, [$CF16]
+	ld   a, [wPlRelY]
 	ld   b, a
 	ldh  a, [$FFA7]
-	sub  a, b
+	sub  b
 	ret  c
 	call L001EBB
 	cp   $14
@@ -723,7 +723,7 @@ L02441A:;I
 	jp   L001EB1
 L02442F:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $01
@@ -736,7 +736,7 @@ L02442F:;I
 L024447:;I
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $02
@@ -748,7 +748,7 @@ L024447:;I
 L024460:;I
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $00
@@ -758,7 +758,7 @@ L024460:;I
 	call L001EA3
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L02447C:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -774,7 +774,7 @@ L024485:;I
 	call L001D35
 	ld   a, l
 	ldh  [$FFAD], a
-	add  a, $08
+	add  $08
 	ld   l, a
 	ld   a, $00
 	ldi  [hl], a
@@ -795,14 +795,14 @@ L0244A0:;I
 	inc  a
 	ld   l, a
 	ldh  a, [$FFA2]
-	and  a, $80
+	and  $80
 	ld   b, a
 	ld   a, [hl]
-	and  a, $7F
-	or   a, b
+	and  $7F
+	or   b
 	ld   [hl], a
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	ld   b, $03
 	cp   $5A
@@ -815,7 +815,7 @@ L0244A0:;I
 L0244D4:;R
 	ld   b, b
 	call L001F16
-	ret  
+	ret
 L0244D9:;R
 	ld   a, $00
 	ldh  [$FFAC], a
@@ -833,7 +833,7 @@ L0244EC:;I
 	ld   a, $04
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	cp   $3C
 	ret  nz
@@ -841,7 +841,7 @@ L0244EC:;I
 	call L001F16
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024508:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -854,7 +854,7 @@ L024510: db $45
 L024511:;I
 	ld   c, $02
 	call L001F51
-	ret  
+	ret
 L024517:;I
 	ld   a, $00
 	call L001F34
@@ -863,18 +863,18 @@ L024517:;I
 	ld   b, $02
 	call L001F16
 	ldh  a, [$FFA7]
-	add  a, $12
+	add  $12
 	ldh  [$FFA7], a
 	ldh  a, [$FFA2]
 	bit  7, a
 	jr   nz, L02453B
 	ldh  a, [$FFA5]
-	sub  a, $18
+	sub  $18
 	ldh  [$FFA5], a
 	jp   L001EB1
 L02453B:;R
 	ldh  a, [$FFA5]
-	add  a, $18
+	add  $18
 	ldh  [$FFA5], a
 	jp   L001EB1
 L024544:;I
@@ -883,7 +883,7 @@ L024544:;I
 	ld   a, $04
 	ld   [$CF38], a
 	call L002150
-	ret  
+	ret
 L024552:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -919,8 +919,8 @@ L02457A:;I
 	ldh  a, [$FFA5]
 	ld   [$CF0D], a
 	ldh  a, [$FFA7]
-	sub  a, $18
-	ld   [$CF0E], a
+	sub  $18
+	ld   [wPl_Unk_Alt_Y], a
 	call L00332F
 	ret  c
 	jp   L001EB1
@@ -966,7 +966,7 @@ L0245E4:;I
 	ret  c
 	ld   a, $04
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0245F3:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -998,7 +998,7 @@ L024606:;I
 	jp   L001EB1
 L02461D:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB1
@@ -1014,7 +1014,7 @@ L024627:;I
 	jp   L001EB1
 L02463C:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $02
@@ -1026,7 +1026,7 @@ L02463C:;I
 	jp   L001EB1
 L024654:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L027C64
@@ -1035,7 +1035,7 @@ L024654:;I
 	jp   L001EB1
 L024665:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $30
@@ -1043,12 +1043,12 @@ L024665:;I
 	jp   L001EB1
 L024673:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	jr   nz, L024680
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024680:;R
 	ld   a, $03
 	ld   [$CF38], a
@@ -1069,7 +1069,7 @@ L0246A1:;I
 	ret  c
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0246AA:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1100,7 +1100,7 @@ L0246DA:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	jp   z, L001EB6
 	ldh  a, [$FFAC]
@@ -1108,10 +1108,10 @@ L0246DA:;I
 	bit  2, a
 	jr   z, L0246F3
 	dec  [hl]
-	ret  
+	ret
 L0246F3:;R
 	inc  [hl]
-	ret  
+	ret
 L0246F5:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1141,7 +1141,7 @@ L02471F:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   b, $02
@@ -1153,7 +1153,7 @@ L02471F:;I
 	jp   L001EB1
 L02473C:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $03
@@ -1173,7 +1173,7 @@ L02475B:;I
 	ret  c
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L02476A:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1190,7 +1190,7 @@ L024776: db $47
 L024777:;I
 	call L001ED7
 	ldh  a, [$FFA5]
-	add  a, $08
+	add  $08
 	ldh  [$FFA5], a
 	jp   L001EB1
 L024783:;I
@@ -1203,7 +1203,7 @@ L02478F:;I
 	ld   c, $02
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB1
@@ -1226,12 +1226,12 @@ L0247B4:;X
 	jp   L001EB1
 L0247C0:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0247CC:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1251,7 +1251,7 @@ L0247E2:;I
 	ld   c, $02
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	jr   nz, L0247F2
 	jp   L001E11
@@ -1273,7 +1273,7 @@ L024809:;I
 	ret  c
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024817:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1316,7 +1316,7 @@ L02484C:;I
 	jp   L001EB1
 L024862:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $01
@@ -1326,14 +1326,14 @@ L024862:;I
 	jp   L001EB1
 L024875:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $00
 	call L001F34
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024886:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1354,7 +1354,7 @@ L024896:;I
 	ret  nz
 	ld   a, $9F
 	ldh  [$FFA7], a
-	ret  
+	ret
 L0248A8:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1376,7 +1376,7 @@ L0248BB:;I
 	ret  nz
 	ld   a, $10
 	ldh  [$FFA7], a
-	ret  
+	ret
 L0248CD:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1430,7 +1430,7 @@ L024916:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $1E
@@ -1444,7 +1444,7 @@ L02492D:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $0F
@@ -1460,7 +1460,7 @@ L024951:;I
 	call L001F43
 	ld   a, $02
 	ldh  [$FFA1], a
-	ret  
+	ret
 L02495F:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1494,7 +1494,7 @@ L02498C:;I
 	ret  c
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L02499B:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1531,7 +1531,7 @@ L0249BE:;I
 	jp   L001EB1
 L0249DA:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   bc, $0305
@@ -1542,7 +1542,7 @@ L0249DA:;I
 	call L001E95
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0249F8:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1561,15 +1561,15 @@ L024A08:;I
 	ld   a, [$CF42]
 	ld   b, a
 	ld   a, [$CF43]
-	or   a, b
+	or   b
 	ret  nz
 	ld   a, [$CF1D]
 	cp   $04
 	ret  nc
 	ldh  a, [$FFA5]
 	ld   b, a
-	ld   a, [$CF15]
-	sub  a, b
+	ld   a, [wPlRelX]
+	sub  b
 	jr   nc, L024A2C
 	xor  $FF
 	inc  a
@@ -1581,9 +1581,9 @@ L024A2C:;R
 	ld   bc, $0080
 	call L0018B9
 	ldh  a, [$FFA7]
-	add  a, $0C
+	add  $0C
 	ld   b, a
-	ld   a, [$CF16]
+	ld   a, [wPlRelY]
 	cp   a, b
 	ret  c
 	xor  a
@@ -1592,7 +1592,7 @@ L024A2C:;R
 	ld   [$CF1A], a
 	inc  a
 	ld   [$CF1D], a
-	ret  
+	ret
 L024A4E:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1617,7 +1617,7 @@ L024A64:;I
 	jr   nc, L024A73
 	ld   a, $04
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024A73:;R
 	ld   a, $1C
 	call L001E63
@@ -1630,7 +1630,7 @@ L024A73:;R
 	ldh  [$FFAC], a
 	ld   a, $03
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024A8A:;R
 	call L002180
 	call L002117
@@ -1656,7 +1656,7 @@ L024AA5: db $A1;X
 L024AA6: db $C9;X
 L024AA7:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $1C
@@ -1666,7 +1666,7 @@ L024AA7:;I
 	call L001F34
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024AC0:;I
 	ld   a, $02
 	ld   [$CF38], a
@@ -1679,7 +1679,7 @@ L024AC0:;I
 	call L001F34
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024ADA:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1702,22 +1702,22 @@ L024AE5:;I
 L024AF7:;I
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $00
 	ldh  [$FFAC], a
 	ldh  a, [$FFA5]
 	ld   b, a
-	ld   a, [$CF15]
-	sub  a, b
+	ld   a, [wPlRelX]
+	sub  b
 	jr   nc, L024B12
 	xor  $FF
 	inc  a
 	scf  
 L024B12:;R
 	rra  
-	and  a, $80
+	and  $80
 	ldh  [$FFA2], a
 	ld   a, $02
 	ldh  [$FFAD], a
@@ -1731,7 +1731,7 @@ L024B12:;R
 	jp   L001EB1
 L024B2C:;I
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	cp   $B0
 	jp   c, L024B3B
@@ -1748,11 +1748,11 @@ L024B3B:;J
 	call L001EBB
 	cp   $30
 	ret  c
-	ld   a, [$CF16]
-	sub  a, $0C
+	ld   a, [wPlRelY]
+	sub  $0C
 	ld   b, a
 	ldh  a, [$FFA7]
-	sub  a, b
+	sub  b
 	jr   nc, L024B60
 	xor  $FF
 	inc  a
@@ -1760,7 +1760,7 @@ L024B3B:;J
 L024B60:;R
 	cp   $40
 	ret  nc
-	ld   a, [$CF15]
+	ld   a, [wPlRelX]
 	ld   b, a
 	ldh  a, [$FFA5]
 	cp   a, b
@@ -1783,7 +1783,7 @@ L024B81: db $1E;X
 L024B82:;I
 	call L002150
 	call L00220A
-	ret  
+	ret
 L024B89:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1818,7 +1818,7 @@ L024BBB:;I
 	ret  c
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024BCA:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1828,16 +1828,16 @@ L024BCF: db $E0
 L024BD0: db $4B
 L024BD1:;I
 	ldh  a, [$FFA5]
-	sub  a, $10
+	sub  $10
 	ldh  [$FFA5], a
 	ldh  a, [$FFA7]
-	add  a, $04
+	add  $04
 	ldh  [$FFA7], a
 	jp   L001EB1
 L024BE0:;I
 	ld   bc, $0301
 	call L001F5F
-	ret  
+	ret
 L024BE7: db $C3;X
 L024BE8: db $25;X
 L024BE9: db $1C;X
@@ -1862,11 +1862,11 @@ L024BF9:;I
 	ld   a, $00
 	call L001F34
 	ld   a, [$CF4D]
-	and  a, $03
+	and  $03
 	ld   b, a
 	ldh  a, [$FFA0]
-	and  a, $7F
-	sub  a, $20
+	and  $7F
+	sub  $20
 	cp   a, b
 	ret  nz
 	ld   a, $3C
@@ -1874,7 +1874,7 @@ L024BF9:;I
 	jp   L001EB1
 L024C18:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
@@ -1888,7 +1888,7 @@ L024C2F:;I
 	ld   a, $01
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $0A
@@ -1898,7 +1898,7 @@ L024C42:;I
 	ld   a, $02
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $14
@@ -1908,7 +1908,7 @@ L024C55:;I
 	ld   a, $03
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $3C
@@ -1918,12 +1918,12 @@ L024C68:;I
 	ld   a, $04
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024C79:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -1958,7 +1958,7 @@ L024C90:;I
 L024C9F:;I
 	ld   c, $01
 	call L001F43
-	ldh  a, [$FF8F]
+	ldh  a, [hTimer]
 	bit  7, a
 	jr   z, L024CD9
 	call L001EBB
@@ -1980,10 +1980,10 @@ L024C9F:;I
 	call L027C29
 	ld   a, $09
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024CD9:;R
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB1
@@ -1997,7 +1997,7 @@ L024CEF:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $7E
@@ -2017,19 +2017,19 @@ L024D18:;I
 	call L001F43
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024D22:;I
 	ld   a, $02
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $3C
 	ldh  [$FFAC], a
 	ld   a, $03
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024D37:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -2053,7 +2053,7 @@ L024D42:;I
 	jp   L001EB1
 L024D58:;I
 	ld   a, [$CF4D]
-	and  a, $01
+	and  $01
 	ld   b, a
 	ldh  a, [$FFAC]
 	cp   a, b
@@ -2076,10 +2076,10 @@ L024D6F:;I
 	jr   nz, L024D82
 	ld   a, $02
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024D82:;R
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	push hl
@@ -2107,14 +2107,14 @@ L024DA2:;R
 	sla  a
 	ldh  [$FFA2], a
 	ldh  a, [$FFA7]
-	add  a, [hl]
+	add  [hl]
 	ldh  [$FFA7], a
 	ldh  a, [$FFAD]
-	add  a, $02
+	add  $02
 	ldh  [$FFAD], a
 	ld   a, $0C
 	ldh  [$FFAC], a
-	ret  
+	ret
 L024DBF: db $00
 L024DC0: db $00
 L024DC1: db $00
@@ -2182,7 +2182,7 @@ L024E0F:;I
 	call L001F43
 	call L002150
 	call L001EBB
-	and  a, $F0
+	and  $F0
 	or   a
 	ret  nz
 	jp   L001EB1
@@ -2200,12 +2200,12 @@ L024E36:;I
 	ld   c, $02
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001E9C
 	ldh  a, [$FFA2]
-	or   a, $40
+	or   $40
 	ldh  [$FFA2], a
 	jp   L001EB1
 L024E4E:;I
@@ -2213,7 +2213,7 @@ L024E4E:;I
 	call L001F43
 	call L00220A
 	call L001EC9
-	and  a, $F0
+	and  $F0
 	swap a
 	or   a
 	ret  nz
@@ -2224,7 +2224,7 @@ L024E66:;I
 	ld   c, $02
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB1
@@ -2232,7 +2232,7 @@ L024E75:;I
 	ld   c, $02
 	call L001F43
 	call L002150
-	ret  
+	ret
 L024E7E:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -2264,7 +2264,7 @@ L024E93:;I
 	jp   L001EB1
 L024EA5:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB1
@@ -2277,7 +2277,7 @@ L024EAF:;I
 	jp   L001EB1
 L024EBE:;I
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	cp   $18
 	jr   nz, L024ECD
@@ -2291,10 +2291,10 @@ L024ECD:;R
 	srl  a
 	cp   $03
 	jr   z, L024EE0
-	and  a, $01
+	and  $01
 	ld   a, a
 	ld   [$CF38], a
-	ret  
+	ret
 L024EE0:;R
 	ld   a, $00
 	ld   [$CF38], a
@@ -2312,14 +2312,14 @@ L024EF7:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	jr   nz, L024F13
 	ld   b, $02
 	call L001F16
 	ld   a, $02
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024F13:;R
 	call L002180
 	call nc, L001E9C
@@ -2340,11 +2340,11 @@ L024F2A:;I
 	ret  c
 	ld   a, $07
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024F3D:;I
 	call L002150
 	call L00220A
-	ret  
+	ret
 L024F44:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -2362,7 +2362,7 @@ L024F51: db $F0
 L024F52: db $4F
 L024F53:;I
 	ldh  a, [$FFA5]
-	add  a, $08
+	add  $08
 	ldh  [$FFA5], a
 	jp   L001EB1
 L024F5C:;I
@@ -2390,13 +2390,13 @@ L024F70:;I
 L024F8D:;I
 	call L001ED7
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	cp   $1E
 	jr   nc, L024FA0
 	ld   a, $03
 	ld   [$CF38], a
-	ret  
+	ret
 L024FA0:;R
 	cp   $28
 	push af
@@ -2405,13 +2405,13 @@ L024FA0:;R
 	jr   nc, L024FAF
 	ld   a, $02
 	ld   [$CF38], a
-	ret  
+	ret
 L024FAF:;R
 	cp   $46
 	jr   nc, L024FB9
 	ld   a, $03
 	ld   [$CF38], a
-	ret  
+	ret
 L024FB9:;R
 	cp   $50
 	push af
@@ -2420,7 +2420,7 @@ L024FB9:;R
 	jr   nc, L024FC8
 	ld   a, $02
 	ld   [$CF38], a
-	ret  
+	ret
 L024FC8:;R
 	ld   a, $02
 	ld   [$CF38], a
@@ -2441,16 +2441,16 @@ L024FD8:;I
 	jp   L001EB1
 L024FF0:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L024FFC:;C
 	ld   bc, $F8FC
 	ldh  a, [$FFA2]
-	and  a, $80
+	and  $80
 	jr   z, L025008
 	ld   bc, $08FC
 L025008:;R
@@ -2490,7 +2490,7 @@ L025038:;I
 	jp   L001EB1
 L02503F:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $20
@@ -2508,7 +2508,7 @@ L02503F:;I
 	jp   L001EB1
 L025062:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $20
@@ -2529,16 +2529,16 @@ L02507B: db $09
 L02507C: db $51
 L02507D:;I
 	ldh  a, [$FFA0]
-	and  a, $7F
-	sub  a, $2C
+	and  $7F
+	sub  $2C
 	ld   [$CF5A], a
 	jp   L001EB1
 L025089:;I
 	ldh  a, [$FFA5]
-	add  a, $05
+	add  $05
 	ldh  [$FFA5], a
 	ldh  a, [$FFA7]
-	sub  a, $04
+	sub  $04
 	ldh  [$FFA7], a
 	xor  a
 	ld   [$CF5B], a
@@ -2572,11 +2572,11 @@ L0250A8:;RI
 	jr   L0250A8
 L0250CB:;R
 	push af
-	and  a, $C0
+	and  $C0
 	ld   b, a
 	ldh  a, [$FFA2]
-	and  a, $3F
-	or   a, b
+	and  $3F
+	or   b
 	ldh  [$FFA2], a
 	ld   a, [hl]
 	ld   a, a
@@ -2588,7 +2588,7 @@ L0250CB:;R
 	jp   c, L001EB1
 	ld   a, $04
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0250E8:;I
 	call L002150
 	ld   a, [$CF2F]
@@ -2601,21 +2601,21 @@ L0250E8:;I
 	call L0018B9
 L0250FD:;R
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $02
 	ldh  [$FFA1], a
-	ret  
+	ret
 L025109:;I
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $02
 	ldh  [$FFA1], a
-	ret  
+	ret
 L025118: db $1E
 L025119: db $51
 L02511A: db $27
@@ -2754,9 +2754,9 @@ L025178:;I
 	jp   L001EB1
 L0251C9:;I
 	ldh  a, [$FFAD]
-	add  a, $08
-	and  a, $7C
-	sub  a, $01
+	add  $08
+	and  $7C
+	sub  $01
 	ld   a, $00
 	adc  a
 	ld   [$CF38], a
@@ -2787,7 +2787,7 @@ L025201:;I
 	jp   L001EB1
 L02520C:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
@@ -2852,9 +2852,9 @@ L02526E:;I
 	jp   L001EB1
 L025285:;I
 	ldh  a, [$FFAD]
-	add  a, $08
-	and  a, $7C
-	sub  a, $01
+	add  $08
+	and  $7C
+	sub  $01
 	ld   a, $00
 	adc  a
 	ld   [$CF38], a
@@ -2864,15 +2864,15 @@ L025285:;I
 	ret  nc
 	ld   hl, $CCD0
 	inc  [hl]
-	ret  
+	ret
 L0252A2:;C
 	ld   a, [$CCD2]
 	ld   hl, $FFAE
-	add  a, [hl]
+	add  [hl]
 	ldh  [$FFA7], a
 	call L002150
 	ldh  a, [$FFAD]
-	and  a, $10
+	and  $10
 	rrca 
 	rrca 
 	rrca 
@@ -2892,25 +2892,25 @@ L0252A2:;C
 	ldh  [$FFA5], a
 	ld   hl, $FFAD
 	inc  [hl]
-	ret  
+	ret
 L0252CF:;C
 	ldh  a, [$FFA5]
-	sub  a, $07
+	sub  $07
 	ld   [$CF0D], a
 	ldh  a, [$FFA7]
-	add  a, $20
-	ld   [$CF0E], a
+	add  $20
+	ld   [wPl_Unk_Alt_Y], a
 	call L00332F
 	ret  nc
 	ldh  a, [$FFA5]
-	add  a, $07
+	add  $07
 	ld   [$CF0D], a
 	call L00332F
 	ret  nc
 	ld   hl, $CCD2
 	inc  [hl]
 	inc  [hl]
-	ret  
+	ret
 L0252F2:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -2936,7 +2936,7 @@ L025308:;I
 	xor  a
 	ldh  [$FFAF], a
 	ldh  a, [$FFAE]
-	add  a, $10
+	add  $10
 	rrca 
 	rrca 
 	ld   hl, $5361
@@ -3008,7 +3008,7 @@ L02537A: db $AE
 L02537B: db $53
 L02537C:;I
 	ldh  a, [$FFA2]
-	and  a, $BF
+	and  $BF
 	ldh  [$FFA2], a
 	ld   bc, $0040
 	call L001E8E
@@ -3020,7 +3020,7 @@ L02537C:;I
 L025395:;I
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   hl, $CCD1
@@ -3038,7 +3038,7 @@ L0253AE:;I
 	ret  nz
 	xor  a
 	ldh  [$FFA0], a
-	ret  
+	ret
 L0253BB:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -3058,7 +3058,7 @@ L0253CF:;I
 	ldh  a, [$FFAD]
 	ldh  [$FFA5], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001ED7
@@ -3084,12 +3084,12 @@ L0253F4:;I
 	and  a
 	ret  z
 	ldh  a, [$FFAE]
-	add  a, $0D
+	add  $0D
 	ld   l, a
 	ldh  a, [$FFAF]
 	ld   h, a
 	ld   [hl], $FF
-	ret  
+	ret
 L025413:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -3108,7 +3108,7 @@ L02541E:;I
 	ld   bc, $00C0
 	call L001E95
 	ldh  a, [$FFA2]
-	or   a, $40
+	or   $40
 	ldh  [$FFA2], a
 	xor  a
 	ldh  [$FFAD], a
@@ -3118,7 +3118,7 @@ L02541E:;I
 L02543D:;I
 	call L002150
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	jp   z, L001EB1
 	ldh  a, [$FFAD]
@@ -3153,7 +3153,7 @@ L025475:;R
 	inc  hl
 	inc  hl
 	ld   a, [hl]
-	and  a, $3F
+	and  $3F
 	ld   [hl], a
 	ld   a, $06
 	ld   b, $00
@@ -3181,7 +3181,7 @@ L025475:;R
 L0254A2:;J
 	xor  a
 	ldh  [$FFA0], a
-	ret  
+	ret
 L0254A6: db $00
 L0254A7: db $00
 L0254A8: db $01
@@ -3225,7 +3225,7 @@ L0254CE:;I
 	call L002150
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001FB9
@@ -3235,7 +3235,7 @@ L0254E6:;I
 	call L001F43
 	call L002150
 	call L00220A
-	ret  
+	ret
 L0254F2:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -3259,7 +3259,7 @@ L0254FF:;I
 	jp   L001EB1
 L02550F:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $7F
@@ -3282,7 +3282,7 @@ L02550F:;I
 	jp   L001EB1
 L025540:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $02
@@ -3292,7 +3292,7 @@ L025540:;I
 	jp   L001EB1
 L025553:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $7F
@@ -3315,7 +3315,7 @@ L025553:;I
 	jp   L001EB1
 L025584:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $00
@@ -3324,10 +3324,10 @@ L025584:;I
 	ldh  [$FFAC], a
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L025599:;C
 	ld   a, l
-	add  a, $08
+	add  $08
 	ld   l, a
 	ld   [hl], e
 	inc  hl
@@ -3336,7 +3336,7 @@ L025599:;C
 	ld   [hl], c
 	inc  hl
 	ld   [hl], b
-	ret  
+	ret
 L0255A5:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -3370,7 +3370,7 @@ L0255D3:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   bc, $0040
@@ -3383,7 +3383,7 @@ L0255EC:;I
 	call L001F43
 	call L00223A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001ED7
@@ -3404,7 +3404,7 @@ L025616:;I
 	ret  c
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L025627:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -3418,7 +3418,7 @@ L02562E:;I
 	jp   L001EB1
 L025635:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $C0
@@ -3433,12 +3433,12 @@ L025635:;I
 	call L001D35
 	ret  c
 	ld   a, l
-	add  a, $06
+	add  $06
 	ld   l, a
 	xor  a
 	ldi  [hl], a
 	ld   [hl], a
-	ret  
+	ret
 L02565C:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -3460,7 +3460,7 @@ L02566D:;I
 	ld   a, $00
 	call L001F34
 	ldh  a, [$FFA2]
-	and  a, $7F
+	and  $7F
 	ldh  [$FFA2], a
 	ld   bc, $0040
 	call L001E8E
@@ -3479,7 +3479,7 @@ L025681:;I
 	call L001E8E
 	ld   a, $03
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0256A3:;I
 	ldh  a, [$FFA2]
 	xor  $80
@@ -3499,7 +3499,7 @@ L0256AC:;I
 	call L001E8E
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0256CE:;I
 	ldh  a, [$FFA2]
 	xor  $80
@@ -3513,11 +3513,11 @@ L0256D7:;I
 	jp   L001EB1
 L0256E2:;I
 	ldh  a, [$FFAE]
-	and  a, $03
+	and  $03
 	inc  a
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $08
@@ -3528,20 +3528,20 @@ L0256E2:;I
 	ret  nz
 	ldh  a, [$FFAF]
 	ldh  [$FFA1], a
-	ret  
+	ret
 L025700:;J
 	ldh  a, [$FFA1]
 	ldh  [$FFAF], a
 	ld   a, $05
 	ldh  [$FFA1], a
-	ret  
+	ret
 L025709:;C
 	call L001EBB
 	cp   $07
 	ret  nc
 	call L001EC9
 	cp   $07
-	ret  
+	ret
 L025715:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -3569,7 +3569,7 @@ L025733:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $3A
@@ -3577,7 +3577,7 @@ L025733:;I
 	call L001D35
 	ld   a, l
 	ldh  [$FFAE], a
-	add  a, $07
+	add  $07
 	ld   l, a
 	ld   a, h
 	ldh  [$FFAF], a
@@ -3588,7 +3588,7 @@ L025733:;I
 	ld   c, a
 	add  hl, bc
 	ldh  a, [$FFA7]
-	sub  a, $17
+	sub  $17
 	ldi  [hl], a
 	ld   a, [$CF2F]
 	ldi  [hl], a
@@ -3601,7 +3601,7 @@ L025733:;I
 L02576C:;I
 	call L0257D4
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ldh  a, [$FFAF]
@@ -3661,7 +3661,7 @@ L0257D4:;C
 	ld   h, $CD
 	inc  hl
 	ld   [hl], $04
-	ret  
+	ret
 L0257EB:;C
 	ldh  a, [$FFA7]
 	cp   $9A
@@ -3681,7 +3681,7 @@ L0257F2:;C
 	ld   l, a
 	ld   h, $CD
 	ld   [hl], $00
-	ret  
+	ret
 L025807:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -3722,16 +3722,16 @@ L025838:;I
 L025842:;I
 	call L025868
 	ldh  a, [$FFAE]
-	add  a, $05
+	add  $05
 	ld   l, a
 	ld   h, $CD
 	ldi  a, [hl]
 	ldh  [$FFA5], a
 	inc  hl
 	ld   a, [hl]
-	sub  a, $17
+	sub  $17
 	ldh  [$FFA7], a
-	ret  
+	ret
 L025856:;I
 	call L025868
 	xor  a
@@ -3741,7 +3741,7 @@ L025856:;I
 L025861:;I
 	call L025868
 	call L0022F7
-	ret  
+	ret
 L025868:;C
 	ld   c, $01
 	call L001F43
@@ -3752,11 +3752,11 @@ L025868:;C
 	and  a
 	ret  nz
 	ldh  a, [$FFAE]
-	add  a, $0F
+	add  $0F
 	ld   l, a
 	ld   h, $CD
 	ld   [hl], $FF
-	ret  
+	ret
 L025880:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -3785,13 +3785,13 @@ L025891:;I
 	add  hl, hl
 	add  hl, de
 	ld   a, h
-	sub  a, $02
+	sub  $02
 	add  a
 	add  a
 	add  a
 	add  a
 	ld   hl, $FFA5
-	add  a, [hl]
+	add  [hl]
 	ld   [hl], a
 	call L001EBB
 	cp   $10
@@ -3836,7 +3836,7 @@ L0258EF:;I
 	jp   L001EB1
 L0258FD:;I
 	call L00220A
-	ret  
+	ret
 L025901:;C
 	ldh  a, [$FFAD]
 	ld   [$CF38], a
@@ -3844,21 +3844,21 @@ L025901:;C
 	ldh  a, [$FFA5]
 	ld   [$CF0D], a
 	ldh  a, [$FFA7]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	call L00332F
 	ld   a, $00
 	adc  a
 	ld   b, a
-	ld   a, [$CF0E]
-	sub  a, $0E
-	ld   [$CF0E], a
+	ld   a, [wPl_Unk_Alt_Y]
+	sub  $0E
+	ld   [wPl_Unk_Alt_Y], a
 	push bc
 	call L00332F
 	ld   a, $00
 	adc  a
 	add  a
 	pop  bc
-	add  a, b
+	add  b
 	ld   hl, $FFAC
 	dec  [hl]
 	ret  nz
@@ -3868,7 +3868,7 @@ L025901:;C
 	ldh  [$FFAD], a
 	ld   [hl], $02
 	pop  af
-	ret  
+	ret
 L02593C:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -3885,9 +3885,9 @@ L025943:;I
 	inc  hl
 	inc  hl
 	call L000755
-	and  a, $40
+	and  $40
 	ld   b, a
-	xor  a, [hl]
+	xor  [hl]
 	ld   [hl], a
 	ld   de, $0005
 	add  hl, de
@@ -3895,7 +3895,7 @@ L025943:;I
 	add  a
 	xor  $80
 	ld   b, a
-	add  a, $18
+	add  $18
 	ld   [hl], a
 	add  hl, de
 	inc  hl
@@ -3906,7 +3906,7 @@ L025943:;I
 	jp   L001EB1
 L02596E:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB6
@@ -3925,7 +3925,7 @@ L025983: db $C4
 L025984: db $59
 L025985:;I
 	ldh  a, [$FFA5]
-	add  a, $08
+	add  $08
 	ldh  [$FFA5], a
 	ldh  a, [$FFA7]
 	ldh  [$FFAD], a
@@ -3944,7 +3944,7 @@ L0259A0:;I
 	ld   bc, $0040
 	call L001E95
 	ldh  a, [$FFA2]
-	and  a, $BF
+	and  $BF
 	ldh  [$FFA2], a
 	jp   L001EB1
 L0259B3:;I
@@ -3959,12 +3959,12 @@ L0259B3:;I
 	jp   L001EB1
 L0259C4:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0259D0:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4005,7 +4005,7 @@ L0259FE:;I
 	jp   L001EB1
 L025A15:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001ED7
@@ -4020,12 +4020,12 @@ L025A15:;I
 	jp   L001EB1
 L025A33:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L025A3F:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4039,7 +4039,7 @@ L025A46:;I
 L025A4C:;I
 	call L002150
 	call L00220A
-	ret  
+	ret
 L025A53:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4069,20 +4069,20 @@ L025A70:;I
 	cp   $03
 	jp   z, L001EB1
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ldh  a, [$FFA2]
-	and  a, $C0
+	and  $C0
 	ldh  [$FFA2], a
 	ld   bc, $0300
 	call L001E95
 	ld   a, $03
 	ldh  [$FFA1], a
-	ret  
+	ret
 L025A9B:;I
 	ldh  a, [$FFA2]
-	and  a, $C0
+	and  $C0
 	ldh  [$FFA2], a
 	ld   a, $01
 	ld   [$CF38], a
@@ -4094,7 +4094,7 @@ L025A9B:;I
 	jp   L001EB6
 L025AB4:;I
 	ldh  a, [$FFA2]
-	and  a, $C0
+	and  $C0
 	ldh  [$FFA2], a
 	ld   a, $01
 	ld   [$CF38], a
@@ -4122,13 +4122,13 @@ L025AD0:;I
 	call L001D35
 	jp   c, L001EB1
 	ld   a, l
-	add  a, $05
+	add  $05
 	ld   l, a
 	ld   [hl], $B0
 	jp   L001EB1
 L025AF2:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB6
@@ -4155,7 +4155,7 @@ L025B0D:;I
 	jp   L001EB1
 L025B14:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $01
@@ -4167,7 +4167,7 @@ L025B26:;I
 	ldh  a, [$FFAD]
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $08
@@ -4196,17 +4196,17 @@ L025B54:;I
 	cp   a, b
 	jp   z, L001EB1
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001FB9
 	call L0020CB
 	ld   a, $10
 	ldh  [$FFAC], a
-	ret  
+	ret
 L025B7A:;I
 	ldh  a, [$FFA2]
-	and  a, $BF
+	and  $BF
 	ldh  [$FFA2], a
 	ld   bc, $0080
 	call L001E95
@@ -4218,9 +4218,9 @@ L025B8D:;I
 	call L00223A
 	jp   nc, L001EB1
 	ldh  a, [$FFA7]
-	sub  a, $08
-	ld   [$CF0E], a
-	and  a, $F0
+	sub  $08
+	ld   [wPl_Unk_Alt_Y], a
+	and  $F0
 	cp   $10
 	jp   z, L001EB1
 	ldh  a, [$FFA5]
@@ -4232,13 +4232,13 @@ L025B8D:;I
 	jp   z, L001EB1
 	cp   $05
 	jp   z, L001EB1
-	ret  
+	ret
 L025BBC:;I
 	ld   b, $03
 	call L001F16
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L025BC6:;C
 	ldh  a, [$FFAD]
 	ld   [$CF38], a
@@ -4253,7 +4253,7 @@ L025BC6:;C
 	ret  nz
 	ld   a, $05
 	ldh  [$FFAD], a
-	ret  
+	ret
 L025BDF:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4278,14 +4278,14 @@ L025BF8:;I
 	call L027E61
 	ret  c
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $02
 	call L001F34
 	call L000755
-	and  a, $03
-	add  a, $03
+	and  $03
+	add  $03
 	ld   a, $04
 	ldh  [$FFAD], a
 	jp   L001EB1
@@ -4302,7 +4302,7 @@ L025C29:;I
 	call L027E61
 	ret  c
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   hl, $FFAD
@@ -4317,7 +4317,7 @@ L025C47:;I
 	call L027E61
 	ret  c
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $20
@@ -4329,14 +4329,14 @@ L025C59:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
 	ldh  [$FFAC], a
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L025C72:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4346,7 +4346,7 @@ L025C77: db $8E
 L025C78: db $5C
 L025C79:;I
 	ldh  a, [$FFA2]
-	or   a, $40
+	or   $40
 	ldh  [$FFA2], a
 	ld   bc, $01C0
 	call L001E8E
@@ -4366,7 +4366,7 @@ L025C8E:;I
 	ldh  [$FFAA], a
 	ld   a, h
 	ldh  [$FFAB], a
-	ret  
+	ret
 L025CA5:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4389,7 +4389,7 @@ L025CB0:;I
 L025CC2:;I
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $40
@@ -4397,7 +4397,7 @@ L025CC2:;I
 	jp   L001EB1
 L025CD3:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   hl, $FFA2
@@ -4410,12 +4410,12 @@ L025CD3:;I
 L025CEC:;I
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	xor  a
 	ldh  [$FFA0], a
-	ret  
+	ret
 L025CFA:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4426,7 +4426,7 @@ L025D00: db $5D
 L025D01: db $59
 L025D02: db $5D
 L025D03:;I
-	ld   a, [$CF00]
+	ld   a, [wLvlScrollEvMode]
 	and  a
 	ret  nz
 	call L001EBB
@@ -4442,7 +4442,7 @@ L025D03:;I
 	jp   L001EB1
 L025D1F:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	jp   nz, L001EB1
 	ld   a, $40
@@ -4462,7 +4462,7 @@ L025D1F:;I
 	inc  hl
 	inc  hl
 	ldh  a, [$FFAD]
-	xor  a, [hl]
+	xor  [hl]
 	ld   [hl], a
 	ldh  a, [$FFAD]
 	xor  $80
@@ -4482,13 +4482,13 @@ L025D59:;I
 	jp   c, L001EB6
 	ld   de, $0005
 	add  hl, de
-	ldh  a, [$FF91]
-	and  a, $07
+	ldh  a, [hScrollX]
+	and  $07
 	ld   b, a
-	add  a, [hl]
-	and  a, $F8
-	sub  a, b
-	add  a, $05
+	add  [hl]
+	and  $F8
+	sub  b
+	add  $05
 	ld   [hl], a
 	ld   a, $45
 	ld   bc, $14E8
@@ -4496,13 +4496,13 @@ L025D59:;I
 	jp   c, L001EB6
 	ld   de, $0005
 	add  hl, de
-	ldh  a, [$FF91]
-	and  a, $07
+	ldh  a, [hScrollX]
+	and  $07
 	ld   b, a
-	add  a, [hl]
-	and  a, $F8
-	sub  a, b
-	add  a, $03
+	add  [hl]
+	and  $F8
+	sub  b
+	add  $03
 	ld   [hl], a
 	jp   L001EB6
 L025DA0:;I
@@ -4530,7 +4530,7 @@ L025DC1:;I
 	call L001F43
 	call L002150
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   bc, $0140
@@ -4543,7 +4543,7 @@ L025DDD:;I
 	call L001F43
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001FB9
@@ -4558,7 +4558,7 @@ L025DFC:;I
 	call L002150
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001FB9
@@ -4566,7 +4566,7 @@ L025DFC:;I
 	call L0020CB
 	ld   a, $10
 	ldh  [$FFAC], a
-	ret  
+	ret
 L025E1C:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4580,7 +4580,7 @@ L025E23:;I
 	jp   L001EB1
 L025E2A:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $30
@@ -4591,7 +4591,7 @@ L025E2A:;I
 	ld   a, $49
 	ld   bc, $00F8
 	call L001D35
-	ret  
+	ret
 L025E44:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4622,7 +4622,7 @@ L025E5C:;I
 	push hl
 	call L000755
 	pop  hl
-	and  a, $0F
+	and  $0F
 	ld   e, a
 	ld   d, $00
 	add  hl, de
@@ -4650,19 +4650,19 @@ L025E92:;I
 L025EA3:;I
 	call L025EB0
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001E11
 L025EB0:;C
-	ldh  a, [$FF8F]
+	ldh  a, [hTimer]
 	rrca 
 	rrca 
 	rrca 
-	and  a, $01
-	add  a, $02
+	and  $01
+	add  $02
 	ld   [$CF38], a
-	ret  
+	ret
 L025EBD:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4685,13 +4685,13 @@ L025ECD:;I
 	ld   bc, $0080
 	call L0018B9
 L025EDE:;R
-	ldh  a, [$FF8F]
+	ldh  a, [hTimer]
 	rrca 
 	rrca 
-	and  a, $01
+	and  $01
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
@@ -4706,14 +4706,14 @@ L025EF5:;I
 	ld   bc, $0080
 	call L0018B9
 L025F06:;R
-	ldh  a, [$FF8F]
+	ldh  a, [hTimer]
 	rrca 
 	rrca 
-	and  a, $01
-	add  a, $02
+	and  $01
+	add  $02
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $40
@@ -4740,7 +4740,7 @@ L025F33:;I
 	call L025F71
 	call L001ED7
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
@@ -4756,14 +4756,14 @@ L025F59:;I
 	ld   [$CF38], a
 	call L025F71
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $80
 	ldh  [$FFAC], a
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L025F71:;C
 	ldh  a, [$FFAD]
 	ld   l, a
@@ -4772,9 +4772,9 @@ L025F71:;C
 	ldh  [$FFA5], a
 	inc  hl
 	ld   a, [hl]
-	sub  a, $10
+	sub  $10
 	ldh  [$FFA7], a
-	ret  
+	ret
 L025F80:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4792,14 +4792,14 @@ L025F87:;I
 	ld   de, $000D
 	add  hl, de
 	ld   a, [$CF2F]
-	add  a, $05
+	add  $05
 	ld   [hl], a
 	jp   L001EB1
 L025FA3:;I
-	ldh  a, [$FF8F]
+	ldh  a, [hTimer]
 	rrca 
 	rrca 
-	and  a, $01
+	and  $01
 	ld   [$CF38], a
 	ld   a, $01
 	call L002047
@@ -4848,7 +4848,7 @@ L026001:;I
 	call L001F43
 	call L002150
 	call L0022F7
-	ret  
+	ret
 L02600D:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4871,7 +4871,7 @@ L02602A:;I
 	call L002150
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001FB9
@@ -4879,7 +4879,7 @@ L02602A:;I
 	call L0020CB
 	ld   a, $10
 	ldh  [$FFAC], a
-	ret  
+	ret
 L02604B:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4893,7 +4893,7 @@ L026052:;I
 	jp   L001EB1
 L026059:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $00
@@ -4907,15 +4907,15 @@ L026059:;I
 	ld   bc, $0000
 	call L001D35
 	ld   a, l
-	add  a, $05
+	add  $05
 	ld   l, a
-	ld   a, [$CF12]
+	ld   a, [wPlDirH]
 	rrca 
 	ld   [hl], a
 	rrca 
-	add  a, [hl]
+	add  [hl]
 	ld   [hl], a
-	ret  
+	ret
 L026081:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -4998,13 +4998,13 @@ L0260FF:;I
 	ret  nz
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L026112:;I
 	call L0261A3
 	ld   a, $00
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
@@ -5015,7 +5015,7 @@ L026128:;I
 	ld   a, $02
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
@@ -5026,7 +5026,7 @@ L02613E:;I
 	ld   a, $03
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001ED7
@@ -5038,7 +5038,7 @@ L026157:;I
 	ld   a, $02
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
@@ -5049,23 +5049,23 @@ L02616D:;I
 	ld   a, $00
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ldh  a, [$FFAD]
 	ldh  [$FFA1], a
-	ret  
+	ret
 L026181:;C
 	ldh  a, [$FFA2]
 	ld   b, a
-	and  a, $C0
+	and  $C0
 	ld   c, a
 	push bc
 	call L001ED7
 	pop  bc
 	ld   hl, $FFA2
 	ld   a, [hl]
-	and  a, $C0
+	and  $C0
 	cp   a, c
 	ld   [hl], b
 	ret  z
@@ -5076,7 +5076,7 @@ L026181:;C
 	ldh  [$FFAD], a
 	ld   [hl], $06
 	pop  hl
-	ret  
+	ret
 L0261A3:;C
 	call L001F2A
 	cp   $08
@@ -5084,7 +5084,7 @@ L0261A3:;C
 	ld   a, $FF
 	ld   [$CCFD], a
 	ldh  a, [$FFA7]
-	sub  a, $18
+	sub  $18
 	ld   [$CCEE], a
 	ld   [$CF2C], a
 	ldh  a, [$FFA5]
@@ -5128,7 +5128,7 @@ L0261F1:;I
 	ld   [$CF38], a
 	call L0262D3
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $5B
@@ -5145,7 +5145,7 @@ L026214:;I
 	call L001F43
 	call L0262D3
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   bc, $0080
@@ -5159,7 +5159,7 @@ L026230:;I
 	call L0262D3
 	call L002150
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $5A
@@ -5176,7 +5176,7 @@ L026257:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $60
@@ -5188,7 +5188,7 @@ L026270:;I
 	call L0262D3
 	call L002150
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   bc, $0080
@@ -5197,7 +5197,7 @@ L026270:;I
 	ldh  [$FFAC], a
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L026291: db $21;X
 L026292: db $A2;X
 L026293: db $FF;X
@@ -5233,14 +5233,14 @@ L0262B0: db $C9;X
 L0262B1:;C
 	ldh  a, [$FFA2]
 	ld   c, a
-	and  a, $80
+	and  $80
 	ld   b, a
 	push bc
 	call L001ED7
 	pop  bc
 	ld   hl, $FFA2
 	ld   a, [hl]
-	and  a, $80
+	and  $80
 	cp   a, b
 	ld   [hl], c
 	ret  z
@@ -5265,7 +5265,7 @@ L0262D3:;C
 	ld   a, $FF
 	ld   [$CCFD], a
 	ldh  a, [$FFA7]
-	sub  a, $10
+	sub  $10
 	ld   [$CCEE], a
 	ld   [$CF2C], a
 	ldh  a, [$FFA5]
@@ -5294,7 +5294,7 @@ L026309: db $63
 L02630A: db $A5
 L02630B: db $63
 L02630C:;I
-	ret  
+	ret
 L02630D:;I
 	ld   b, $F0
 	call L001F16
@@ -5309,7 +5309,7 @@ L02630D:;I
 	jp   L001EB1
 L026327:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $5C
@@ -5322,7 +5322,7 @@ L026327:;I
 	jp   L001EB1
 L026341:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $5D
@@ -5364,7 +5364,7 @@ L026341:;I
 	jp   L001EB1
 L026397:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $20
@@ -5374,14 +5374,14 @@ L0263A5:;I
 	ld   a, $01
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $80
 	ldh  [$FFAC], a
 	ld   a, $03
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0263BA:;C
 	ldh  a, [$FFAD]
 	rst  $00
@@ -5409,12 +5409,12 @@ L0263CB:;I
 	ldh  [$FFAC], a
 	ld   hl, $FFAD
 	inc  [hl]
-	ret  
+	ret
 L0263E1:;I
 	ld   c, $01
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   bc, $0080
@@ -5425,7 +5425,7 @@ L0263E1:;I
 	res  6, [hl]
 	ld   hl, $FFAD
 	inc  [hl]
-	ret  
+	ret
 L026403:;I
 	ld   c, $01
 	call L001F43
@@ -5437,7 +5437,7 @@ L026403:;I
 	set  7, [hl]
 	ld   hl, $FFAD
 	inc  [hl]
-	ret  
+	ret
 L02641A:;I
 	ld   c, $01
 	call L001F43
@@ -5450,17 +5450,17 @@ L02641A:;I
 	ldh  [$FFAC], a
 	ld   hl, $FFAD
 	inc  [hl]
-	ret  
+	ret
 L026434:;I
 	ld   c, $01
 	call L001F43
 	ld   hl, $FFA4
 	ldh  a, [$FFA8]
-	add  a, [hl]
+	add  [hl]
 	ld   [hl], a
 	call c, L026469
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   hl, $FFA2
@@ -5468,7 +5468,7 @@ L026434:;I
 	set  6, [hl]
 	ld   hl, $FFAD
 	inc  [hl]
-	ret  
+	ret
 L026456:;I
 	ld   c, $01
 	call L001F43
@@ -5478,7 +5478,7 @@ L026456:;I
 	ret  nz
 	ld   hl, $FFAD
 	inc  [hl]
-	ret  
+	ret
 L026468: db $C9;X
 L026469:;C
 	push hl
@@ -5489,7 +5489,7 @@ L026469:;C
 	ret  nc
 	inc  hl
 	inc  [hl]
-	ret  
+	ret
 L026476:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -5527,7 +5527,7 @@ L026495:;I
 	jp   L001EB1
 L02649C:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $03
@@ -5587,7 +5587,7 @@ L026507:;I
 	ld   a, $06
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $0C
@@ -5601,7 +5601,7 @@ L026522:;I
 	ld   a, $05
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $08
@@ -5636,7 +5636,7 @@ L02656D:;I
 	ld   a, $06
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $08
@@ -5667,7 +5667,7 @@ L0265A2:;I
 	ret  c
 	ld   a, $04
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0265B7:;I
 	call L0023A8
 	ret  c
@@ -5706,12 +5706,12 @@ L0265EF:;I
 	jp   L001EB1
 L026600:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $02
 	ld   [$CF60], a
-	ret  
+	ret
 L02660D:;C
 	call L001F2A
 	cp   $11
@@ -5719,7 +5719,7 @@ L02660D:;C
 	ld   a, $09
 	ldh  [$FFA1], a
 	scf  
-	ret  
+	ret
 L026619:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -5733,7 +5733,7 @@ L026622:;I
 	ldh  a, [$FFAD]
 	ld   [$CF38], a
 	ldh  a, [$FFAE]
-	sub  a, $08
+	sub  $08
 	ld   l, a
 	ld   h, $CD
 	ld   a, [hl]
@@ -5744,7 +5744,7 @@ L026622:;I
 L026637:;I
 	call L026658
 	ld   [$CF38], a
-	sub  a, [hl]
+	sub  [hl]
 	ret  nz
 	ld   [hl], a
 	ld   a, $20
@@ -5755,7 +5755,7 @@ L026647:;I
 	inc  a
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB6
@@ -5764,7 +5764,7 @@ L026658:;C
 	ld   l, a
 	ld   h, $CD
 	ldh  a, [$FFAD]
-	ret  
+	ret
 L026660:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -5787,7 +5787,7 @@ L026677:;I
 	ret  nz
 	jp   L001EB1
 L026682:;I
-	ret  
+	ret
 L026683:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -5818,7 +5818,7 @@ L0266A5:;I
 	ld   a, $01
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $FF
@@ -5846,12 +5846,12 @@ L0266D3:;I
 	jp   L001EB1
 L0266E5:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	xor  a
 	ldh  [$FFA0], a
-	ret  
+	ret
 L0266F0:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -5873,42 +5873,42 @@ L0266FF:;I
 	ld   bc, $0240
 	call L001E95
 	ldh  a, [$FFA2]
-	and  a, $3F
+	and  $3F
 	ldh  [$FFA2], a
 	ld   a, $04
 	ldh  [$FFA1], a
-	ret  
+	ret
 L026716:;I
 	ld   bc, $0020
 	call L001E8E
 	ld   bc, $02C0
 	call L001E95
 	ldh  a, [$FFA2]
-	and  a, $3F
+	and  $3F
 	ldh  [$FFA2], a
 	ld   a, $04
 	ldh  [$FFA1], a
-	ret  
+	ret
 L02672D:;I
 	ld   bc, $0020
 	call L001E8E
 	ld   bc, $02C0
 	call L001E95
 	ldh  a, [$FFA2]
-	and  a, $3F
-	or   a, $80
+	and  $3F
+	or   $80
 	ldh  [$FFA2], a
 	ld   a, $04
 	ldh  [$FFA1], a
-	ret  
+	ret
 L026746:;I
 	ld   bc, $0060
 	call L001E8E
 	ld   bc, $0240
 	call L001E95
 	ldh  a, [$FFA2]
-	and  a, $3F
-	or   a, $80
+	and  $3F
+	or   $80
 	ldh  [$FFA2], a
 	jp   L001EB1
 L02675D:;I
@@ -5963,7 +5963,7 @@ L0267AD:;I
 	jp   L001EB1
 L0267B9:;I
 	call L002150
-	ret  
+	ret
 L0267BD:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -6023,7 +6023,7 @@ L026812:;I
 L026826:;I
 	call L002150
 	call L00220A
-	ret  
+	ret
 L02682D:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -6038,7 +6038,7 @@ L026834:;I
 L02683D:;I
 	call L002150
 	call L00220A
-	ret  
+	ret
 L026844:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -6057,14 +6057,14 @@ L026854:;I
 	call L002150
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB1
 L026867:;I
 	call L002150
 	call L00220A
-	ret  
+	ret
 L02686E:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -6089,7 +6089,7 @@ L02688D:;I
 	ld   [$CF38], a
 	call L002150
 	call L0022F7
-	ret  
+	ret
 L026899:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -6154,7 +6154,7 @@ L0268F1:;I
 	call L001D35
 	ld   a, l
 	ldh  [$FFAE], a
-	add  a, $05
+	add  $05
 	ld   l, a
 	ld   a, h
 	ldh  [$FFAF], a
@@ -6202,7 +6202,7 @@ L02693C:;I
 	ld   bc, $0B80
 	ld   hl, $6000
 	ld   de, $9000
-	call L000646
+	call GfxCopy_Req
 	jp   L001EB1
 L02696B:;I
 	call L0263BA
@@ -6217,7 +6217,7 @@ L02697A:;I
 	call L001F43
 	call L002150
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $20
@@ -6225,14 +6225,14 @@ L02697A:;I
 	jp   L001EB1
 L026990:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $52
 	ld   bc, $0000
 	call L001D35
 	ld   a, l
-	add  a, $0D
+	add  $0D
 	ldh  [$FFAE], a
 	xor  a
 	call L0269FD
@@ -6252,25 +6252,25 @@ L026990:;I
 L0269C9:;I
 	ldh  a, [$FFA8]
 	ld   hl, $FFA4
-	add  a, [hl]
+	add  [hl]
 	ld   [hl], a
 	jr   nc, L0269DD
 	call L000DDB
 	ldh  a, [$FFAE]
-	sub  a, $08
+	sub  $08
 	ld   l, a
 	ld   h, $CD
 	dec  [hl]
 L0269DD:;R
 	ldh  a, [$FFAE]
-	sub  a, $08
+	sub  $08
 	ld   l, a
 	ld   h, $CD
 	ld   a, [hl]
 	cp   $88
 	ret  nz
 	ldh  a, [$FFAE]
-	sub  a, $0C
+	sub  $0C
 	ld   l, a
 	ld   h, $CD
 	ld   [hl], $01
@@ -6280,7 +6280,7 @@ L0269DD:;R
 L0269F9:;I
 	xor  a
 	ldh  [$FFA0], a
-	ret  
+	ret
 L0269FD:;C
 	ld   de, $0005
 	add  hl, de
@@ -6293,7 +6293,7 @@ L0269FD:;C
 	ldi  [hl], a
 	ldh  a, [$FFAE]
 	ld   [hl], a
-	ret  
+	ret
 L026A10:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -6303,13 +6303,13 @@ L026A15: db $17
 L026A16: db $6A
 L026A17:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	cp   $3C
 	jr   nc, L026A35
 	push af
 	sla  a
-	and  a, $08
+	and  $08
 	ld   [$CF38], a
 	pop  af
 	or   a
@@ -6326,7 +6326,7 @@ L026A35:;R
 	ldh  a, [$FFA2]
 	bit  3, a
 	ret  nz
-	or   a, $08
+	or   $08
 	ldh  [$FFA2], a
 	ld   a, $02
 	ld   [$CF1D], a
@@ -6353,7 +6353,7 @@ L026A64:;I
 	ldh  a, [$FFA5]
 	ld   [$CF0D], a
 	ldh  a, [$FFA7]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	call L00332F
 	cp   $10
 	jr   z, L026A7F
@@ -6361,8 +6361,8 @@ L026A64:;I
 	jr   nz, L026A93
 L026A7F:;R
 	ldh  a, [$FFA7]
-	sub  a, $0F
-	ld   [$CF0E], a
+	sub  $0F
+	ld   [wPl_Unk_Alt_Y], a
 	call L00332F
 	cp   $10
 	jp   z, L001EB1
@@ -6377,13 +6377,13 @@ L026A93:;R
 	jp   L001EB6
 L026A9B:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	cp   $3C
 	jr   nc, L026ABB
 	push af
 	sla  a
-	and  a, $08
+	and  $08
 	ld   [$CF38], a
 	pop  af
 	or   a
@@ -6392,7 +6392,7 @@ L026A9B:;I
 	ld   [$CFF1], a
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L026ABB:;R
 	ld   a, [$CF6A]
 	ld   b, a
@@ -6404,10 +6404,10 @@ L026ABB:;R
 	ld   [$CF76], a
 	ld   [$CF77], a
 	ld   [$CF78], a
-	ld   a, [$CF15]
+	ld   a, [wPlRelX]
 	ldh  [$FFA5], a
 	ldh  a, [$FFA7]
-	ld   [$CF16], a
+	ld   [wPlRelY], a
 	ld   a, $11
 	ld   [$CF1D], a
 	jp   L001EB1
@@ -6417,36 +6417,36 @@ L026AE3:;I
 	ld   a, [$CF42]
 	or   a
 	jr   z, L026AF6
-	ldh  a, [$FF8F]
-	and  a, $02
-	add  a, $0A
+	ldh  a, [hTimer]
+	and  $02
+	add  $0A
 	jr   L026B06
 L026AF6:;R
 	ld   a, [$CF43]
 	or   a
 	jr   z, L026B04
-	ldh  a, [$FF8F]
-	and  a, $02
-	add  a, $08
+	ldh  a, [hTimer]
+	and  $02
+	add  $08
 	jr   L026B06
 L026B04:;R
 	ld   a, $0A
 L026B06:;R
 	ld   [$CF38], a
-	ld   a, [$CF15]
+	ld   a, [wPlRelX]
 	ldh  [$FFA5], a
-	ld   a, [$CF16]
+	ld   a, [wPlRelY]
 	ldh  [$FFA7], a
-	ld   a, [$CF12]
+	ld   a, [wPlDirH]
 	rrca 
-	and  a, $80
+	and  $80
 	ld   b, a
 	ldh  a, [$FFA2]
-	and  a, $7F
-	or   a, b
+	and  $7F
+	or   b
 	ldh  [$FFA2], a
 	ld   a, [$CF5E]
-	sub  a, $10
+	sub  $10
 	ld   [$CF5E], a
 	call c, L003A0B
 	ld   a, [$CFE0]
@@ -6458,7 +6458,7 @@ L026B06:;R
 	ld   [$CFF1], a
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L026B3F:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -6477,7 +6477,7 @@ L026B4A:;I
 	ldh  a, [$FFA5]
 	ld   [$CF0D], a
 	ldh  a, [$FFA7]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	call L00332F
 	cp   $10
 	jr   z, L026B68
@@ -6491,7 +6491,7 @@ L026B68:;R
 	jp   L001EB6
 L026B70:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	cp   $3C
 	jr   nc, L026B90
@@ -6540,7 +6540,7 @@ L026BB4:;R
 	ld   a, [$CF4A]
 	cp   a, b
 	ret  nz
-	ldh  a, [$FF8A]
+	ldh  a, [hJoyKeys]
 	rla  
 	jr   nc, L026BEF
 	ldh  a, [$FFA7]
@@ -6553,7 +6553,7 @@ L026BB4:;R
 	ld   [$CF0D], a
 	ldh  a, [$FFA7]
 	inc  a
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	call L00332F
 	cp   $10
 	jr   z, L026C21
@@ -6561,35 +6561,35 @@ L026BB4:;R
 	jr   z, L026C21
 L026BE4:;R
 	ldh  a, [$FFA2]
-	or   a, $40
+	or   $40
 	ldh  [$FFA2], a
 	call L00223A
 	jr   L026C21
 L026BEF:;R
 	rla  
 	jr   nc, L026C21
-	ld   a, [$CF16]
+	ld   a, [wPlRelY]
 	cp   $18
 	jr   c, L026C21
-	sub  a, $18
-	ld   [$CF0E], a
-	ld   a, [$CF15]
-	sub  a, $06
+	sub  $18
+	ld   [wPl_Unk_Alt_Y], a
+	ld   a, [wPlRelX]
+	sub  $06
 	ld   [$CF0D], a
 	call L00332F
 	jr   nc, L026C21
-	ld   a, [$CF15]
-	add  a, $06
+	ld   a, [wPlRelX]
+	add  $06
 	ld   [$CF0D], a
 	call L00332F
 	jr   nc, L026C21
 	ldh  a, [$FFA2]
-	and  a, $BF
+	and  $BF
 	ldh  [$FFA2], a
 	call L00220A
 L026C21:;R
 	ld   a, [$CF5E]
-	sub  a, $20
+	sub  $20
 	ld   [$CF5E], a
 	call c, L003A0B
 	ld   a, [$CFE0]
@@ -6600,7 +6600,7 @@ L026C31:;R
 	ld   [$CFF1], a
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L026C3B:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -6614,13 +6614,13 @@ L026C44: db $A1
 L026C45: db $6C
 L026C46:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	cp   $3C
 	jr   nc, L026C64
 	push af
 	sla  a
-	and  a, $08
+	and  $08
 	ld   [$CF38], a
 	pop  af
 	or   a
@@ -6639,33 +6639,33 @@ L026C64:;R
 	ld   hl, $4C00
 	ld   de, $8500
 	ld   bc, $0B10
-	call L000646
+	call GfxCopy_Req
 	ld   a, $04
 	ldh  [$FFAC], a
 	jp   L001EB1
 L026C85:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
-	ld   a, [$CF15]
+	ld   a, [wPlRelX]
 	ldh  [$FFA5], a
 	ldh  a, [$FFA7]
-	ld   [$CF16], a
+	ld   [wPlRelY], a
 	xor  a
 	ld   [$CF1D], a
 	inc  a
 	ld   [$CF6C], a
 	jp   L001EB1
 L026CA1:;I
-	ld   a, [$CF15]
+	ld   a, [wPlRelX]
 	ldh  [$FFA5], a
-	ld   a, [$CF16]
+	ld   a, [wPlRelY]
 	ldh  [$FFA7], a
 	cp   $90
 	jr   nc, L026CBF
 	ld   a, [$CF5E]
-	sub  a, $40
+	sub  $40
 	ld   [$CF5E], a
 	call c, L003A0B
 	ld   a, [$CFE0]
@@ -6679,7 +6679,7 @@ L026CBF:;R
 	ld   [$CFF1], a
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L026CD0:;I
 	ld   a, [$CFF1]
 	dec  a
@@ -6714,25 +6714,25 @@ L026CE5:;I
 	ld   hl, $4D00
 	ld   de, $8500
 	ld   bc, $0B08
-	jp   L000646
+	jp   GfxCopy_Req
 L026D05:;I
 	call L0022F7
 	ldh  a, [$FFA7]
 	ld   b, a
-	ld   a, [$CF16]
-	sub  a, $18
+	ld   a, [wPlRelY]
+	sub  $18
 	cp   a, b
 	ret  nc
 	ld   hl, $CFF1
 	inc  [hl]
-	ret  
+	ret
 L026D17:;I
 	ldh  a, [$FFA7]
 	cp   $90
 	jr   c, L026D23
 	ld   a, $06
 	ld   [$CFF1], a
-	ret  
+	ret
 L026D23:;R
 	ld   a, [$CFDF]
 	cp   $01
@@ -6743,14 +6743,14 @@ L026D23:;R
 	ldh  [$FFAC], a
 	ld   hl, $CFF1
 	inc  [hl]
-	ret  
+	ret
 L026D37:;R
 	cp   $02
 	jr   nz, L026D51
 	call L0022F7
 	ldh  a, [$FFA7]
 	ld   b, a
-	ld   a, [$CF16]
+	ld   a, [wPlRelY]
 	cp   a, b
 	ret  nc
 	ldh  [$FFA7], a
@@ -6758,14 +6758,14 @@ L026D37:;R
 	ldh  [$FFAC], a
 	ld   hl, $CFF1
 	inc  [hl]
-	ret  
+	ret
 L026D51:;R
 	cp   $03
 	jr   nz, L026D6B
 	call L0022F7
 	ldh  a, [$FFA7]
 	ld   b, a
-	ld   a, [$CF16]
+	ld   a, [wPlRelY]
 	cp   a, b
 	ret  nc
 	ldh  [$FFA7], a
@@ -6773,7 +6773,7 @@ L026D51:;R
 	ldh  [$FFAC], a
 	ld   hl, $CFF1
 	inc  [hl]
-	ret  
+	ret
 L026D6B:;R
 	call L0023A8
 	ret  c
@@ -6781,10 +6781,10 @@ L026D6B:;R
 	ldh  [$FFAC], a
 	ld   hl, $CFF1
 	inc  [hl]
-	ret  
+	ret
 L026D78:;I
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	srl  a
 	ld   [$CF38], a
@@ -6792,20 +6792,20 @@ L026D78:;I
 	ret  nz
 	ld   hl, $CFF1
 	inc  [hl]
-	ret  
+	ret
 L026D8B:;I
 	ld   a, $05
 	ld   [$CF38], a
 	ldh  a, [$FFA7]
-	sub  a, $04
-	ld   [$CF0E], a
+	sub  $04
+	ld   [wPl_Unk_Alt_Y], a
 	ldh  a, [$FFA5]
-	sub  a, $08
+	sub  $08
 	ld   [$CF0D], a
 	call L00332F
 	jr   nc, L026DCA
 	ldh  a, [$FFA5]
-	add  a, $08
+	add  $08
 	ld   [$CF0D], a
 	call L00332F
 	jr   nc, L026DCA
@@ -6823,7 +6823,7 @@ L026D8B:;I
 L026DCA:;R
 	ld   hl, $CFF1
 	inc  [hl]
-	ret  
+	ret
 L026DCF:;I
 	ld   a, $02
 	call L001F34
@@ -6833,10 +6833,10 @@ L026DCF:;I
 	ld   [$CF38], a
 	ld   hl, $CFF1
 	inc  [hl]
-	ret  
+	ret
 L026DE2:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	srl  a
 	ld   [$CF38], a
@@ -6845,7 +6845,7 @@ L026DE2:;I
 	ld   a, $02
 	call L001F34
 	ldh  a, [$FFA2]
-	and  a, $BF
+	and  $BF
 	ldh  [$FFA2], a
 	ld   bc, $0400
 	call L001E95
@@ -6853,7 +6853,7 @@ L026DE2:;I
 	ldh  [$FF99], a
 	ld   hl, $CFF1
 	inc  [hl]
-	ret  
+	ret
 L026E09:;I
 	call L00220A
 	ldh  a, [$FFA7]
@@ -6862,7 +6862,7 @@ L026E09:;I
 	xor  a
 	ldh  [$FFA0], a
 	ld   [$CFF1], a
-	ret  
+	ret
 L026E18:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -6878,15 +6878,15 @@ L026E21:;I
 	ld   bc, $0080
 	call L001E95
 	call L000755
-	and  a, $F7
-	add  a, $0F
+	and  $F7
+	add  $0F
 	ldh  [$FFAC], a
 	jp   L001EB1
 L026E39:;I
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
-	and  a, $1F
+	and  $1F
 	call z, L001E9C
 	call L002180
 	call nc, L001E9C
@@ -6894,7 +6894,7 @@ L026E39:;I
 	ldh  a, [$FFA5]
 	ld   [$CF0D], a
 	ldh  a, [$FFA7]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	call L00332F
 	ret  nc
 	cp   $10
@@ -6908,14 +6908,14 @@ L026E39:;I
 	jp   L001EB1
 L026E6D:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	xor  a
 	ldh  [$FFA0], a
-	ret  
+	ret
 L026E78:;I
-	ret  
+	ret
 L026E79:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -6926,28 +6926,28 @@ L026E7F: db $6E
 L026E80:;I
 	ld   b, $00
 	ld   a, [$CFDE]
-	and  a, $40
+	and  $40
 	call z, L026F16
 	ld   b, $01
 	ld   a, [$CFDE]
-	and  a, $01
+	and  $01
 	call z, L026F16
 	ld   b, $02
 	ld   a, [$CFDE]
-	and  a, $80
+	and  $80
 	call z, L026F16
 	ld   b, $03
 	ld   a, [$CFDE]
-	and  a, $20
+	and  $20
 	call z, L026F16
 	jp   L001EB1
 L026EAB:;I
 	ld   a, [$CF7A]
 	or   a
 	ret  nz
-	ld   a, [$CF15]
+	ld   a, [wPlRelX]
 	ld   b, a
-	ld   a, [$CF16]
+	ld   a, [wPlRelY]
 	ld   c, a
 	cp   $3F
 	jr   nz, L026EE7
@@ -6955,25 +6955,25 @@ L026EAB:;I
 	cp   $20
 	jr   nc, L026ED2
 	ld   a, [$CFDE]
-	and  a, $40
+	and  $40
 	ret  nz
 	ld   a, $10
 	ld   [$CF7A], a
 	ld   a, $19
 	ld   [$CF1D], a
-	ret  
+	ret
 L026ED2:;R
 	ld   a, b
 	cp   $90
 	ret  c
 	ld   a, [$CFDE]
-	and  a, $01
+	and  $01
 	ret  nz
 	ld   a, $20
 	ld   [$CF7A], a
 	ld   a, $19
 	ld   [$CF1D], a
-	ret  
+	ret
 L026EE7:;R
 	ld   a, c
 	cp   $7F
@@ -6982,25 +6982,25 @@ L026EE7:;R
 	cp   $20
 	jr   nc, L026F01
 	ld   a, [$CFDE]
-	and  a, $80
+	and  $80
 	ret  nz
 	ld   a, $30
 	ld   [$CF7A], a
 	ld   a, $19
 	ld   [$CF1D], a
-	ret  
+	ret
 L026F01:;R
 	ld   a, b
 	cp   $90
 	ret  c
 	ld   a, [$CFDE]
-	and  a, $20
+	and  $20
 	ret  nz
 	ld   a, $40
 	ld   [$CF7A], a
 	ld   a, $19
 	ld   [$CF1D], a
-	ret  
+	ret
 L026F16:;C
 	ld   a, b
 	add  a
@@ -7028,7 +7028,7 @@ L026F3A: db $58
 L026F3B:;I
 	ld   c, $01
 	call L001F43
-	ret  
+	ret
 L026F41:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -7081,13 +7081,13 @@ L026F76:;I
 L026F81:;I
 	call L001ED7
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	cp   $0C
 	jr   nc, L026F94
 	ld   a, $03
 	ld   [$CF38], a
-	ret  
+	ret
 L026F94:;R
 	cp   $18
 	jr   nz, L026FA6
@@ -7096,25 +7096,25 @@ L026F94:;R
 	ld   a, $70
 	ld   bc, $00F7
 	call L001D35
-	ret  
+	ret
 L026FA6:;R
 	cp   $18
 	jr   nc, L026FB0
 	ld   a, $03
 	ld   [$CF38], a
-	ret  
+	ret
 L026FB0:;R
 	cp   $24
 	jr   nc, L026FBA
 	ld   a, $05
 	ld   [$CF38], a
-	ret  
+	ret
 L026FBA:;R
 	cp   $30
 	jr   nc, L026FC4
 	ld   a, $04
 	ld   [$CF38], a
-	ret  
+	ret
 L026FC4:;R
 	ld   a, $04
 	ld   [$CF38], a
@@ -7123,14 +7123,14 @@ L026FC4:;R
 	jp   L001EB1
 L026FD0:;I
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	cp   $1E
 	ret  nz
 	call L001ED7
 	call L001EBB
 	swap a
-	and  a, $0F
+	and  $0F
 	add  a
 	ld   hl, $70D7
 	ld   b, $00
@@ -7151,7 +7151,7 @@ L026FFA:;I
 	jr   nc, L02700B
 	ld   a, $08
 	ldh  [$FFA1], a
-	ret  
+	ret
 L02700B:;R
 	call L002180
 	call nc, L001E9C
@@ -7166,7 +7166,7 @@ L027018:;I
 	jr   nc, L027029
 	ld   a, $08
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027029:;R
 	call L002180
 	call nc, L001E9C
@@ -7176,11 +7176,11 @@ L027029:;R
 	ldh  [$FFAC], a
 	ld   a, $0F
 	ld   [$CF1D], a
-	ldh  a, [$FF90]
+	ldh  a, [hScrollY]
 	ld   [$CF46], a
 	ld   a, $0B
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027046:;I
 	ld   de, $0709
 	ld   c, $0C
@@ -7199,7 +7199,7 @@ L027058:;I
 	ldh  [$FFAC], a
 	ld   a, $0F
 	ld   [$CF1D], a
-	ldh  a, [$FF90]
+	ldh  a, [hScrollY]
 	ld   [$CF46], a
 	ld   a, $0B
 	ldh  [$FFA1], a
@@ -7208,11 +7208,11 @@ L027073:;I
 	ld   [$CF38], a
 	call L0270C9
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, [$CF46]
-	ldh  [$FF90], a
+	ldh  [hScrollY], a
 	jp   L001EB1
 L02708A:;I
 	ld   a, $09
@@ -7240,21 +7240,21 @@ L0270B8:;I
 	ld   a, $07
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0270C9:;C
-	ldh  a, [$FF8F]
-	and  a, $03
-	add  a, $FF
+	ldh  a, [hTimer]
+	and  $03
+	add  $FF
 	ld   b, a
 	ld   a, [$CF46]
-	add  a, b
-	ldh  [$FF90], a
-	ret  
+	add  b
+	ldh  [hScrollY], a
+	ret
 L0270D7: db $40;X
 L0270D8: db $00;X
 L0270D9: db $40
@@ -7316,7 +7316,7 @@ L02710C:;I
 	jp   L001EB1
 L027118:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $1E
@@ -7326,7 +7326,7 @@ L027118:;I
 	jp   L001EB1
 L02712B:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $0F
@@ -7336,7 +7336,7 @@ L02712B:;I
 	jp   L001EB1
 L02713E:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $78
@@ -7347,7 +7347,7 @@ L02713E:;I
 	jp   L001EB1
 L027154:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $78
@@ -7361,7 +7361,7 @@ L027167:;I
 	ld   c, $02
 	call L001F51
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   bc, $0200
@@ -7379,7 +7379,7 @@ L027181:;I
 	ldh  a, [$FFA5]
 	cp   $28
 	jr   c, L0271A0
-	ret  
+	ret
 L02719B:;R
 	ldh  a, [$FFA5]
 	cp   $88
@@ -7390,7 +7390,7 @@ L0271A0:;R
 	call L001E9C
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0271AD:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -7436,7 +7436,7 @@ L0271D6:;I
 	ld   bc, $0160
 	call L001E8E
 	ldh  a, [$FFA5]
-	and  a, $80
+	and  $80
 	xor  $80
 	ldh  [$FFA2], a
 	ld   bc, $0200
@@ -7460,7 +7460,7 @@ L0271FC:;I
 	jp   L001EB1
 L02720F:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   bc, $0300
@@ -7493,7 +7493,7 @@ L027242:;R
 	ldh  [$FFAC], a
 	ld   a, $12
 	ldh  [$FFA1], a
-	ret  
+	ret
 L02725C:;I
 	ld   a, $10
 	ldh  [$FFAC], a
@@ -7501,14 +7501,14 @@ L02725C:;I
 L027263:;I
 	call L001ED7
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	push af
 	ld   b, a
 	srl  a
 	srl  a
 	srl  a
-	and  a, $01
+	and  $01
 	ld   [$CF38], a
 	ld   a, b
 	cp   $08
@@ -7517,8 +7517,8 @@ L027263:;I
 	ld   bc, $00F0
 	call L001D35
 	ldh  a, [$FFA2]
-	and  a, $80
-	or   a, $40
+	and  $80
+	or   $40
 	inc  l
 	inc  l
 	ld   [hl], a
@@ -7534,16 +7534,16 @@ L027294:;I
 	jp   L001EB1
 L0272A0:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0272AC:;I
 	call L001ED7
 	ldh  a, [$FFA2]
-	and  a, $80
+	and  $80
 	xor  $80
 	ld   bc, $0080
 	call L0018B9
@@ -7551,12 +7551,12 @@ L0272AC:;I
 	or   a
 	jr   nz, L0272D3
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	push af
 	srl  a
 	srl  a
-	and  a, $01
+	and  $01
 	ld   [$CF38], a
 	pop  af
 	ret  nz
@@ -7565,7 +7565,7 @@ L0272D3:;X
 	call L001F16
 	ld   a, $10
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0272DD:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -7607,33 +7607,33 @@ L0272FE:;I
 	jp   L001EB1
 L02730A:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L000755
 	swap a
-	and  a, $03
+	and  $03
 	jr   nz, L02731F
 	ld   a, $06
 	ldh  [$FFA1], a
-	ret  
+	ret
 L02731F:;R
 	dec  a
 	jr   nz, L027327
 	ld   a, $07
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027327:;R
 	call L001EBB
 	cp   $40
 	jr   nc, L027333
 	ld   a, $03
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027333:;R
 	ld   a, $0A
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027338:;I
 	call L001ED7
 	ld   de, $0205
@@ -7670,7 +7670,7 @@ L027364:;I
 	call L001F0C
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027382:;I
 	ld   bc, $0000
 	call L001E8E
@@ -7678,7 +7678,7 @@ L027382:;I
 	call L001E95
 	ld   a, $08
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027393:;I
 	ld   bc, $0100
 	call L001E8E
@@ -7700,7 +7700,7 @@ L0273B1:;I
 	ret  c
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0273C2:;I
 	ld   bc, $0440
 	call L001E95
@@ -7723,7 +7723,7 @@ L0273DB:;I
 	inc  a
 	ld   [$CF5C], a
 	dec  a
-	and  a, $07
+	and  $07
 	jr   nz, L0273F6
 	jp   L001EB1
 L0273F6:;R
@@ -7731,7 +7731,7 @@ L0273F6:;R
 	ret  c
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0273FF:;I
 	ld   a, $73
 	ld   bc, $00F0
@@ -7741,12 +7741,12 @@ L0273FF:;I
 	jp   L001EB1
 L02740E:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $0C
 	ldh  [$FFA1], a
-	ret  
+	ret
 L02741A: db $0B;X
 L02741B: db $0B;X
 L02741C: db $0B
@@ -7791,23 +7791,23 @@ L027447:;I
 	rrca 
 	rrca 
 	rrca 
-	and  a, $03
-	add  a, $03
+	and  $03
+	add  $03
 	ld   [$CF38], a
 	ld   a, [$CC60]
 	add  a
 	jp   c, L001EB1
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	jp   z, L001EB1
 	call L002180
 	ret  c
 	ld   hl, $FFA2
 	ld   a, $80
-	xor  a, [hl]
+	xor  [hl]
 	ld   [hl], a
-	ret  
+	ret
 L027472:;I
 	call L001ED7
 	call L001EBB
@@ -7837,7 +7837,7 @@ L02749F:;I
 	call L002180
 	call L0023A8
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $7A
@@ -7858,7 +7858,7 @@ L0274C9:;I
 	call L002180
 	call L0023A8
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $08
@@ -7872,7 +7872,7 @@ L0274E2:;I
 	ret  c
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0274F3:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -7913,8 +7913,8 @@ L027518:;I
 	rrca 
 	rrca 
 	rrca 
-	and  a, $03
-	add  a, $03
+	and  $03
+	add  $03
 	ld   [$CF38], a
 	call L001EBB
 	cp   $20
@@ -7939,7 +7939,7 @@ L02754D:;I
 	call L0023A8
 	jp   nc, L0275E0
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $75
@@ -7954,14 +7954,14 @@ L02756E:;I
 	call L0023A8
 	jp   nc, L0275E0
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
 	ldh  [$FFAC], a
 	ld   a, $04
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027589: db $C9;X
 L02758A: db $CD;X
 L02758B: db $A8;X
@@ -8019,15 +8019,15 @@ L0275CC:;I
 	call L001ED7
 	ld   a, $02
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0275E0:;J
 	ld   a, $02
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0275E5:;J
 	ld   a, $09
 	ldh  [$FFA1], a
-	ret  
+	ret
 L0275EA:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -8090,7 +8090,7 @@ L027603:;I
 L027652:;I
 	call L027722
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $03
@@ -8101,7 +8101,7 @@ L027652:;I
 L027667:;I
 	call L027722
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $78
@@ -8124,7 +8124,7 @@ L027685:;I
 	call L001EBB
 	ld   a, $00
 	sbc  a
-	and  a, $02
+	and  $02
 	dec  a
 	ld   [$CCE0], a
 	ld   a, $20
@@ -8134,7 +8134,7 @@ L0276A6:;I
 	ld   a, $07
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $79
@@ -8187,24 +8187,24 @@ L027714:;I
 	ret  nz
 	ld   a, $00
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027721: db $C9;X
 L027722:;C
-	ldh  a, [$FF8F]
+	ldh  a, [hTimer]
 	rrca 
 	rrca 
 	rrca 
-	and  a, $01
-	add  a, $03
+	and  $01
+	add  $03
 	ld   [$CF38], a
-	ret  
+	ret
 L02772F:;C
 	ld   de, $0005
 	add  hl, de
 	ldi  [hl], a
 	inc  hl
 	ld   [hl], $30
-	ret  
+	ret
 L027738:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -8239,18 +8239,18 @@ L027751:;I
 	ldh  [$FFAC], a
 	jp   L001EB1
 L027762:;I
-	ldh  a, [$FF8F]
+	ldh  a, [hTimer]
 	rrca 
 	rrca 
-	and  a, $01
-	add  a, $03
+	and  $01
+	add  $03
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L000755
-	and  a, $03
+	and  $03
 	add  a
 	add  a
 	ldh  [$FFAE], a
@@ -8273,10 +8273,10 @@ L027784:;I
 	ld   b, a
 	ldh  a, [$FFAC]
 	dec  a
-	add  a, b
+	add  b
 	ld   [hl], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
@@ -8286,14 +8286,14 @@ L0277B0:;I
 	ldh  a, [$FFA2]
 	ld   bc, $00C0
 	call L0018B9
-	ldh  a, [$FF8F]
+	ldh  a, [hTimer]
 	rrca 
 	rrca 
-	and  a, $01
-	add  a, $03
+	and  $01
+	add  $03
 	ld   [$CF38], a
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
@@ -8307,7 +8307,7 @@ L0277B0:;I
 	dec  [hl]
 	jp   z, L001EB1
 	call L000755
-	and  a, $03
+	and  $03
 	add  a
 	add  a
 	ldh  [$FFAE], a
@@ -8315,7 +8315,7 @@ L0277B0:;I
 	ldh  [$FFA1], a
 	ld   a, $04
 	ldh  [$FFAC], a
-	ret  
+	ret
 L0277EF:;I
 	ld   bc, $0240
 	call L001E95
@@ -8358,7 +8358,7 @@ L02782B:;I
 L027844:;I
 	ld   a, $01
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027849: db $CC
 L02784A: db $00
 L02784B: db $CC
@@ -8437,9 +8437,9 @@ L027893: db $78
 L027894: db $FC
 L027895: db $78
 L027896:;I
-	ld   a, [$CF15]
+	ld   a, [wPlRelX]
 	ld   [$CF47], a
-	ld   a, [$CF16]
+	ld   a, [wPlRelY]
 	ld   [$CF48], a
 	call L001FB9
 	call L0020D8
@@ -8450,24 +8450,24 @@ L0278AB:;I
 	ld   a, [$CF47]
 	ld   b, a
 	ldh  a, [$FFA5]
-	sub  a, b
+	sub  b
 	jr   nc, L0278BE
 	xor  $FF
 	inc  a
 	scf  
 L0278BE:;R
-	and  a, $F0
+	and  $F0
 	ret  nz
 	ld   a, [$CF48]
 	ld   b, a
 	ldh  a, [$FFA7]
-	sub  a, b
+	sub  b
 	jr   nc, L0278CE
 	xor  $FF
 	inc  a
 	scf  
 L0278CE:;R
-	and  a, $F0
+	and  $F0
 	ret  nz
 	ld   a, $18
 	ldh  [$FFAC], a
@@ -8476,7 +8476,7 @@ L0278D8:;I
 	call L002150
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001FB9
@@ -8486,14 +8486,14 @@ L0278D8:;I
 	jp   L001EB1
 L0278F2:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB1
 L0278FC:;I
 	call L002150
 	call L00220A
-	ret  
+	ret
 L027903:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -8517,7 +8517,7 @@ L02791A:;I
 	call L002150
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $1E
@@ -8527,7 +8527,7 @@ L027933:;I
 	ld   c, $03
 	call L001F43
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	call L001FB9
@@ -8538,7 +8538,7 @@ L027948:;I
 	call L001F43
 	call L002150
 	call L00220A
-	ret  
+	ret
 L027954:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -8560,7 +8560,7 @@ L02796C:;I
 	call L002180
 	jr   nc, L02799A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB1
@@ -8578,7 +8578,7 @@ L02797B:;I
 L027994:;I
 	call L00223A
 	jr   nc, L02799A
-	ret  
+	ret
 L02799A:;R
 	jp   L001E11
 L02799D:;I
@@ -8595,7 +8595,7 @@ L0279A4:;I
 L0279AD:;I
 	call L002150
 	call L00220A
-	ret  
+	ret
 L0279B4:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -8618,14 +8618,14 @@ L0279CA:;I
 	jp   nc, L001EB1
 	call L00223A
 	jp   nc, L001EB1
-	ret  
+	ret
 L0279D7:;I
 	ld   a, $20
 	ldh  [$FFAC], a
 	jp   L001EB1
 L0279DE:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001EB1
@@ -8651,7 +8651,7 @@ L027A05:;I
 	call L001F43
 	call L002150
 	call L00220A
-	ret  
+	ret
 L027A11:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -8688,7 +8688,7 @@ L027A3A:;I
 	call L002150
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $40
@@ -8698,7 +8698,7 @@ L027A54:;I
 	ld   bc, $0301
 	call L001F5F
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   bc, $0100
@@ -8708,7 +8708,7 @@ L027A54:;I
 	jp   L001EB1
 L027A70:;I
 	call L002150
-	ret  
+	ret
 L027A74:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -8722,30 +8722,30 @@ L027A7D:;I
 	ldh  a, [$FFA5]
 	ldh  [$FFAE], a
 	ldh  a, [$FFA7]
-	sub  a, $0B
+	sub  $0B
 	ldh  [$FFAF], a
 	jp   L001EB1
 L027A8A:;I
 	ldh  a, [$FFAC]
-	and  a, $3F
+	and  $3F
 	ld   hl, $7B00
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ldh  a, [$FFAE]
-	add  a, [hl]
+	add  [hl]
 	ldh  [$FFA5], a
 	ld   hl, $7AF0
 	ldh  a, [$FFAC]
-	and  a, $3F
+	and  $3F
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ldh  a, [$FFAF]
-	add  a, [hl]
+	add  [hl]
 	ldh  [$FFA7], a
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
 	ld   a, [$CCE0]
 	and  a
@@ -8757,30 +8757,30 @@ L027A8A:;I
 L027AC1:;I
 	ld   hl, $FFAE
 	ld   a, [$CCE0]
-	add  a, [hl]
+	add  [hl]
 	ld   [hl], a
 	ldh  a, [$FFAC]
-	and  a, $3F
+	and  $3F
 	ld   hl, $7B00
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ldh  a, [$FFAE]
-	add  a, [hl]
+	add  [hl]
 	ldh  [$FFA5], a
 	ld   hl, $7AF0
 	ldh  a, [$FFAC]
-	and  a, $3F
+	and  $3F
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ldh  a, [$FFAF]
-	add  a, [hl]
+	add  [hl]
 	ldh  [$FFA7], a
 	ldh  a, [$FFAC]
-	add  a, $01
+	add  $01
 	ldh  [$FFAC], a
-	ret  
+	ret
 L027AF0: db $F0
 L027AF1: db $F0
 L027AF2: db $F0
@@ -8870,14 +8870,14 @@ L027B45: db $56
 L027B46: db $7B
 L027B47:;I
 	ldh  a, [$FFA2]
-	and  a, $BF
+	and  $BF
 	ldh  [$FFA2], a
 	ld   bc, $0200
 	call L001E95
 	jp   L001EB1
 L027B56:;I
 	call L00220A
-	ret  
+	ret
 L027B5A:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -8887,7 +8887,7 @@ L027B5F: db $7A
 L027B60: db $7B
 L027B61:;I
 	ldh  a, [$FFA2]
-	or   a, $C0
+	or   $C0
 	ldh  [$FFA2], a
 	ld   bc, $0100
 	call L001E8E
@@ -8900,7 +8900,7 @@ L027B7A:;I
 	call L002150
 	call L00220A
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ldh  a, [$FFA2]
@@ -8908,7 +8908,7 @@ L027B7A:;I
 	ldh  [$FFA2], a
 	ld   a, $10
 	ldh  [$FFAC], a
-	ret  
+	ret
 L027B92:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -8924,7 +8924,7 @@ L027BA0:;I
 	ld   c, $01
 	call L001F51
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	jp   L001E11
@@ -8947,13 +8947,13 @@ L027BC5:;I
 	ret  z
 	xor  a
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027BCD:;I
 	ld   c, $01
 	call L001F51
 	call L002150
 	call L00220A
-	ret  
+	ret
 L027BD9:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -8984,7 +8984,7 @@ L027C08:;R
 	ld   c, $01
 	call L001F51
 	call L002150
-	ret  
+	ret
 L027C11:;I
 	ldh  a, [$FFA1]
 	rst  $00
@@ -9000,7 +9000,7 @@ L027C18:;I
 L027C22:;I
 	call L002150
 	call L0022F7
-	ret  
+	ret
 L027C29:;JC
 	ld   [$CFE6], a
 	ld   a, d
@@ -9011,7 +9011,7 @@ L027C29:;JC
 	push hl
 	call L001EBB
 	swap a
-	and  a, $0E
+	and  $0E
 	ld   hl, $7C54
 	ld   b, $00
 	ld   c, a
@@ -9047,7 +9047,7 @@ L027C64:;C
 	call L001D35
 	ret  c
 	ldh  a, [$FFA2]
-	and  a, $80
+	and  $80
 	ld   [$CF52], a
 	ld   bc, $00B4
 	ld   de, $00B4
@@ -9061,7 +9061,7 @@ L027C64:;C
 	call L001D48
 	ret  c
 	ld   a, [$CF52]
-	or   a, $40
+	or   $40
 	ld   bc, $00B4
 	ld   de, $00B4
 	jp   L027D75
@@ -9071,7 +9071,7 @@ L027C9F:;J
 	call L001D35
 	ret  c
 	ldh  a, [$FFA2]
-	and  a, $80
+	and  $80
 	ld   [$CF52], a
 	ld   bc, $00C0
 	ld   de, $0180
@@ -9135,7 +9135,7 @@ L027D3C:;C
 	call L001D35
 	ret  c
 	ldh  a, [$FFA2]
-	and  a, $80
+	and  $80
 	ld   [$CF52], a
 	ld   bc, $00C0
 	ld   de, $00C0
@@ -9157,7 +9157,7 @@ L027D75:;JC
 	inc  l
 	ld   [hl], a
 	ld   a, l
-	add  a, $06
+	add  $06
 	ld   l, a
 	ld   [hl], c
 	inc  hl
@@ -9166,7 +9166,7 @@ L027D75:;JC
 	ld   [hl], e
 	inc  hl
 	ld   [hl], d
-	ret  
+	ret
 L027D84:;I
 	ld   a, [$CF3A]
 	rst  $00
@@ -9202,7 +9202,7 @@ L027DA5: db $7E
 L027DA6: db $3A
 L027DA7: db $7E
 L027DA8:;I
-	ret  
+	ret
 L027DA9:;I
 	ld   a, $0F
 	ld   [$CF1D], a
@@ -9217,10 +9217,10 @@ L027DA9:;I
 	inc  [hl]
 	ld   a, $05
 	ldh  [$FF98], a
-	ret  
+	ret
 L027DC7:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   de, $0002
@@ -9228,17 +9228,17 @@ L027DC7:;I
 	call L001F7D
 	ld   hl, $CF3A
 	inc  [hl]
-	ret  
+	ret
 L027DDB:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $1E
 	ldh  [$FFAC], a
 	ld   hl, $CF3A
 	inc  [hl]
-	ret  
+	ret
 L027DEB:;I
 	call L001F8B
 	ret  z
@@ -9246,15 +9246,15 @@ L027DEB:;I
 	call L001F34
 	ld   hl, $CF3A
 	inc  [hl]
-	ret  
+	ret
 L027DF9:;I
 	ldh  a, [$FFAC]
-	sub  a, $01
+	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
 	ld   hl, $CF3A
 	inc  [hl]
-	ret  
+	ret
 L027E05:;I
 	ld   a, [$CF44]
 	inc  a
@@ -9263,7 +9263,7 @@ L027E05:;I
 	ld   hl, $CF70
 	set  2, [hl]
 	ld   a, [$CF44]
-	and  a, $07
+	and  $07
 	jr   nz, L027E1F
 	ld   a, $0B
 	ldh  [$FF99], a
@@ -9273,7 +9273,7 @@ L027E1F:;R
 	ret  c
 	ld   hl, $CF3A
 	inc  [hl]
-	ret  
+	ret
 L027E2A:;I
 	ld   a, $00
 	call L001F34
@@ -9282,7 +9282,7 @@ L027E2A:;I
 	inc  a
 	ld   [$CF45], a
 	ldh  [$FFA1], a
-	ret  
+	ret
 L027E3A:;I
 	ld   a, $00
 	call L001F34
@@ -9292,7 +9292,7 @@ L027E3A:;I
 	ld   [$CF45], a
 	ld   hl, $FFA1
 	inc  [hl]
-	ret  
+	ret
 L027E4C:;C
 	call L027EC3
 	ld   de, $7F51
@@ -9311,32 +9311,32 @@ L027E61:;C
 	jr   L027EDC
 L027E6D:;C
 	ldh  a, [$FFA5]
-	sub  a, $14
+	sub  $14
 	ld   [$CF0D], a
 	ldh  a, [$FFA7]
-	sub  a, $14
-	ld   [$CF0E], a
+	sub  $14
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, $06
 	ld   [$CF51], a
 	ld   a, $06
 	ld   [$CF50], a
 	ld   de, $7F8D
 	call L027EDC
-	ldh  a, [$FF92]
+	ldh  a, [hScrollXNybLow]
 	ld   b, a
 	ld   a, [$CF0D]
-	sub  a, $08
-	add  a, b
+	sub  $08
+	add  b
 	swap a
-	and  a, $0F
+	and  $0F
 	ld   b, a
-	ld   a, [$CF0C]
-	add  a, b
+	ld   a, [wLvlColL]
+	add  b
 	ld   c, a
-	ld   a, [$CF0E]
-	sub  a, $10
+	ld   a, [wPl_Unk_Alt_Y]
+	sub  $10
 	swap a
-	and  a, $0F
+	and  $0F
 	ld   b, a
 	ld   hl, $C000
 	add  hl, bc
@@ -9359,27 +9359,27 @@ L027EB3:;R
 	inc  e
 	dec  b
 	jr   nz, L027EB3
-	ret  
+	ret
 L027EC3:;C
 	ldh  a, [$FFA5]
-	sub  a, $12
+	sub  $12
 	ld   [$CF0D], a
 	ldh  a, [$FFA7]
-	sub  a, $1C
-	ld   [$CF0E], a
+	sub  $1C
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, $05
 	ld   [$CF51], a
 	ld   a, $04
 	ld   [$CF50], a
-	ret  
+	ret
 L027EDC:;JCR
-	ldh  a, [$FF90]
+	ldh  a, [hScrollY]
 	ld   b, a
-	ld   a, [$CF0E]
-	sub  a, $10
-	add  a, b
+	ld   a, [wPl_Unk_Alt_Y]
+	sub  $10
+	add  b
 	swap a
-	and  a, $0F
+	and  $0F
 	sla  a
 	ld   hl, $3C74
 	ld   b, $00
@@ -9389,22 +9389,22 @@ L027EDC:;JCR
 	ld   [$CF4E], a
 	ld   a, [hl]
 	ld   [$CF4F], a
-	ldh  a, [$FF91]
+	ldh  a, [hScrollX]
 	ld   b, a
-	ldh  a, [$FF92]
-	add  a, b
+	ldh  a, [hScrollXNybLow]
+	add  b
 	ld   b, a
 	ld   a, [$CF0D]
-	sub  a, $08
-	add  a, b
+	sub  $08
+	add  b
 	swap a
-	and  a, $0F
+	and  $0F
 	sla  a
 	ld   b, a
 	ld   a, [$CF4E]
-	add  a, b
+	add  b
 	ld   [$CF4E], a
-	ld   hl, $DD00
+	ld   hl, wScrEvRows
 	ld   a, [$CF51]
 	ld   b, a
 L027F1C:;R
@@ -9413,7 +9413,7 @@ L027F1C:;R
 	ld   a, [$CF4E]
 	ldi  [hl], a
 	ld   a, [$CF50]
-	or   a, $80
+	or   $80
 	ldi  [hl], a
 	push bc
 	ld   a, [$CF50]
@@ -9426,21 +9426,21 @@ L027F2F:;R
 	jr   nz, L027F2F
 	pop  bc
 	ld   a, [$CF4E]
-	and  a, $E0
+	and  $E0
 	ld   c, a
 	ld   a, [$CF4E]
 	inc  a
-	and  a, $1F
-	or   a, c
+	and  $1F
+	or   c
 	ld   [$CF4E], a
 	dec  b
 	jr   nz, L027F1C
 	xor  a
 	ldi  [hl], a
 	inc  a
-	ld   [$CF01], a
+	ld   [wPkgEv], a
 	scf  
-	ret  
+	ret
 L027F51: db $0B
 L027F52: db $1B
 L027F53: db $2B
@@ -9546,4 +9546,4 @@ L027FB6: db $35
 L027FB7: db $2D
 L027FB8: db $2E
 L027FB9: db $2F
-mIncJunk "L027FBA"
+	mIncJunk "L027FBA"

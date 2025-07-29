@@ -101,7 +101,7 @@ L0740A4:;J
 	ldh  a, [$FFED]
 	ld   b, a
 	ldh  a, [$FFF2]
-	or   a, b
+	or   b
 	jr   z, L0740C2
 	ld   hl, $7057
 	ld   b, $00
@@ -157,13 +157,13 @@ L0740FE:;JR
 	ldi  a, [hl]
 	ld   c, a
 	swap a
-	and  a, $0F
+	and  $0F
 	cp   $0C
 	jr   nc, L074128
 	add  a
 	ld   e, a
 	ldh  a, [$FFC8]
-	add  a, e
+	add  e
 	ld   e, a
 	ldh  a, [$FFC9]
 	adc  a, $00
@@ -172,7 +172,7 @@ L0740FE:;JR
 	ldh  [$FFDD], a
 	inc  de
 	ld   a, [de]
-	or   a, $80
+	or   $80
 	ldh  [$FFDE], a
 	ldh  a, [$FFD8]
 	ldh  [$FFDC], a
@@ -182,7 +182,7 @@ L0740FE:;JR
 L074128:;R
 	jr   nz, L07417F
 	ld   a, c
-	and  a, $0F
+	and  $0F
 	jr   nz, L074136
 	ldi  a, [hl]
 	ldh  [rTIMA], a
@@ -257,7 +257,7 @@ L07418A:;R
 	jr   L0741BF
 L074199:;R
 	ld   a, c
-	and  a, $07
+	and  $07
 	bit  3, c
 	jr   z, L0741A9
 L0741A0: db $FE;X
@@ -273,7 +273,7 @@ L0741A9:;R
 	ldh  [$FFD4], a
 	dec  a
 	add  a
-	add  a, $DC
+	add  $DC
 	ld   e, a
 	ld   a, $00
 	adc  a, $44
@@ -310,13 +310,13 @@ L0741E1:;JR
 	ldi  a, [hl]
 	ld   c, a
 	swap a
-	and  a, $0F
+	and  $0F
 	cp   $0C
 	jr   nc, L07420B
 	add  a
 	ld   e, a
 	ldh  a, [$FFCA]
-	add  a, e
+	add  e
 	ld   e, a
 	ldh  a, [$FFCB]
 	adc  a, $00
@@ -325,7 +325,7 @@ L0741E1:;JR
 	ldh  [$FFE0], a
 	inc  de
 	ld   a, [de]
-	or   a, $80
+	or   $80
 	ldh  [$FFE1], a
 	ldh  a, [$FFD9]
 	ldh  [$FFDF], a
@@ -335,7 +335,7 @@ L0741E1:;JR
 L07420B:;R
 	jr   nz, L074258
 	ld   a, c
-	and  a, $0F
+	and  $0F
 	jr   nz, L074219
 L074212: db $2A;X
 L074213: db $E0;X
@@ -406,7 +406,7 @@ L074263:;R
 	jr   L074298
 L074272:;R
 	ld   a, c
-	and  a, $07
+	and  $07
 	bit  3, c
 	jr   z, L074282
 L074279: db $FE;X
@@ -422,7 +422,7 @@ L074282:;R
 	ldh  [$FFD5], a
 	dec  a
 	add  a
-	add  a, $DC
+	add  $DC
 	ld   e, a
 	ld   a, $00
 	adc  a, $44
@@ -473,14 +473,14 @@ L0742AF:;J
 	jr   L0742EF
 L0742D4:;R
 	ldh  [rNR21], a
-	and  a, $3F
+	and  $3F
 	ldh  [$FFED], a
 	ldi  a, [hl]
 	ldh  [rNR22], a
 	ldi  a, [hl]
 	ldh  [rNR23], a
 	ldi  a, [hl]
-	or   a, $80
+	or   $80
 	ldh  [rNR24], a
 	ld   a, l
 	ldh  [$FFEB], a
@@ -501,13 +501,13 @@ L0742FB:;JR
 	ldi  a, [hl]
 	ld   c, a
 	swap a
-	and  a, $0F
+	and  $0F
 	cp   $0C
 	jr   nc, L074325
 	add  a
 	ld   e, a
 	ldh  a, [$FFCC]
-	add  a, e
+	add  e
 	ld   e, a
 	ldh  a, [$FFCD]
 	adc  a, $00
@@ -516,7 +516,7 @@ L0742FB:;JR
 	ldh  [$FFE4], a
 	inc  de
 	ld   a, [de]
-	or   a, $C0
+	or   $C0
 	ldh  [$FFE5], a
 	ldh  a, [$FFDA]
 	ldh  [$FFE3], a
@@ -526,7 +526,7 @@ L0742FB:;JR
 L074325:;R
 	jr   nz, L074371
 	ld   a, c
-	and  a, $0F
+	and  $0F
 	jr   nz, L074333
 L07432C: db $2A;X
 L07432D: db $E0;X
@@ -597,7 +597,7 @@ L07437C:;R
 	jr   L0743B0
 L07438A:;R
 	ld   a, c
-	and  a, $07
+	and  $07
 	bit  3, c
 	jr   z, L07439A
 L074391: db $FE;X
@@ -613,7 +613,7 @@ L07439A:;R
 	ldh  [$FFD6], a
 	dec  a
 	add  a
-	add  a, $DC
+	add  $DC
 	ld   e, a
 	ld   a, $00
 	adc  a, $44
@@ -652,16 +652,16 @@ L0743D6:;JR
 	ldi  a, [hl]
 	ld   c, a
 	swap a
-	and  a, $0F
+	and  $0F
 	cp   $0C
 	jr   nc, L074401
 	ldh  a, [$FFDB]
 	ldh  [$FFE7], a
 	ld   de, $46D2
 	ld   a, c
-	and  a, $F0
+	and  $F0
 	swap a
-	add  a, e
+	add  e
 	ld   e, a
 	ld   a, d
 	adc  a, $00
@@ -676,7 +676,7 @@ L0743D6:;JR
 L074401:;R
 	jr   nz, L07444E
 	ld   a, c
-	and  a, $0F
+	and  $0F
 	jr   nz, L07440F
 L074408: db $2A;X
 L074409: db $E0;X
@@ -787,17 +787,17 @@ L074486:;J
 	ldh  [rNR44], a
 	xor  a
 	ldh  [$FFF4], a
-	ret  
+	ret
 L0744A9:;R
 	ldh  [rNR41], a
-	and  a, $3F
+	and  $3F
 	ldh  [$FFF2], a
 	ldi  a, [hl]
 	ldh  [rNR42], a
 	ldi  a, [hl]
 	ldh  [rNR43], a
 	ldi  a, [hl]
-	or   a, $80
+	or   $80
 	ldh  [rNR44], a
 	ld   a, l
 	ldh  [$FFF0], a
@@ -806,10 +806,10 @@ L0744A9:;R
 L0744C0:;R
 	ld   hl, $FFF2
 	dec  [hl]
-	ret  
+	ret
 L0744C5:;C
 	ld   a, c
-	and  a, $07
+	and  $07
 	ld   b, a
 	ld   a, $80
 	jr   z, L0744D2
@@ -822,9 +822,9 @@ L0744D2:;R
 	srl  b
 	bit  3, c
 	jr   z, L0744DA
-	add  a, b
+	add  b
 L0744DA:;R
-	ret  
+	ret
 L0744DB: db $00
 L0744DC: db $EA
 L0744DD: db $44
@@ -12964,4 +12964,4 @@ L077442: db $57;X
 L077443: db $00;X
 L077444: db $00;X
 L077445: db $00
-mIncJunk "L077446"
+	mIncJunk "L077446"

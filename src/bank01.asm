@@ -50,7 +50,7 @@ L01403A:;J
 	ld   [$CF22], a
 	ret  nz
 	ld   [$CF23], a
-	ret  
+	ret
 L014048:;JR
 	ld   a, $0C
 	ld   [$CF22], a
@@ -63,11 +63,11 @@ L014048:;JR
 	ld   [$CF23], a
 	ld   a, $02
 	ldh  [$FF99], a
-	ret  
+	ret
 L014060:;JI
 	xor  a
 	ld   [$CFEB], a
-	ldh  a, [$FF8B]
+	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
 	ld   hl, $CC60
@@ -89,8 +89,8 @@ L014085:;J
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
-	ld   a, [$CF12]
-	and  a, $01
+	ld   a, [wPlDirH]
+	and  $01
 	ldi  [hl], a
 	ld   b, $F2
 	or   a
@@ -100,13 +100,13 @@ L014095:;R
 	xor  a
 	ldi  [hl], a
 	ldi  [hl], a
-	ld   a, [$CF15]
-	add  a, b
+	ld   a, [wPlRelX]
+	add  b
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
-	ld   a, [$CF16]
-	sub  a, $0C
+	ld   a, [wPlRelY]
+	sub  $0C
 	ldi  [hl], a
 	ld   [hl], c
 	jr   L014048
@@ -146,7 +146,7 @@ L0140D5:;I
 	jr   z, L0140F5
 	xor  a
 	ld   [hl], a
-	ret  
+	ret
 L0140F5:;R
 	ld   a, $8C
 	ldi  [hl], a
@@ -155,12 +155,12 @@ L0140F5:;R
 	ldi  [hl], a
 	ldi  [hl], a
 	ldi  [hl], a
-	ld   a, [$CF15]
+	ld   a, [wPlRelX]
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
-	ld   a, [$CF16]
-	add  a, $04
+	ld   a, [wPlRelY]
+	add  $04
 	ldi  [hl], a
 	ld   a, $1C
 	ldi  [hl], a
@@ -169,11 +169,11 @@ L0140F5:;R
 	ldi  [hl], a
 	ldi  [hl], a
 	ld   [hl], a
-	ret  
+	ret
 L014112:;C
 	call L003A00
 	ret  c
-	ldh  a, [$FF8B]
+	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	ret  z
 	ld   a, [$CFF1]
@@ -184,23 +184,23 @@ L014112:;C
 	ld   a, $0F
 	ld   [$CF2C], a
 	ld   b, $18
-	ld   a, [$CF12]
-	and  a, $01
+	ld   a, [wPlDirH]
+	and  $01
 	jr   nz, L014134
 	ld   b, $E8
 L014134:;R
-	ld   a, [$CF15]
-	add  a, b
+	ld   a, [wPlRelX]
+	add  b
 	ld   [$CF2B], a
 	call L001D48
 	ret  c
 	ld   a, $01
 	ld   [$CFF1], a
-	ret  
+	ret
 L014145:;I
 	ld   a, $01
 	ld   [$CFEB], a
-	ldh  a, [$FF8B]
+	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
 	ld   a, [$CF1D]
@@ -219,17 +219,17 @@ L014145:;I
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
-	ld   a, [$CF12]
-	and  a, $01
+	ld   a, [wPlDirH]
+	and  $01
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
 	inc  hl
-	ld   a, [$CF15]
+	ld   a, [wPlRelX]
 	ldi  [hl], a
 	inc  hl
-	ld   a, [$CF16]
-	sub  a, $08
+	ld   a, [wPlRelY]
+	sub  $08
 	ldi  [hl], a
 	ld   a, $18
 	ld   [hl], a
@@ -237,15 +237,15 @@ L014145:;I
 L01418F:;I
 	ld   a, $02
 	ld   [$CFEB], a
-	ldh  a, [$FF8B]
+	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
 	ld   hl, $CC60
 	ld   a, [hl]
 	ld   hl, $CC70
-	or   a, [hl]
+	or   [hl]
 	ld   hl, $CC80
-	or   a, [hl]
+	or   [hl]
 	jp   nz, L01403A
 	call L003A0B
 	jp   c, L01403A
@@ -256,8 +256,8 @@ L0141B5:;R
 	ldi  [hl], a
 	ld   a, c
 	ldi  [hl], a
-	ld   a, [$CF12]
-	and  a, $01
+	ld   a, [wPlDirH]
+	and  $01
 	ldi  [hl], a
 	ld   b, $F2
 	or   a
@@ -267,18 +267,18 @@ L0141C7:;R
 	xor  a
 	ldi  [hl], a
 	ldi  [hl], a
-	ld   a, [$CF15]
-	add  a, b
+	ld   a, [wPlRelX]
+	add  b
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
-	ld   a, [$CF16]
-	sub  a, $0B
+	ld   a, [wPlRelY]
+	sub  $0B
 	ldi  [hl], a
 	ld   [hl], $01
 	ld   a, l
-	and  a, $F0
-	add  a, $10
+	and  $F0
+	add  $10
 	ld   l, a
 	dec  c
 	jr   nz, L0141B5
@@ -286,17 +286,17 @@ L0141C7:;R
 L0141E5:;I
 	ld   a, $04
 	ld   [$CFEB], a
-	ldh  a, [$FF8B]
+	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
 	ld   hl, $CC60
 	ld   a, [hl]
 	ld   hl, $CC70
-	or   a, [hl]
+	or   [hl]
 	ld   hl, $CC80
-	or   a, [hl]
+	or   [hl]
 	ld   hl, $CC90
-	or   a, [hl]
+	or   [hl]
 	jp   nz, L01403A
 	call L003A00
 	jp   c, L01403A
@@ -314,17 +314,17 @@ L014214:;R
 	xor  a
 	ldi  [hl], a
 	ldi  [hl], a
-	ld   a, [$CF15]
+	ld   a, [wPlRelX]
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
-	ld   a, [$CF16]
-	sub  a, $0B
+	ld   a, [wPlRelY]
+	sub  $0B
 	ldi  [hl], a
 	ld   [hl], $04
 	ld   a, l
-	and  a, $F0
-	add  a, $10
+	and  $F0
+	add  $10
 	ld   l, a
 	dec  c
 	jr   nz, L014214
@@ -332,7 +332,7 @@ L014214:;R
 L014238:;I
 	ld   a, $08
 	ld   [$CFEB], a
-	ldh  a, [$FF8B]
+	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
 	ld   hl, $CC60
@@ -354,11 +354,11 @@ L01425A:;R
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
-	ldh  a, [$FF8A]
-	and  a, $F0
+	ldh  a, [hJoyKeys]
+	and  $F0
 	jr   nz, L014273
-	ld   a, [$CF12]
-	and  a, $01
+	ld   a, [wPlDirH]
+	and  $01
 	ld   c, a
 	jr   L014296
 L014273:;R
@@ -392,39 +392,39 @@ L014296:;R
 	ldi  [hl], a
 	ldi  [hl], a
 	ld   a, $EC
-	add  a, c
+	add  c
 	ld   e, a
 	ld   a, $4B
 	adc  a, $00
 	ld   d, a
 	ld   a, [de]
 	ld   b, a
-	ld   a, [$CF15]
-	add  a, b
+	ld   a, [wPlRelX]
+	add  b
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
 	ld   a, $F4
-	add  a, c
+	add  c
 	ld   e, a
 	ld   a, $4B
 	adc  a, $00
 	ld   d, a
 	ld   a, [de]
 	ld   b, a
-	ld   a, [$CF16]
-	add  a, b
+	ld   a, [wPlRelY]
+	add  b
 	ldi  [hl], a
 	ld   [hl], $05
 	ld   a, $0C
 	ld   [$CF22], a
 	ld   a, $10
 	ld   [$CF23], a
-	ret  
+	ret
 L0142C9:;I
 	ld   a, $10
 	ld   [$CFEB], a
-	ldh  a, [$FF8B]
+	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
 	ld   hl, $CC60
@@ -439,7 +439,7 @@ L0142C9:;I
 L0142EA:;I
 	ld   a, $20
 	ld   [$CFEB], a
-	ldh  a, [$FF8A]
+	ldh  a, [hJoyKeys]
 	bit  1, a
 	jp   z, L01403A
 	ld   hl, $CC60
@@ -468,7 +468,7 @@ L014311:;R
 	dec  e
 L01431D:;R
 	ld   a, e
-	add  a, $10
+	add  $10
 	ld   e, a
 	dec  b
 	jr   nz, L014311
@@ -478,8 +478,8 @@ L01431D:;R
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
-	ld   a, [$CF12]
-	and  a, $01
+	ld   a, [wPlDirH]
+	and  $01
 	ldi  [hl], a
 	ld   b, $F2
 	or   a
@@ -489,8 +489,8 @@ L01433C:;X
 	xor  a
 	ldi  [hl], a
 	ldi  [hl], a
-	ld   a, [$CF15]
-	add  a, b
+	ld   a, [wPlRelX]
+	add  b
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
@@ -498,12 +498,12 @@ L01433C:;X
 	xor  $01
 	ld   [$CFE4], a
 	rra  
-	ld   a, [$CF16]
+	ld   a, [wPlRelY]
 	jr   c, L014358
-	sub  a, $0E
+	sub  $0E
 	jr   L01435A
 L014358:;R
-	sub  a, $09
+	sub  $09
 L01435A:;R
 	ldi  [hl], a
 	ld   a, $13
@@ -512,7 +512,7 @@ L01435A:;R
 L014361:;I
 	ld   a, $40
 	ld   [$CFEB], a
-	ldh  a, [$FF8B]
+	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
 	ld   hl, $CC60
@@ -531,7 +531,7 @@ L014361:;I
 L01438C:;I
 	ld   a, $80
 	ld   [$CFEB], a
-	ldh  a, [$FF8B]
+	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
 	ld   hl, $CC60
@@ -577,7 +577,7 @@ L0143C3:;R
 	ld   a, [hl]
 	or   a
 	call nz, L0143E4
-	ret  
+	ret
 L0143E4:;C
 	push hl
 	ld   de, $FFA0
@@ -601,13 +601,13 @@ L014400:;R
 	inc  de
 	dec  b
 	jr   nz, L014400
-	ret  
+	ret
 L014407:;C
 	ldh  a, [$FFA3]
 	bit  7, a
 	jr   nz, L01442C
 	ldh  a, [$FFA0]
-	and  a, $7F
+	and  $7F
 	rst  $00
 L014412: db $65
 L014413: db $44
@@ -637,23 +637,23 @@ L01442A: db $65
 L01442B: db $44
 L01442C:;R
 	ldh  a, [$FFA6]
-	sub  a, $1C
+	sub  $1C
 	ldh  [$FFA6], a
 	ldh  a, [$FFA7]
 	sbc  a, $02
 	ldh  [$FFA7], a
-	and  a, $F0
+	and  $F0
 	cp   $00
 	jr   nz, L014442
 	xor  a
 	ldh  [$FFA0], a
-	ret  
+	ret
 L014442:;R
 	ldh  a, [$FFA2]
 	or   a
 	jr   z, L014456
 	ldh  a, [$FFA4]
-	sub  a, $1C
+	sub  $1C
 	ldh  [$FFA4], a
 	ldh  a, [$FFA5]
 	sbc  a, $02
@@ -661,7 +661,7 @@ L014442:;R
 	jp   L0147B2
 L014456:;R
 	ldh  a, [$FFA4]
-	add  a, $1C
+	add  $1C
 	ldh  [$FFA4], a
 	ldh  a, [$FFA5]
 	adc  a, $02
@@ -686,22 +686,22 @@ L014477:;I
 	xor  a
 	ldh  [$FFA0], a
 	ld   [$CFEA], a
-	ret  
+	ret
 L014484:;R
-	ld   a, [$CF12]
-	and  a, $01
+	ld   a, [wPlDirH]
+	and  $01
 	ldh  [$FFA2], a
-	ld   a, [$CF15]
+	ld   a, [wPlRelX]
 	ldh  [$FFA5], a
-	ld   a, [$CF16]
-	sub  a, $08
+	ld   a, [wPlRelY]
+	sub  $08
 	ldh  [$FFA7], a
 	ldh  a, [$FFA1]
 	inc  a
-	and  a, $07
+	and  $07
 	ldh  [$FFA1], a
 	srl  a
-	add  a, $18
+	add  $18
 	ldh  [$FFA8], a
 	jp   L0147B2
 L0144A7:;I
@@ -719,14 +719,14 @@ L0144B7:;R
 	or   a
 	ld   a, [hl]
 	jr   nz, L0144C7
-	sub  a, c
+	sub  c
 	ldi  [hl], a
 	ld   a, [hl]
 	sbc  a, b
 	ldi  [hl], a
 	jr   L0144CC
 L0144C7:;R
-	add  a, c
+	add  c
 	ldi  [hl], a
 	ld   a, [hl]
 	adc  a, b
@@ -753,15 +753,15 @@ L0144DC:;I
 	srl  a
 	ld   b, a
 	add  a
-	add  a, b
-	add  a, $03
+	add  b
+	add  $03
 	cp   $0C
 	jr   c, L0144F1
 	dec  a
 L0144F1:;R
 	ld   b, a
 	ld   a, c
-	and  a, $03
+	and  $03
 	rst  $00
 L0144F6: db $FE
 L0144F7: db $44
@@ -773,98 +773,98 @@ L0144FC: db $2E
 L0144FD: db $45
 L0144FE:;I
 	ld   hl, $FFA5
-	ld   a, [$CF15]
-	add  a, b
+	ld   a, [wPlRelX]
+	add  b
 	ldi  [hl], a
 	inc  hl
-	ld   a, [$CF16]
-	sub  a, b
+	ld   a, [wPlRelY]
+	sub  b
 	ld   [hl], a
 	jr   L01453C
 L01450E:;I
 	ld   hl, $FFA5
-	ld   a, [$CF15]
-	add  a, b
+	ld   a, [wPlRelX]
+	add  b
 	ldi  [hl], a
 	inc  hl
-	ld   a, [$CF16]
-	add  a, b
+	ld   a, [wPlRelY]
+	add  b
 	ld   [hl], a
 	jr   L01453C
 L01451E:;I
 	ld   hl, $FFA5
-	ld   a, [$CF15]
-	sub  a, b
+	ld   a, [wPlRelX]
+	sub  b
 	ldi  [hl], a
 	inc  hl
-	ld   a, [$CF16]
-	add  a, b
+	ld   a, [wPlRelY]
+	add  b
 	ld   [hl], a
 	jr   L01453C
 L01452E:;I
 	ld   hl, $FFA5
-	ld   a, [$CF15]
-	sub  a, b
+	ld   a, [wPlRelX]
+	sub  b
 	ldi  [hl], a
 	inc  hl
-	ld   a, [$CF16]
-	sub  a, b
+	ld   a, [wPlRelY]
+	sub  b
 	ld   [hl], a
 L01453C:;R
 	ldh  a, [$FFA1]
-	add  a, $04
+	add  $04
 	cp   $10
 	jr   c, L01454C
-	and  a, $03
+	and  $03
 	swap a
-	add  a, $08
-	or   a, $80
+	add  $08
+	or   $80
 L01454C:;R
 	ldh  [$FFA1], a
 	jp   L0147B2
 L014551:;R
 	ld   d, a
-	and  a, $3F
+	and  $3F
 	ld   b, $00
 	ld   c, a
 	bit  6, d
 	jr   nz, L014573
 	ld   hl, $4C0C
 	add  hl, bc
-	ld   a, [$CF15]
-	add  a, [hl]
+	ld   a, [wPlRelX]
+	add  [hl]
 	ldh  [$FFA5], a
 	ld   hl, $4BFC
 	add  hl, bc
-	ld   a, [$CF16]
-	add  a, [hl]
-	sub  a, $0C
+	ld   a, [wPlRelY]
+	add  [hl]
+	sub  $0C
 	ldh  [$FFA7], a
 	jr   L014585
 L014573:;R
 	ld   hl, $4C5C
 	add  hl, bc
 	ldh  a, [$FFA5]
-	add  a, [hl]
+	add  [hl]
 	ldh  [$FFA5], a
 	ld   hl, $4C4C
 	add  hl, bc
 	ldh  a, [$FFA7]
-	add  a, [hl]
+	add  [hl]
 	ldh  [$FFA7], a
 L014585:;R
 	ld   a, c
 	inc  a
-	and  a, $3F
+	and  $3F
 	ld   c, a
 	ld   a, d
-	and  a, $C0
-	or   a, c
+	and  $C0
+	or   c
 	ldh  [$FFA1], a
 	bit  6, a
 	jr   nz, L0145B9
-	ldh  a, [$FF8A]
-	and  a, $F0
+	ldh  a, [hJoyKeys]
+	and  $F0
 	jp   z, L0147B2
 	ld   b, $03
 	rla  
@@ -880,7 +880,7 @@ L0145A9:;R
 	ld   a, b
 	ldh  [$FFA2], a
 	ldh  a, [$FFA1]
-	or   a, $40
+	or   $40
 	ldh  [$FFA1], a
 	ld   hl, $CFE5
 	dec  [hl]
@@ -920,7 +920,7 @@ L0145E4:;I
 	ldh  a, [$FFA1]
 	xor  $01
 	ldh  [$FFA1], a
-	add  a, $05
+	add  $05
 	ldh  [$FFA8], a
 	ldh  a, [$FFA2]
 	rst  $00
@@ -1004,7 +1004,7 @@ L014651:;I
 	or   a
 	jr   nz, L014670
 	ldh  a, [$FFA7]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   hl, $FFA5
 	ldh  a, [$FFA2]
 	or   a
@@ -1023,19 +1023,19 @@ L014670:;R
 	jr   c, L01467D
 	xor  a
 	ldh  [$FFA0], a
-	ret  
+	ret
 L01467D:;R
 	cp   $80
 	jr   nc, L014690
 	srl  a
 	srl  a
 	srl  a
-	and  a, $01
-	add  a, $08
+	and  $01
+	add  $08
 	ldh  [$FFA8], a
 	jp   L0147B2
 L014690:;R
-	and  a, $7F
+	and  $7F
 	srl  a
 	ld   hl, $46A1
 	ld   b, $00
@@ -1076,7 +1076,7 @@ L0146BD: db $11
 L0146BE: db $12
 L0146BF:;C
 	ld   a, [hl]
-	add  a, b
+	add  b
 	ld   [hl], a
 	ld   [$CF0D], a
 	push bc
@@ -1084,7 +1084,7 @@ L0146BF:;C
 	call L00332F
 	pop  hl
 	pop  bc
-	ret  
+	ret
 L0146CD:;I
 	ld   hl, $FFA1
 	inc  [hl]
@@ -1102,14 +1102,14 @@ L0146DD:;R
 	inc  [hl]
 	jp   L0147B2
 L0146E2:;I
-	ldh  a, [$FF8A]
+	ldh  a, [hJoyKeys]
 	rla  
 	jr   c, L0146F7
 	rla  
 	jr   nc, L014702
 	ld   hl, $FFA6
 	ld   a, [hl]
-	sub  a, $20
+	sub  $20
 	ldi  [hl], a
 	ld   a, [hl]
 	sbc  a, $00
@@ -1118,7 +1118,7 @@ L0146E2:;I
 L0146F7:;R
 	ld   hl, $FFA6
 	ld   a, [hl]
-	add  a, $20
+	add  $20
 	ldi  [hl], a
 	ld   a, [hl]
 	adc  a, $00
@@ -1144,7 +1144,7 @@ L01471B:;R
 	or   a
 	jr   nz, L01472E
 	ld   a, [hl]
-	sub  a, $80
+	sub  $80
 	ldi  [hl], a
 	ld   a, [hl]
 	sbc  a, $01
@@ -1152,7 +1152,7 @@ L01471B:;R
 	jp   L0147B2
 L01472E:;R
 	ld   a, [hl]
-	add  a, $80
+	add  $80
 	ldi  [hl], a
 	ld   a, [hl]
 	adc  a, $01
@@ -1186,7 +1186,7 @@ L014759:;R
 	inc  l
 	inc  l
 	ldi  a, [hl]
-	sub  a, b
+	sub  b
 	jr   nc, L014763
 	cpl  
 	inc  a
@@ -1195,8 +1195,8 @@ L014763:;R
 	jr   c, L014771
 L014767:;R
 	ld   a, l
-	and  a, $F0
-	add  a, $10
+	and  $F0
+	add  $10
 	ld   l, a
 	jr   nz, L014744
 	jr   L014782
@@ -1218,12 +1218,12 @@ L014782:;R
 	or   a
 	jr   nz, L014791
 	ld   a, [hl]
-	sub  a, $02
+	sub  $02
 	ld   [hl], a
 	jp   L0147B2
 L014791:;R
 	ld   a, [hl]
-	add  a, $02
+	add  $02
 	ld   [hl], a
 	jp   L0147B2
 L014798:;R
@@ -1246,7 +1246,7 @@ L0147B2:;J
 	ld   a, [$CF31]
 	ld   b, a
 	ldh  a, [$FFA5]
-	add  a, b
+	add  b
 	ldh  [$FFA5], a
 	cp   $A8
 	jr   c, L0147C3
@@ -1277,7 +1277,7 @@ L0147CD:;R
 	ld   b, a
 L0147E3:;R
 	ldh  a, [$FFA7]
-	add  a, [hl]
+	add  [hl]
 	inc  hl
 	ld   [de], a
 	inc  de
@@ -1287,11 +1287,11 @@ L0147E3:;R
 	jr   nz, L0147F3
 	cpl  
 	inc  a
-	sub  a, $08
+	sub  $08
 L0147F3:;R
 	ld   c, a
 	ldh  a, [$FFA5]
-	add  a, c
+	add  c
 	ld   [de], a
 	inc  de
 	ldi  a, [hl]
@@ -1305,18 +1305,18 @@ L0147F3:;R
 L014804:;R
 	ld   c, a
 	ld   a, [$CF67]
-	or   a, c
+	or   c
 	ld   [de], a
 	inc  de
 	dec  b
 	jr   nz, L0147E3
 	ld   a, e
 	ldh  [$FF97], a
-	ret  
+	ret
 L014812:;R
 	xor  a
 	ldh  [$FFA0], a
-	ret  
+	ret
 L014816: db $50
 L014817: db $48
 L014818: db $C8
@@ -2544,9 +2544,9 @@ L014CDD:;C
 	ld   a, $02
 	call L0003CC
 	ld   de, $4F55
-	call L0006F2
+	call Scr_ApplyPkg
 	ld   de, $5086
-	call L0006F2
+	call Scr_ApplyPkg
 	call L0006D2
 	ld   a, $04
 	ldh  [$FF98], a
@@ -2575,27 +2575,27 @@ L014D01:;R
 L014D26:;R
 	ld   a, [$CFF5]
 	swap a
-	add  a, $2C
+	add  $2C
 	ld   [$DF00], a
 	ld   [$DF04], a
-	add  a, $08
+	add  $08
 	ld   [$DF08], a
 	ld   [$DF0C], a
 	ld   a, [$CFF4]
 	swap a
-	add  a, $3C
+	add  $3C
 	ld   [$DF01], a
 	ld   [$DF09], a
-	add  a, $08
+	add  $08
 	ld   [$DF05], a
 	ld   [$DF0D], a
 L014D50:;JR
 	rst  $08
-	call L000748
-	ldh  a, [$FF8B]
-	and  a, $F9
+	call JoyKeys_Sync
+	ldh  a, [hJoyNewKeys]
+	and  $F9
 	jr   z, L014D50
-	ldh  a, [$FF8B]
+	ldh  a, [hJoyNewKeys]
 	bit  0, a
 	jr   nz, L014D9F
 	bit  3, a
@@ -2612,25 +2612,25 @@ L014D50:;JR
 	jr   c, L014D7E
 	ld   a, [$CFF4]
 	inc  a
-	and  a, $03
+	and  $03
 	ld   [$CFF4], a
 	jr   L014D26
 L014D7E:;R
 	ld   a, [$CFF4]
 	dec  a
-	and  a, $03
+	and  $03
 	ld   [$CFF4], a
 	jr   L014D26
 L014D89:;R
 	ld   a, [$CFF5]
 	inc  a
-	and  a, $03
+	and  $03
 	ld   [$CFF5], a
 	jr   L014D26
 L014D94:;R
 	ld   a, [$CFF5]
 	dec  a
-	and  a, $03
+	and  $03
 	ld   [$CFF5], a
 	jr   L014D26
 L014D9F:;R
@@ -2640,7 +2640,7 @@ L014D9F:;R
 	ldd  a, [hl]
 	add  a
 	add  a
-	or   a, [hl]
+	or   [hl]
 	ld   e, a
 	ld   hl, $CFC0
 	ld   b, $00
@@ -2657,7 +2657,7 @@ L014DBC:;R
 	ld   d, $00
 	sla  e
 	add  hl, de
-	ld   de, $DD00
+	ld   de, wScrEvRows
 	call L003B9B
 	ld   a, $01
 	ld   [de], a
@@ -2668,7 +2668,7 @@ L014DBC:;R
 	xor  a
 	ld   [de], a
 	dec  a
-	ld   [$CF01], a
+	ld   [wPkgEv], a
 	jp   L014D50
 L014DDA:;R
 	ld   b, $00
@@ -2717,7 +2717,7 @@ L014E19:;R
 	add  hl, bc
 	ld   a, [hl]
 	add  a
-	add  a, [hl]
+	add  [hl]
 	ld   c, a
 	ld   hl, $4EC7
 	add  hl, bc
@@ -2730,7 +2730,7 @@ L014E19:;R
 	ld   a, c
 	add  a
 	add  a
-	add  a, $04
+	add  $04
 	ld   c, a
 	add  hl, bc
 	ld   b, $04
@@ -2745,7 +2745,7 @@ L014E3C:;R
 	jr   L014E56
 L014E4A:;R
 	ld   a, $04
-	sub  a, b
+	sub  b
 	ld   hl, $CFDE
 	rra  
 	rr   [hl]
@@ -2762,31 +2762,31 @@ L014E56:;R
 	cp   $04
 	jr   c, L014E19
 	ld   a, [$CFDE]
-	and  a, $E1
+	and  $E1
 	jr   z, L014E74
 	ld   a, [$CFDE]
-	and  a, $1E
+	and  $1E
 	cp   $1E
 	jr   nz, L014E79
 L014E74:;R
 	call L000612
 	xor  a
-	ret  
+	ret
 L014E79:;JR
 	ld   hl, $4F41
-	ld   de, $DD00
+	ld   de, wScrEvRows
 	ld   bc, $0014
 	call L0006B9
 	ld   a, $FF
-	ld   [$CF01], a
-	call L000743
+	ld   [wPkgEv], a
+	call WaitFrames
 	scf  
-	ret  
+	ret
 L014E8F:;C
 	push af
 	push hl
 	ld   a, $C0
-	add  a, [hl]
+	add  [hl]
 	ld   l, a
 	ld   a, $CF
 	adc  a, $00
@@ -2797,7 +2797,7 @@ L014E8F:;C
 	pop  hl
 	pop  af
 	inc  hl
-	ret  
+	ret
 L014EA2: db $98
 L014EA3: db $87
 L014EA4: db $98
@@ -3001,11 +3001,11 @@ L014F69:;C
 	ld   a, $02
 	call L0003CC
 	ld   de, $4F55
-	call L0006F2
+	call Scr_ApplyPkg
 	ld   de, $5086
-	call L0006F2
+	call Scr_ApplyPkg
 	ld   de, $5049
-	call L0006F2
+	call Scr_ApplyPkg
 	call L0006D2
 	xor  a
 	ld   hl, $CFC0
@@ -3057,13 +3057,13 @@ L014FCB:;R
 	push bc
 	push hl
 	ld   a, e
-	and  a, $03
-	add  a, $04
+	and  $03
+	add  $04
 	ld   d, a
 	ld   a, c
 	add  a
 	add  a
-	add  a, d
+	add  d
 	ld   c, a
 	add  hl, bc
 	ld   d, [hl]
@@ -3074,7 +3074,7 @@ L014FCB:;R
 	add  hl, bc
 	ld   a, [hl]
 	add  a
-	add  a, [hl]
+	add  [hl]
 	ld   c, a
 	ld   hl, $4EC7
 	add  hl, bc
@@ -3090,7 +3090,7 @@ L014FCB:;R
 	cp   $04
 	jr   c, L014FCB
 	ld   hl, $505D
-	ld   de, $DD00
+	ld   de, wScrEvRows
 	ld   bc, $0029
 	call L0006B9
 	ld   de, $CFC0
@@ -3114,20 +3114,20 @@ L01501D:;R
 	dec  c
 	jr   nz, L015014
 	ld   a, $FF
-	ld   [$CF01], a
+	ld   [wPkgEv], a
 L01502C:;R
 	rst  $08
-	call L000748
-	ldh  a, [$FF8B]
+	call JoyKeys_Sync
+	ldh  a, [hJoyNewKeys]
 	rra  
 	jr   nc, L01502C
-	ret  
+	ret
 L015036:;C
 	push hl
 	rl   d
 	jr   nc, L015046
 	ld   a, $C0
-	add  a, [hl]
+	add  [hl]
 	ld   l, a
 	ld   a, $CF
 	adc  a, $00
@@ -3136,7 +3136,7 @@ L015036:;C
 L015046:;R
 	pop  hl
 	inc  hl
-	ret  
+	ret
 L015049: db $99
 L01504A: db $E2
 L01504B: db $10
@@ -3613,7 +3613,7 @@ L01521F:;C
 	ld   a, $11
 	ldh  [$FF98], a
 	ld   a, $78
-	call L000743
+	call WaitFrames
 	xor  a
 	ld   [$CD0D], a
 	ld   hl, $CCEE
@@ -3639,7 +3639,7 @@ L01524D:;R
 	ld   a, [$CCF8]
 	dec  a
 	rrca 
-	and  a, $01
+	and  $01
 	dec  a
 	ld   [$CCF5], a
 	ld   a, $2D
@@ -3648,7 +3648,7 @@ L01525D:;R
 	xor  a
 	ldh  [$FF97], a
 	ld   a, [$CCEF]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
 	ld   [$CF0D], a
 	ld   hl, $6275
@@ -3658,11 +3658,11 @@ L01525D:;R
 	rst  $08
 	ld   a, [$CCF8]
 	inc  a
-	and  a, $01
+	and  $01
 	dec  a
 	add  a
 	ld   hl, $CCF6
-	add  a, [hl]
+	add  [hl]
 	ld   [hl], a
 	ld   hl, $2612
 	ld   a, [$CCF6]
@@ -3670,7 +3670,7 @@ L01525D:;R
 	ld   c, a
 	add  hl, bc
 	ld   a, [$CCF5]
-	xor  a, [hl]
+	xor  [hl]
 	ld   [$CCF4], a
 	ld   hl, $CCEE
 	call L015ACF
@@ -3679,10 +3679,10 @@ L01525D:;R
 	jr   z, L0152BB
 	ld   a, [$CCF8]
 	inc  a
-	and  a, $01
+	and  $01
 	add  a
 	ld   hl, $CCF6
-	add  a, [hl]
+	add  [hl]
 	ld   [hl], a
 	ld   hl, $CCF7
 	dec  [hl]
@@ -3694,7 +3694,7 @@ L0152BB:;R
 	call L0031A0
 	call L0006D2
 	ld   a, $78
-	call L000743
+	call WaitFrames
 	ld   hl, $CCEE
 	xor  a
 	ldi  [hl], a
@@ -3721,7 +3721,7 @@ L0152E8:;R
 	xor  a
 	ldh  [$FF97], a
 	ld   a, [$CCEF]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
 	ld   [$CF0D], a
 	ld   hl, $6275
@@ -3751,7 +3751,7 @@ L015329:;R
 	xor  a
 	ldh  [$FF97], a
 	ld   a, [$CCEF]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
 	ld   [$CF0D], a
 	ld   hl, $6275
@@ -3785,7 +3785,7 @@ L01536E:;R
 	xor  a
 	ldh  [$FF97], a
 	ld   a, [$CCEF]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
 	ld   [$CF0D], a
 	ld   hl, $6275
@@ -3824,7 +3824,7 @@ L0153BA:;R
 	xor  a
 	ldh  [$FF97], a
 	ld   a, [$CCEF]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
 	ld   [$CF0D], a
 	ld   hl, $6275
@@ -3850,16 +3850,16 @@ L0153BA:;R
 	call L000667
 	rst  $08
 	ld   a, $78
-	call L000743
+	call WaitFrames
 	ld   a, $08
 	call L0003CC
 	ld   de, $5AEA
-	call L0006F2
+	call Scr_ApplyPkg
 	ld   a, $F0
-	ldh  [$FF91], a
+	ldh  [hScrollX], a
 	call L0006D2
 	ld   a, $80
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, $00
 	ld   [$CF0D], a
 L01541E:;R
@@ -3876,7 +3876,7 @@ L01541E:;R
 	cp   $40
 	jr   nz, L01541E
 	ld   hl, $CCEE
-	ld   a, [$CF0E]
+	ld   a, [wPl_Unk_Alt_Y]
 	ldi  [hl], a
 	ld   a, [$CF0D]
 	ldi  [hl], a
@@ -3888,14 +3888,14 @@ L015448:;R
 	xor  a
 	ldh  [$FF97], a
 	ld   a, [$CCEE]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCEF]
 	ld   [$CF0D], a
 	ld   hl, $627D
 	xor  a
 	call L015A39
 	ld   a, [$CCF0]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
 	ld   [$CF0D], a
 	ld   hl, $6289
@@ -3905,23 +3905,23 @@ L015448:;R
 	rst  $08
 	ld   hl, $CCF1
 	dec  [hl]
-	ld   hl, $FF91
+	ld   hl, hScrollX
 	inc  [hl]
-	ldh  a, [$FF91]
+	ldh  a, [hScrollX]
 	cp   $21
 	jr   nz, L015448
 L015483:;R
 	xor  a
 	ldh  [$FF97], a
 	ld   a, [$CCEE]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCEF]
 	ld   [$CF0D], a
 	ld   hl, $627D
 	xor  a
 	call L015A39
 	ld   a, [$CCF0]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
 	ld   [$CF0D], a
 	ld   hl, $6289
@@ -3942,14 +3942,14 @@ L0154C5:;R
 	xor  a
 	ldh  [$FF97], a
 	ld   a, [$CCEE]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCEF]
 	ld   [$CF0D], a
 	ld   hl, $627D
 	xor  a
 	call L015A39
 	ld   a, [$CCF0]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
 	ld   [$CF0D], a
 	ld   hl, $6289
@@ -3963,8 +3963,8 @@ L0154C5:;R
 	cp   $88
 	jr   nz, L0154C5
 	ld   a, $B4
-	call L000743
-	ret  
+	call WaitFrames
+	ret
 L015503: db $AF;X
 L015504: db $E0;X
 L015505: db $97;X
@@ -3995,14 +3995,14 @@ L01551D:;C
 	ld   a, $08
 	call L0003CC
 	ld   de, $5AEA
-	call L0006F2
+	call Scr_ApplyPkg
 	ld   a, $20
-	ldh  [$FF91], a
+	ldh  [hScrollX], a
 	call L0006D2
 	ld   hl, $4F00
 	ld   de, $8500
 	ld   bc, $0B08
-	call L000646
+	call GfxCopy_Req
 	ld   a, $01
 	ldh  [$FF98], a
 	ld   hl, $CCEE
@@ -4100,7 +4100,7 @@ L01551D:;C
 	ld   [$CCFF], a
 	call L01576E
 	ld   a, [$CCEF]
-	add  a, $08
+	add  $08
 	ld   [$CCF7], a
 	ld   a, [$CCF1]
 	ld   [$CCF9], a
@@ -4115,7 +4115,7 @@ L01551D:;C
 	ld   [$CCFF], a
 	call L01576E
 	ld   a, [$CCEF]
-	add  a, $10
+	add  $10
 	ld   [$CCEF], a
 	ld   a, $01
 	ld   [$CCF5], a
@@ -4165,13 +4165,13 @@ L015684:;R
 	xor  a
 	ldh  [$FF97], a
 	ld   a, [$CD06]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CD07]
 	ld   [$CF0D], a
 	ld   a, [$CCFE]
 	add  a
 	add  a
-	and  a, $10
+	and  $10
 	ld   [$CD0D], a
 	ld   hl, $627D
 	ld   a, $02
@@ -4183,7 +4183,7 @@ L015684:;R
 L0156AE:;R
 	push bc
 	ldi  a, [hl]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ldi  a, [hl]
 	ld   [$CF0D], a
 	ldi  a, [hl]
@@ -4210,7 +4210,7 @@ L0156CE:;R
 	inc  hl
 	dec  b
 	jr   nz, L0156CE
-	ld   hl, $FF91
+	ld   hl, hScrollX
 	dec  [hl]
 	dec  [hl]
 	ld   a, [$CCFE]
@@ -4220,7 +4220,7 @@ L0156CE:;R
 	ld   a, $08
 	call L0003CC
 	ld   de, $5C9B
-	call L0006F2
+	call Scr_ApplyPkg
 	call L0006D2
 	ld   a, $02
 	ldh  [$FF98], a
@@ -4238,7 +4238,7 @@ L0156CE:;R
 	ldi  [hl], a
 	ldi  [hl], a
 	ld   a, $40
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, $A0
 	ld   [$CF0D], a
 	xor  a
@@ -4247,19 +4247,19 @@ L01571A:;R
 	xor  a
 	ldh  [$FF97], a
 	ld   hl, $6291
-	ld   a, [$CF0E]
+	ld   a, [wPl_Unk_Alt_Y]
 	rrca 
 	rrca 
-	and  a, $01
+	and  $01
 	call L015A39
 	call L000667
 	rst  $08
 	rst  $08
-	ld   hl, $CF0E
+	ld   hl, wPl_Unk_Alt_Y
 	inc  [hl]
 	ld   hl, $CF0D
 	dec  [hl]
-	ld   a, [$CF0E]
+	ld   a, [wPl_Unk_Alt_Y]
 	cp   $90
 	jr   nz, L01571A
 	xor  a
@@ -4277,7 +4277,7 @@ L01574A:;R
 	rrca 
 	rrca 
 	rrca 
-	and  a, $07
+	and  $07
 	call L015A39
 	call L000667
 	rst  $08
@@ -4287,8 +4287,8 @@ L01574A:;R
 	add  a
 	jr   nc, L01574A
 	ld   a, $78
-	call L000743
-	ret  
+	call WaitFrames
+	ret
 L01576E:;CR
 	call L01578D
 	ld   hl, $CCEE
@@ -4296,42 +4296,42 @@ L01576E:;CR
 	ld   hl, $CCF6
 	call L015ACF
 	ld   hl, $CCFE
-	ldh  a, [$FF91]
-	add  a, [hl]
-	ldh  [$FF91], a
+	ldh  a, [hScrollX]
+	add  [hl]
+	ldh  [hScrollX], a
 	inc  hl
 	ld   hl, $CCFF
 	dec  [hl]
 	jr   nz, L01576E
-	ret  
+	ret
 L01578D:;C
 	xor  a
 	ldh  [$FF97], a
 	ld   a, [$CCEF]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
 	ld   [$CF0D], a
 	ld   hl, $627D
 	ld   a, [$CCFF]
 	rrca 
 	rrca 
-	and  a, $01
+	and  $01
 	ld   b, a
 	ld   a, [$CD00]
-	add  a, b
+	add  b
 	call L015A39
 	ld   a, [$CCF7]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF9]
 	ld   [$CF0D], a
 	ld   hl, $6289
 	ld   a, [$CCFF]
 	rrca 
 	rrca 
-	and  a, $01
+	and  $01
 	ld   b, a
 	ld   a, [$CD01]
-	add  a, b
+	add  b
 	call L015A39
 	call L000667
 	rst  $08
@@ -4342,13 +4342,13 @@ L01578D:;C
 	ld   l, a
 	ld   a, [$CD03]
 	ld   h, a
-	ld   de, $DD00
+	ld   de, wScrEvRows
 	ld   bc, $0015
 	call L0006B9
 	xor  a
 	ld   [de], a
 	inc  a
-	ld   [$CF01], a
+	ld   [wPkgEv], a
 	ld   a, l
 	ld   [$CD02], a
 	ld   a, h
@@ -4357,7 +4357,7 @@ L01578D:;C
 	and  a
 	ret  nz
 	ld   [$CD04], a
-	ret  
+	ret
 L0157FB:;C
 	ld   [hl], $08
 	dec  hl
@@ -4369,23 +4369,23 @@ L0157FB:;C
 	ld   [hl], $00
 	dec  hl
 	call L000755
-	and  a, $38
-	sub  a, $20
+	and  $38
+	sub  $20
 	ld   c, a
 	ld   a, [$CD07]
-	add  a, c
+	add  c
 	ld   [hl], a
 	dec  hl
 	call L000755
-	and  a, $38
-	sub  a, $20
+	and  $38
+	sub  $20
 	ld   c, a
 	ld   a, [$CD06]
-	add  a, c
+	add  c
 	ld   [hl], a
 	ld   a, $06
 	ldh  [$FF99], a
-	ret  
+	ret
 L015827:;C
 	ld   a, $12
 	ldh  [$FF98], a
@@ -4399,7 +4399,7 @@ L015836:;JR
 	rst  $08
 	rst  $08
 	rst  $08
-	ld   hl, $CF0E
+	ld   hl, wPl_Unk_Alt_Y
 	inc  [hl]
 	xor  a
 	ldh  [$FF97], a
@@ -4407,22 +4407,22 @@ L015836:;JR
 	ld   a, $07
 	call L015A39
 	call L000667
-	ld   hl, $FF90
+	ld   hl, hScrollY
 	dec  [hl]
 	ld   a, [hl]
-	and  a, $01
+	and  $01
 	jp   z, L015836
 	ld   a, [$CD02]
 	ld   l, a
 	ld   a, [$CD03]
 	ld   h, a
-	ld   de, $DD00
+	ld   de, wScrEvRows
 	ld   bc, $000D
 	call L0006B9
 	xor  a
 	ld   [de], a
 	inc  a
-	ld   [$CF01], a
+	ld   [wPkgEv], a
 	ld   a, l
 	ld   [$CD02], a
 	ld   a, h
@@ -4433,12 +4433,12 @@ L015836:;JR
 	ld   hl, $7400
 	ld   de, $8000
 	ld   bc, $0B80
-	call L000646
+	call GfxCopy_Req
 	ld   b, $10
 L015887:;R
 	ld   a, $04
-	call L000743
-	ld   hl, $FF90
+	call WaitFrames
+	ld   hl, hScrollY
 	dec  [hl]
 	dec  b
 	jr   nz, L015887
@@ -4455,21 +4455,21 @@ L0158A1:;R
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	call L001DC0
+	call ActS_LoadGFXForRoom.tryLoadBySetId
 	ld   b, $20
 	call L0159B9
 L0158B4:;R
 	xor  a
 	ldh  [$FF97], a
 	ld   a, $50
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, $88
 	ld   [$CF0D], a
 	ld   hl, $62B1
 	xor  a
 	call L015A39
 	ld   a, [$CCF6]
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF7]
 	ld   [$CF0D], a
 	ld   hl, $65CC
@@ -4508,14 +4508,14 @@ L01590D:;R
 	dec  b
 	jr   nz, L01590D
 	ld   a, [$CD02]
-	sub  a, $04
+	sub  $04
 	ld   [$CD02], a
 	ld   l, a
 	ld   h, $13
 	add  hl, hl
 	add  hl, hl
 	add  hl, hl
-	ld   de, $DD00
+	ld   de, wScrEvRows
 	ld   a, h
 	ld   [de], a
 	inc  de
@@ -4531,16 +4531,16 @@ L01590D:;R
 	xor  a
 	ld   [de], a
 	inc  a
-	ld   [$CF01], a
+	ld   [wPkgEv], a
 	ld   a, [$CD02]
 	and  a
 	jr   nz, L01590B
 	ld   hl, $7400
 	ld   de, $9200
 	ld   bc, $0B60
-	call L000646
+	call GfxCopy_Req
 	ld   a, $60
-	ldh  [$FF90], a
+	ldh  [hScrollY], a
 	ld   hl, $6167
 	ld   a, l
 	ld   [$CD02], a
@@ -4560,13 +4560,13 @@ L015961:;R
 	ld   l, a
 	ld   a, [$CD03]
 	ld   h, a
-	ld   de, $DD00
+	ld   de, wScrEvRows
 	ld   bc, $0010
 	call L0006B9
 	xor  a
 	ld   [de], a
 	inc  a
-	ld   [$CF01], a
+	ld   [wPkgEv], a
 	ld   a, l
 	ld   [$CD02], a
 	ld   a, h
@@ -4578,7 +4578,7 @@ L015990:;R
 	call L0159D5
 	call L0159EB
 	rst  $08
-	ldh  a, [$FF90]
+	ldh  a, [hScrollY]
 	cp   $80
 	jr   nz, L015990
 L01599D:;R
@@ -4589,14 +4589,14 @@ L01599D:;R
 L0159A6: db $C9;X
 L0159A7:;C
 	ld   a, [$CCFE]
-	add  a, $40
+	add  $40
 	ld   [$CCFE], a
 	ret  nc
-	ldh  a, [$FF90]
+	ldh  a, [hScrollY]
 	dec  a
-	ldh  [$FF90], a
+	ldh  [hScrollY], a
 	ld   [$CCFF], a
-	ret  
+	ret
 L0159B9:;CR
 	call L0159A7
 	push bc
@@ -4604,38 +4604,38 @@ L0159B9:;CR
 	pop  bc
 	dec  b
 	jr   nz, L0159B9
-	ret  
+	ret
 L0159C3:;C
 	push af
 	call L015A6F
 	pop  af
-	ret  
+	ret
 L0159C9:;CR
 	push bc
 	call L0159A7
 	rst  $08
 	pop  bc
-	ldh  a, [$FF90]
+	ldh  a, [hScrollY]
 	cp   a, b
 	jr   nz, L0159C9
-	ret  
+	ret
 L0159D5:;C
 	ld   a, [$CCFE]
-	add  a, $40
+	add  $40
 	ld   [$CCFE], a
 	ret  nc
-	ldh  a, [$FF90]
+	ldh  a, [hScrollY]
 	inc  a
-	ldh  [$FF90], a
+	ldh  [hScrollY], a
 	ld   a, [$CCFF]
 	dec  a
 	ld   [$CCFF], a
-	ret  
+	ret
 L0159EB:;C
 	xor  a
 	ldh  [$FF97], a
 	ld   a, $50
-	ld   [$CF0E], a
+	ld   [wPl_Unk_Alt_Y], a
 	ld   a, $88
 	ld   [$CF0D], a
 	ld   hl, $62B1
@@ -4653,7 +4653,7 @@ L0159EB:;C
 L015A0F:;R
 	ld   a, [$CCFF]
 	xor  $FF
-	add  a, [hl]
+	add  [hl]
 	ld   [de], a
 	inc  hl
 	inc  de
@@ -4671,15 +4671,15 @@ L015A0F:;R
 	ld   a, e
 	ldh  [$FF97], a
 	call L000667
-	ret  
+	ret
 L015A2B:;C
 	ld   a, [$CCFE]
-	add  a, $40
+	add  $40
 	ld   [$CCFE], a
 	ret  nc
 	ld   hl, $CCFF
 	dec  [hl]
-	ret  
+	ret
 L015A39:;C
 	add  a
 	ld   b, $00
@@ -4692,7 +4692,7 @@ L015A39:;C
 	ld   h, d
 	ld   de, $DF00
 	ldh  a, [$FF97]
-	add  a, e
+	add  e
 	ld   e, a
 	ld   a, d
 	adc  a, $00
@@ -4700,13 +4700,13 @@ L015A39:;C
 	ld   b, [hl]
 	inc  hl
 L015A50:;R
-	ld   a, [$CF0E]
-	add  a, [hl]
+	ld   a, [wPl_Unk_Alt_Y]
+	add  [hl]
 	ld   [de], a
 	inc  hl
 	inc  de
 	ld   a, [$CF0D]
-	add  a, [hl]
+	add  [hl]
 	ld   [de], a
 	inc  hl
 	inc  de
@@ -4714,7 +4714,7 @@ L015A50:;R
 	ld   [de], a
 	inc  de
 	ld   a, [$CD0D]
-	xor  a, [hl]
+	xor  [hl]
 	ld   [de], a
 	inc  hl
 	inc  de
@@ -4722,7 +4722,7 @@ L015A50:;R
 	jr   nz, L015A50
 	ld   a, e
 	ldh  [$FF97], a
-	ret  
+	ret
 L015A6F:;C
 	ld   a, [$CCEE]
 	add  a
@@ -4739,7 +4739,7 @@ L015A6F:;C
 	ld   [$CD06], a
 	ld   a, [hl]
 	inc  hl
-	and  a, $1F
+	and  $1F
 	add  a
 	add  a
 	add  a
@@ -4747,7 +4747,7 @@ L015A6F:;C
 	ld   [$CD08], a
 	ld   de, $DF00
 	ldh  a, [$FF97]
-	add  a, e
+	add  e
 	ld   e, a
 	ld   a, d
 	adc  a, $00
@@ -4758,11 +4758,11 @@ L015A9C:;R
 	inc  de
 	ld   a, [$CD07]
 	ld   [de], a
-	add  a, $08
+	add  $08
 	ld   [$CD07], a
 	inc  de
 	ldi  a, [hl]
-	sub  a, $20
+	sub  $20
 	ld   [de], a
 	inc  de
 	xor  a
@@ -4775,7 +4775,7 @@ L015A9C:;R
 	jr   nz, L015A9C
 	ld   a, e
 	ldh  [$FF97], a
-	ret  
+	ret
 L015AC1:;C
 	ld   a, $50
 	ld   [$CD06], a
@@ -4783,7 +4783,7 @@ L015AC1:;C
 	ld   [$CD07], a
 	inc  hl
 	ld   a, [hl]
-	ret  
+	ret
 L015ACF:;C
 	ld   e, l
 	ld   d, h
@@ -4792,7 +4792,7 @@ L015ACF:;C
 	inc  hl
 	inc  hl
 	ld   a, [de]
-	add  a, [hl]
+	add  [hl]
 	ld   [de], a
 	inc  hl
 	inc  de
@@ -4802,7 +4802,7 @@ L015ACF:;C
 	inc  hl
 	inc  de
 	ld   a, [de]
-	add  a, [hl]
+	add  [hl]
 	ld   [de], a
 	inc  hl
 	inc  de
@@ -4811,7 +4811,7 @@ L015ACF:;C
 	ld   [de], a
 	inc  hl
 	inc  de
-	ret  
+	ret
 L015AEA: db $98
 L015AEB: db $00
 L015AEC: db $18
@@ -9768,4 +9768,4 @@ L016E42: db $F9
 L016E43: db $05
 L016E44: db $A2
 L016E45: db $00
-mIncJunk "L016E46"
+	mIncJunk "L016E46"

@@ -5853,4 +5853,4 @@ L0456DB: db $CC
 L0456DC: db $AF
 L0456DD: db $C8
 L0456DE: db $00
-mIncJunk "L0456DF"
+	mIncJunk "L0456DF"
