@@ -4368,7 +4368,7 @@ L0157FB:;C
 	ret  c
 	ld   [hl], $00
 	dec  hl
-	call L000755
+	call Rand
 	and  $38
 	sub  $20
 	ld   c, a
@@ -4376,7 +4376,7 @@ L0157FB:;C
 	add  c
 	ld   [hl], a
 	dec  hl
-	call L000755
+	call Rand
 	and  $38
 	sub  $20
 	ld   c, a

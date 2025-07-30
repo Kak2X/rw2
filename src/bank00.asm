@@ -89,88 +89,130 @@ SECTION "EntryPoint", ROM0[$0100]
 	dw   $650E	; global check
 	
 ; =============== EntryPoint ===============
-EntryPoint:;J
+EntryPoint:
+	; Disable interrupts to prevent VBlank from triggering
 	di   
 	xor  a
 	ldh  [rIE], a
+	
+	; Turn off the LCD after waiting for VBlank
 	ldh  a, [rLCDC]
-	set  7, a
+	set  LCDCB_ENABLE, a
 	ldh  [rLCDC], a
-L00015A:;R
+.waitVBlank:
 	ldh  a, [rLY]
-	cp   $91
-	jr   nz, L00015A
+	cp   LY_VBLANK+1
+	jr   nz, .waitVBlank
 	xor  a
 	ldh  [rLCDC], a
-	ld   sp, $E000
+	
+	; Set stack pointer at the very bottom of WRAM (lower half of $DF00)
+	ld   sp, WRAM_End
+	
+	;
+	; Clear all of WRAM ($C000-$DFFF)
+	;
 	xor  a
-	ld   hl, $C000
-	ld   bc, MBC1RomBank
-L00016D:;R
+	ld   hl, WRAM_Begin
+	ld   bc, WRAM_End-WRAM_Begin
+.wclrLoop:;R
 	ldi  [hl], a
 	dec  c
-	jr   nz, L00016D
+	jr   nz, .wclrLoop
 	dec  b
-	jr   nz, L00016D
-	ld   bc, $7880
-L000177:;R
+	jr   nz, .wclrLoop
+	
+	;
+	; Clear most of HRAM ($FF80-$FFF7)
+	;	
+	ld   bc, ($78 << 8) | LOW(HRAM_Begin)
+.hclrLoop:
 	ldh  [c], a
 	inc  c
 	dec  b
-	jr   nz, L000177
+	jr   nz, .hclrLoop
+	
+	;
+	; Initialize the RNG state on cold boot only.
+	; [POI] This accounts for warm boot, but this game doesn't have a soft-reset key combination.
+	;
+	
+	; If hWarmBootFlag already contains $55, assume warm boot
 	ld   a, $55
-	ld   hl, $FFFA
-	cp   a, [hl]
-	jr   z, L00018E
-	ld   [hl], a
+	ld   hl, hWarmBootFlag	; Seek to hWarmBootFlag
+	cp   a, [hl]			; hWarmBootFlag == $55?
+	jr   z, .warmBoot		; If so, jump (we never do)
+	ld   [hl], a			; Otherwise, write $55 there...
+	; ...and reset the RNG state.
+	; This sequence being fully blank tells the Rand subroutine to properly seed the LFSR with real values.
 	xor  a
-	ldh  [$FFFB], a
-	ldh  [$FFFC], a
-	ldh  [$FFFD], a
-	ldh  [$FFFE], a
-L00018E:;X
+	ldh  [hRandSt0], a
+	ldh  [hRandSt1], a
+	ldh  [hRandSt2], a
+	ldh  [hRandSt3], a
+.warmBoot:
+
+	; BANK $01 is the default switchable bank.
+	; A bunch of subroutines assume this to be the loaded bank.
 	push af
-	ld   a, $01
-	ldh  [$FF9D], a
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, $01
+		ldh  [hRomBank], a
+		ldh  [hRomBank2], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   c, $80
-	ld   b, $0A
-	ld   hl, $01C7
-L0001A0:;R
+	
+	; Copy OAMDMA routine
+	ld   c, LOW(hOAMDMA)
+	ld   b, OAMDMA_Code.end-OAMDMA_Code
+	ld   hl, OAMDMA_Code
+.oamCpLoop:
 	ldi  a, [hl]
 	ldh  [c], a
 	inc  c
 	dec  b
-	jr   nz, L0001A0
-	call L0006C2
+	jr   nz, .oamCpLoop
+	
+	call Scroll_Reset	; Reset screen to top-left
+	
 	xor  a
-	ldh  [rSC], a
-	ldh  [rIF], a
-	ld   a, $05
+	ldh  [rSC], a		; Disable serial
+	ldh  [rIF], a		; Discard any pending interrupts
+	
+	; Enable VBlank (obvious) and the Timer (sound driver)
+	ld   a, I_VBLANK|I_TIMER
 	ldh  [rIE], a
-	ld   a, $C3
+	
+	; Enable the screen
+	ld   a, LCDC_PRIORITY|LCDC_OBJENABLE|LCDC_WTILEMAP|LCDC_ENABLE
 	ldh  [rLCDC], a
+	
+	; Set up the STAT interrupt to only trigger on LYC.
+	; Therefore, toggling I_STAT from rIE will be enough to toggle LYC.
 	ld   a, STAT_LYC
 	ldh  [rSTAT], a
+	
+	; Set the lowest possible sound driver speed
 	xor  a
 	ldh  [rTIMA], a
 	ldh  [rTMA], a
-	ld   a, $04
+	ld   a, rTAC_ON|rTAC_4096_HZ
 	ldh  [rTAC], a
-	ei   
+	
+	; Done setting up
+	ei
 	jp   L00266D
-L0001C7: db $3E
-L0001C8: db $DF
-L0001C9: db $E0
-L0001CA: db $46
-L0001CB: db $3E
-L0001CC: db $28
-L0001CD: db $3D
-L0001CE: db $20
-L0001CF: db $FD
-L0001D0: db $C9
+	
+; =============== OAMDMA_Code ===============
+; OAMDMA routine, copied to HRAM at boot.
+OAMDMA_Code:
+	ld   a, HIGH(wWorkOAM)	; $DF00-$DF9F
+	ldh  [rDMA], a			; Send over to OAM
+	ld   a, $28				; and wait
+.wait:
+	dec  a
+	jr   nz, .wait
+	ret
+.end:
 
 ; =============== DynJump ===============
 ; Code for the Rst_DynJump reset vector.
@@ -523,7 +565,7 @@ VBlankHandler:
 	ld   [wGfxEvDestPtr_High], a
 	
 	; Restore main bank
-	ldh  a, [hRomBank]
+	ldh  a, [hRomBank2]
 	ld   [MBC1RomBank], a
 	
 VBlankHandler_UpdateScreen:
@@ -672,11 +714,11 @@ TimerHandler:
 	push bc
 	push de
 	push hl
-		; Don't alter hRomBank to save on some stack usage
+		; Don't alter hRomBank2 to save on some stack usage
 		ld   a, BANK(L074000) ; BANK $07
 		ld   [MBC1RomBank], a
 		call L074000
-		ldh  a, [hRomBank]
+		ldh  a, [hRomBank2]
 		ld   [MBC1RomBank], a
 	pop  hl
 	pop  de
@@ -765,7 +807,7 @@ L000425: db $05
 L000426:;I
 	push af
 	ld   a, $0A
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $7280
@@ -777,15 +819,15 @@ L000426:;I
 	ld   bc, $0800
 	call L0006B9
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
 L000451:;I
 	push af
 	ld   a, $0A
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $7000
@@ -797,15 +839,15 @@ L000451:;I
 	ld   bc, $0800
 	call L0006B9
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
 L00047C:;I
 	push af
 	ld   a, $0A
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $7000
@@ -814,7 +856,7 @@ L00047C:;I
 	call L0006B9
 	push af
 	ld   a, $09
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $7800
@@ -822,8 +864,8 @@ L00047C:;I
 	ld   bc, $0200
 	call L0006B9
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
@@ -831,7 +873,7 @@ L0004B0:;I
 	ld   hl, ActS_GFXReqTbl
 	push af
 	ldi  a, [hl]
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   a, [hl]
@@ -848,7 +890,7 @@ L0004B0:;I
 	add  hl, bc
 	push af
 	ldi  a, [hl]
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   a, [hl]
@@ -859,7 +901,7 @@ L0004B0:;I
 	call L0006B9
 	push af
 	ld   a, $0A
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $7A00
@@ -867,15 +909,15 @@ L0004B0:;I
 	ld   bc, $0300
 	call L0006B9
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
 L000508:;I
 	push af
 	ld   a, $0B
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $5800
@@ -884,7 +926,7 @@ L000508:;I
 	call L0006B9
 	push af
 	ld   a, $09
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $7800
@@ -892,15 +934,15 @@ L000508:;I
 	ld   bc, $0200
 	call L0006B9
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
 L00053C:;I
 	push af
 	ld   a, $0C
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $6800
@@ -912,15 +954,15 @@ L00053C:;I
 	ld   bc, $1000
 	call L0006B9
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
 L000567:;I
 	push af
 	ld   a, $0C
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $5000
@@ -928,15 +970,15 @@ L000567:;I
 	ld   bc, $1000
 	call L0006B9
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
 L000586:;I
 	push af
 	ld   a, $0B
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $7C00
@@ -949,7 +991,7 @@ L000586:;I
 	call L0006B9
 	push af
 	ld   a, $0A
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $7E00
@@ -961,15 +1003,15 @@ L000586:;I
 	ld   bc, $0200
 	call L0006B9
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
 L0005D2:;I
 	push af
 	ld   a, $0B
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $4800
@@ -978,7 +1020,7 @@ L0005D2:;I
 	call L0006B9
 	push af
 	ld   a, $0C
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $6800
@@ -990,8 +1032,8 @@ L0005D2:;I
 	ld   bc, $0800
 	call L0006B9
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
@@ -1019,7 +1061,7 @@ L000628:;R
 	and  $03
 	jr   nz, L00063D
 	ld   b, $E4
-	call L000755
+	call Rand
 	cp   $20
 	jr   nc, L00063A
 	ld   b, $C0
@@ -1086,7 +1128,7 @@ L00067A:;JCR
 	jr   nz, L00067A
 	ret
 L000682:;J
-	call L0006C2
+	call Scroll_Reset
 	ld   de, $9000
 	ld   c, $00
 L00068A:;R
@@ -1135,16 +1177,22 @@ L0006B9:;JCR
 	or   c
 	jr   nz, L0006B9
 	ret
-L0006C2:;C
-	ld   a, $FF
+	
+; =============== Scroll_Reset ===============
+; Resets the screen coordinates.
+Scroll_Reset:
+	; Disable the WINDOW and screen split
+	ld   a, SECT_DISABLE
 	ldh  [hWinY], a
 	ldh  [hWinX], a
 	ldh  [hLYC], a
 	ldh  [hScrollX2], a
+	; Reset viewport to top-left corner
 	xor  a
 	ldh  [hScrollX], a
 	ldh  [hScrollY], a
 	ret
+	
 L0006D2:;C
 	ldh  a, [rLCDC]
 	or   $80
@@ -1299,52 +1347,80 @@ JoyKeys_Sync:
 	ldh  [hJoyKeys], a		; Copy the polled value directly to hJoyKeys
 	ret
 	
-L000755:;C
+; =============== Rand ===============
+; Generates a random number.
+;
+; This uses a 32bit LFSR, with the output value being the topmost byte.
+; Each time this subroutine is called, 8 bits are shifted in from the left, which
+; produces an entirely new number.
+;
+; OUT
+; - A: Random number
+Rand:
 	push hl
 	push de
 	push bc
-	ld   hl, $FFFB
-	ldi  a, [hl]
-	or   [hl]
-	inc  hl
-	or   [hl]
-	inc  hl
-	or   [hl]
-	call z, L00078B
-	ld   b, $08
-L000766:;R
-	ld   hl, $FFFB
-	ld   a, [hl]
-	sla  a
-	sla  a
-	sla  a
-	xor  [hl]
-	sla  a
-	sla  a
-	ld   hl, $FFFE
-	rl   [hl]
-	dec  hl
-	rl   [hl]
-	dec  hl
-	rl   [hl]
-	dec  hl
-	rl   [hl]
-	dec  b
-	jr   nz, L000766
-	ld   a, [hl]
+	
+		; If all four bytes are zeroed out, seed them
+		ld   hl, hRandSt0
+		ldi  a, [hl]		; hRandSt0 ...
+		or   [hl]			; & hRandSt1 ...
+		inc  hl
+		or   [hl]			; & hRandSt2 ...
+		inc  hl
+		or   [hl]			; & hRandSt3 == 0?
+		call z, .init		; If so, seed them
+		
+		;--
+		; Shift the 32bit value left 8 times.
+		;
+		; Specifically, each iteration is done by rotating in sequence the individual bytes to the left,
+		; with the shifted out MSB getting shifted back in the LSB of the next byte...
+		ld   b, $08			; For each bit...
+	.loop:
+		
+		; ... but there's still something missing. Which bit gets shifted in the lowest byte?
+		; That's calculated based on the previous output (hRandSt0, the topmost byte):
+		; A = MSB(((hRandSt0 << 3) ^ hRandSt0) << 1)
+		ld   hl, hRandSt0
+		ld   a, [hl]		
+		sla  a
+		sla  a
+		sla  a
+		xor  [hl]
+		sla  a
+		; One last << 1 to shift the MSB into the carry, ready to be rotated
+		sla  a
+		
+		; Rotate the 32bit value left, from lowest to high bit.
+		ld   hl, hRandSt3
+		rl   [hl]
+		dec  hl
+		rl   [hl]
+		dec  hl
+		rl   [hl]
+		dec  hl
+		rl   [hl]
+		
+		dec  b				; Done for all 8 bits?
+		jr   nz, .loop		; If not, loop
+		;--
+		
+		; The output value is now fully shifted out, return it.
+		ld   a, [hl]	; A = hRandSt0
 	pop  bc
 	pop  de
 	pop  hl
 	ret
-L00078B:;C
+.init:
 	ld   a, $48
-	ldh  [$FFFB], a
+	ldh  [hRandSt0], a
 	ld   a, $49
-	ldh  [$FFFC], a
+	ldh  [hRandSt1], a
 	ld   a, $52
-	ldh  [$FFFD], a
+	ldh  [hRandSt2], a
 	ld   a, $4F
-	ldh  [$FFFE], a
+	ldh  [hRandSt3], a
 	ret
 L00079C: db $F5;X
 L00079D: db $E5;X
@@ -1391,7 +1467,7 @@ L0007C5: db $C9;X
 L0007C6:;C
 	push af
 	ld   a, $05
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   a, [$CF0A]
@@ -1532,8 +1608,8 @@ L000844:;R
 	ld   bc, $0019
 	call L0006B9
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
@@ -2901,7 +2977,7 @@ L00103A:;R
 	ld   a, [$CF21]
 	or   a
 	jr   nz, L001050
-	call L000755
+	call Rand
 	cp   $03
 	jr   nc, L001060
 	ld   a, $19
@@ -4276,7 +4352,7 @@ L001B1A:;R
 L001B22:;R
 	push af
 	ld   a, $03
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $4900
@@ -4357,8 +4433,8 @@ L001B6D:;R
 	ldh  [$FF97], a
 L001B94:;R
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 L001B9D:;J
@@ -4704,7 +4780,7 @@ L001D57:;R
 	ld   [hl], a
 	push af
 	ld   a, $03
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   a, [$CF2D]
@@ -4738,8 +4814,8 @@ L001D93:;R
 	ld   [de], a
 	pop  hl
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
@@ -4864,7 +4940,7 @@ L001E11:;JC
 	ld   [hl], a
 	ret
 L001E25:;JC
-	call L000755
+	call Rand
 	cp   $4D
 	ret  nc
 	ld   b, $05
@@ -5817,7 +5893,7 @@ L00243D:;R
 L00244C:;C
 	push af
 	ld   a, $03
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   a, [$CF2F]
@@ -5945,8 +6021,8 @@ L002500:;R
 	ld   [$CF30], a
 L002508:;JR
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
@@ -6298,11 +6374,11 @@ L00266A: db $09
 L00266B: db $04;X
 L00266C: db $00;X
 L00266D:;JR
-	ld   sp, $E000
+	ld   sp, WRAM_End
 	push af
 	ld   a, $01
-	ldh  [$FF9D], a
 	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L000BED
@@ -6511,15 +6587,15 @@ L0027F8:;R
 	call L0143B4 ; BANK $01
 	push af
 	ld   a, BANK(L024000) ; BANK $02
-	ldh  [$FF9D], a
 	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L024000
 	push af
 	ld   a, $01
-	ldh  [$FF9D], a
 	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L000667
@@ -6584,15 +6660,15 @@ L002896:;R
 	call L0143B4 ; BANK $01
 	push af
 	ld   a, BANK(L024000) ; BANK $02
-	ldh  [$FF9D], a
 	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L024000
 	push af
 	ld   a, $01
-	ldh  [$FF9D], a
 	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L000667
@@ -6900,15 +6976,15 @@ L002A97:;C
 	call L0143B4 ; BANK $01
 	push af
 	ld   a, BANK(L024000); BANK $02
-	ldh  [$FF9D], a
 	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L024000
 	push af
 	ld   a, $01
-	ldh  [$FF9D], a
 	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L000667
@@ -7037,14 +7113,14 @@ L002B99:;C
 	call L0003CC
 	push af
 	ld   a, $04
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   de, $4000
 	call Scr_ApplyPkg
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L0006D2
@@ -7068,7 +7144,7 @@ L002BD0:;R
 	and  $03
 	jr   nz, L002BE5
 	ld   b, $E4
-	call L000755
+	call Rand
 	cp   $20
 	jr   nc, L002BE2
 	ld   b, $C0
@@ -7101,14 +7177,14 @@ L002C0C:;C
 	call L0003CC
 	push af
 	ld   a, $04
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   de, $5000
 	call Scr_ApplyPkg
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   a, [$CFDE]
@@ -7524,10 +7600,10 @@ L002EC4:;C
 	ld   b, $18
 	ld   hl, $CF90
 L002EC9:;R
-	call L000755
+	call Rand
 	and  $F8
 	ldi  [hl], a
-	call L000755
+	call Rand
 	and  $F8
 	ldi  [hl], a
 	dec  b
@@ -7717,14 +7793,14 @@ L002FAA:;C
 	call L0003CC
 	push af
 	ld   a, $04
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   de, $5180
 	call Scr_ApplyPkg
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L0006D2
@@ -8061,14 +8137,14 @@ L003156:;C
 	call L0003CC
 	push af
 	ld   a, $04
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   de, $53C0
 	call Scr_ApplyPkg
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
@@ -8114,14 +8190,14 @@ L0031A0:;C
 	call L0003CC
 	push af
 	ld   a, $04
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   de, $5540
 	call Scr_ApplyPkg
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
@@ -8496,14 +8572,14 @@ L00340B:;R
 	add  hl, bc
 	push af
 	ld   a, $03
-	ldh  [hRomBank], a
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   a, [hl]
 	ld   [$CFEE], a
 	push af
-	ldh  a, [$FF9D]
-	ldh  [hRomBank], a
+	ldh  a, [hRomBank]
+	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	pop  hl

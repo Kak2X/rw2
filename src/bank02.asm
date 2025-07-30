@@ -1090,7 +1090,7 @@ L0246BC:;I
 	jp   nc, L001E9C
 	call L0020F1
 	jp   c, L001E9C
-	call L000755
+	call Rand
 	cp   $08
 	ret  nc
 	ld   a, $1E
@@ -3775,7 +3775,7 @@ L02588E: db $58
 L02588F: db $FD
 L025890: db $58
 L025891:;I
-	call L000755
+	call Rand
 	ld   l, a
 	ld   e, a
 	xor  a
@@ -3884,7 +3884,7 @@ L025943:;I
 	ldh  [$FFAC], a
 	inc  hl
 	inc  hl
-	call L000755
+	call Rand
 	and  $40
 	ld   b, a
 	xor  [hl]
@@ -4283,7 +4283,7 @@ L025BF8:;I
 	ret  nz
 	ld   a, $02
 	call L001F34
-	call L000755
+	call Rand
 	and  $03
 	add  $03
 	ld   a, $04
@@ -4620,7 +4620,7 @@ L025E5C:;I
 	add  hl, hl
 	add  hl, hl
 	push hl
-	call L000755
+	call Rand
 	pop  hl
 	and  $0F
 	ld   e, a
@@ -6877,7 +6877,7 @@ L026E21:;I
 	call L001E8E
 	ld   bc, $0080
 	call L001E95
-	call L000755
+	call Rand
 	and  $F7
 	add  $0F
 	ldh  [$FFAC], a
@@ -7482,7 +7482,7 @@ L02722E:;R
 	call L001F34
 	jp   L001EB1
 L027242:;R
-	call L000755
+	call Rand
 	bit  7, a
 	jr   nz, L02722E
 	ld   b, $03
@@ -7610,7 +7610,7 @@ L02730A:;I
 	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
-	call L000755
+	call Rand
 	swap a
 	and  $03
 	jr   nz, L02731F
@@ -8249,7 +8249,7 @@ L027762:;I
 	sub  $01
 	ldh  [$FFAC], a
 	ret  nz
-	call L000755
+	call Rand
 	and  $03
 	add  a
 	add  a
@@ -8306,7 +8306,7 @@ L0277B0:;I
 	ld   hl, $FFAD
 	dec  [hl]
 	jp   z, L001EB1
-	call L000755
+	call Rand
 	and  $03
 	add  a
 	add  a

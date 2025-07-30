@@ -308,7 +308,8 @@ DEF rDIV        EQU $ff04 ; Divider Register (R/W)
 DEF rTIMA       EQU $ff05 ; Timer counter (R/W)
 DEF rTMA        EQU $ff06 ; Timer Modulo (R/W)
 DEF rTAC        EQU $ff07 ; Timer Control (R/W)
-DEF rTAC_ON        EQU 2
+DEF rTACB_ON       EQU 2
+DEF rTAC_ON        EQU 1 << rTACB_ON
 DEF rTAC_4096_HZ   EQU 0
 DEF rTAC_262144_HZ EQU 1
 DEF rTAC_65536_HZ  EQU 2

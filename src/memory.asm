@@ -65,12 +65,16 @@ SECTION "DD00", WRAM0[$DD00]
 UNION
 wScrEvRows:            ds $40 ; $DD00 ; Tile IDs when vertical scrolling
 NEXTU
-wPkgBuf:               ds $100 ; $DD00 ; VRAM Packet buffer 0
-wPkgBarBuf:            ds $100 ; $DE00 ; VRAM Packet buffer 1
+wPkgBuf:               ds $100 ; $DD00 ; VRAM Packet buffer (Generic)
+wPkgBarBuf:            ds $100 ; $DE00 ; VRAM Packet buffer (Life/Weapon bars)
+wWorkOAM:              ds OBJ_SIZE * OBJCOUNT_MAX ; $DF00 ; OAM Mirror
+wStack:                ds $60  ; $DFA0
 ENDU
 
+
+
 SECTION "HRAM", HRAM[$FF80]
-hOAMDMA:         ds $0A ; $FF80 
+hOAMDMA:             ds $0A; ; $FF80 ; OAMDMA_Code.end-OAMDMA_Code
 hJoyKeys:            db ; $FF8A ; Currently held keys
 hJoyNewKeys:         db ; $FF8B ; Newly pressed keys
 ds 1
@@ -88,8 +92,9 @@ hWinX:               db ; $FF95 ; X WINDOW scroll position (ie: status bar, ...)
 hWinY:               db ; $FF96 ; Y WINDOW scroll position ($FF to disable)
 
 
-SECTION "FF9E", HRAM[$FF9E]
-hRomBank:            db ; $FF9E ; Last ROM bank loaded
+SECTION "FF9D", HRAM[$FF9D]
+hRomBank:            db ; $FF9D ; Last ROM bank loaded
+hRomBank2:           db ; $FF9E ; Last ROM bank loaded
 hTrsRowsProc:        db ; $FF9F ; Number of block rows processed during vertical transitions
 
 SECTION "FFB0", HRAM[$FFB0]
@@ -105,3 +110,10 @@ ds 5
 hBGP:                db ; $FFF5 ; BG palette
 hOBP0:               db ; $FFF6 ; OBJ0 palette
 hOBP1:               db ; $FFF7 ; OBJ1 palette
+
+SECTION "FFFA", HRAM[$FFFA]
+hWarmBootFlag:       db ; $FFFA ; [TCRF] Value checked during boot, but has no effect due to the lack of soft-reset
+hRandSt0:            db ; $FFFB ; RNG state, topmost byte (output)
+hRandSt1:            db ; $FFFC ; "", byte 1
+hRandSt2:            db ; $FFFD ; "", byte 2
+hRandSt3:            db ; $FFFE ; "", lowest byte
