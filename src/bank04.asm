@@ -1,4 +1,4 @@
-L044000: db $98
+TilemapDef_Title: db $98
 L044001: db $20
 L044002: db $14
 L044003: db $00

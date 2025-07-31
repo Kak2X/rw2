@@ -16,8 +16,8 @@ SECTION "CF00", WRAM0[$CF00]
 ;--
 ; Screen events enablers
 wLvlScrollEvMode:      db ; $CF00 ; Enable tilemap row/column write, for level scrolling (contains scroll type + timer)
-wPkgEv:                db ; $CF01 ; Enable tilemap packet write from wPkgBuf
-wPkgBarEv:             db ; $CF02 ; Enable tilemap packet write from wPkgBarBuf
+wTilemapEv:            db ; $CF01 ; Enable tilemap write from wTilemapBuf
+wTilemapBarEv:         db ; $CF02 ; Enable tilemap write from wTilemapBarBuf
 wShutterEvMode:        db ; $CF03 ; Enable tilemap boss shutter effect
 ;--
 ; GFX Copy on VBLANK (the only screen transfer for GFX)
@@ -27,7 +27,7 @@ wGfxEvDestPtr_High:    db ; $CF06 ; Destination VRAM ptr, high byte.
 wGfxEvDestPtr_Low:     db ; $CF07 ; Destination VRAM ptr, low byte.
 wGfxEvSrcPtr_High:     db ; $CF08 ; Source GFX ptr, high byte.
 wGfxEvSrcPtr_Low:      db ; $CF09 ; Source GFX ptr, low byte.
-ds 1
+wLvlId:                db ; $CF0A ; Level ID
 wLvlRoomId:            db ; $CF0B ; Room ID, only used in a few cases (ie: room transitions)
 wLvlColL:              db ; $CF0C ; Current column number in a level, ??? relative to the left edge of the screen.
 ds 1
@@ -57,27 +57,70 @@ wTmpTileIdUR:           db ; $CF58
 wTmpTileIdDR:           db ; $CF59
 
 
-SECTION "CFE1", WRAM0[$CFE1]
-wBarDrawQueued:    db ; $CFE1 ; ??? Signals if a life/weapon bar has redraw queued up, important since only one can be update perr frame.
+SECTION "CFC0", WRAM0[$CFC0]
+wPassSelTbl:            ds $10 ; $CFC0 ; Dots placed on the password screen ($00 or $FF)
+wPlHealth:              db ; $CFD0 ; Player's health
+DEF wPassSelTbl_End EQU wPlHealth
+; Ammo for...
+wWpnAmmoRC:             db ; $CFD1 ; Rush Coil
+wWpnAmmoRM:             db ; $CFD2 ; Rush Marine
+wWpnAmmoRJ:             db ; $CFD3 ; Rush Jet
+wWpnAmmoTP:             db ; $CFD4 ; Top Spin
+wWpnAmmoAR:             db ; $CFD5 ; Air Shooter
+wWpnAmmoWD:             db ; $CFD6 ; Leaf Shield
+wWpnAmmoME:             db ; $CFD7 ; Metal Blade
+wWpnAmmoCL:             db ; $CFD8 ; Crash Bomb
+wWpnAmmoNE:             db ; $CFD9 ; Needle Cannon
+wWpnAmmoHA:             db ; $CFDA ; Hard Knuckle
+wWpnAmmoMG:             db ; $CFDB ; Magnet Missile
+wWpnAmmoSG:             db ; $CFDC ; Sakugarne
+DEF wWpnAmmo_Start EQU wWpnAmmoRC
+DEF wWpnAmmo_End   EQU wWpnAmmoSG + 1
+wWpnUnlock1:            db ; $CFDD ; Unlocked weapons / beaten stages (bitmask)
+wWpnUnlock0:            db ; $CFDE ;
+wWpnSel:                db ; $CFDF ; Currently selected weapon
+
+
+SECTION "CFE1", WRAM0[$CFE0]
+wWpnAmmoCur:            db ; $CFE0 ; Active weapon ammo
+wBarDrawQueued:         db ; $CFE1 ; ??? Signals if a life/weapon bar has redraw queued up, important since only one can be update perr frame.
+UNION
+wWpnAmmoCurCopy:        db ; $CFE2 ; ???
+NEXTU
+wPassWpnError:          db ; $CFE2 ; Marks if there was an error while decoding unlocked weapons
+ENDU
+
+SECTION "CFE8", WRAM0[$CFE8]
+wLives:                 db ; $CFE8 ; Number of lives remaining
+wETanks:                db ; $CFE9 ; Number of E Tanks
+
+SECTION "CFF4", WRAM0[$CFF4]
+wPassCursorX:           db ; $CFF4 ; Password cursor - X position
+wPassCursorY:           db ; $CFF5 ; Password cursor - Y position
 
 SECTION "DD00", WRAM0[$DD00]
 ; Multipurpose scratch buffer for screen transfers
 UNION
 wScrEvRows:            ds $40 ; $DD00 ; Tile IDs when vertical scrolling
 NEXTU
-wPkgBuf:               ds $100 ; $DD00 ; VRAM Packet buffer (Generic)
-wPkgBarBuf:            ds $100 ; $DE00 ; VRAM Packet buffer (Life/Weapon bars)
-wWorkOAM:              ds OBJ_SIZE * OBJCOUNT_MAX ; $DF00 ; OAM Mirror
-wStack:                ds $60  ; $DFA0
+wTilemapBuf:           ds $100 ; $DD00 ; TilemapDef tilemap buffer (Generic)
+wTilemapBarBuf:        ds $100 ; $DE00 ; TilemapDef tilemap buffer (Life/Weapon bars)
 ENDU
+wWorkOAM:              ds OAM_SIZE ; $DF00 ; OAM Mirror
+wStack:                ds $60  ; $DFA0
 
-
+; Fixed sprites
+DEF wCursorObj EQU wWorkOAM
+DEF wPassCursorULObj EQU wWorkOAM + (OBJ_SIZE * 0)
+DEF wPassCursorURObj EQU wWorkOAM + (OBJ_SIZE * 1)
+DEF wPassCursorDLObj EQU wWorkOAM + (OBJ_SIZE * 2)
+DEF wPassCursorDRObj EQU wWorkOAM + (OBJ_SIZE * 3)
 
 SECTION "HRAM", HRAM[$FF80]
 hOAMDMA:             ds $0A; ; $FF80 ; OAMDMA_Code.end-OAMDMA_Code
 hJoyKeys:            db ; $FF8A ; Currently held keys
 hJoyNewKeys:         db ; $FF8B ; Newly pressed keys
-ds 1
+hIE:                 db ; $FF8C ; Backup of rIE when stopping the LCD
 hFrameEnd:           db ; $FF8D ; Marks the frame as having ended.
 hJoyKeysRaw:         db ; $FF8E ; "Raw" held keys value polled from VBlank.
 hTimer:              db ; $FF8F ; Global timer
@@ -90,11 +133,14 @@ hScrollX2:           db ; $FF93 ; [POI] X Scroll position for the screen split a
 hLYC:                db ; $FF94 ; Scanline number the rLYC/LCDC screen split triggers, generally aligned to hWinY ($FF to disable)
 hWinX:               db ; $FF95 ; X WINDOW scroll position (ie: status bar, ...)
 hWinY:               db ; $FF96 ; Y WINDOW scroll position ($FF to disable)
-
+hWorkOAMPos:         db ; $FF97 ; Current position on the OAM mirror (low byte of the WorkOAM pointer)
+hBGMSet:             db ; $FF98 ; Requested BGM Id
+hSFXSet:             db ; $FF99 ; Requested SFX Id
+hBGMCur:             db ; $FF9A ; Current BGM Id
 
 SECTION "FF9D", HRAM[$FF9D]
-hRomBank:            db ; $FF9D ; Last ROM bank loaded
-hRomBank2:           db ; $FF9E ; Last ROM bank loaded
+hRomBankLast:        db ; $FF9D ; Last ROM bank loaded (Bank to restore when done with hRomBank)
+hRomBank:            db ; $FF9E ; Current ROM bank loaded
 hTrsRowsProc:        db ; $FF9F ; Number of block rows processed during vertical transitions
 
 SECTION "FFB0", HRAM[$FFB0]
@@ -110,6 +156,8 @@ ds 5
 hBGP:                db ; $FFF5 ; BG palette
 hOBP0:               db ; $FFF6 ; OBJ0 palette
 hOBP1:               db ; $FFF7 ; OBJ1 palette
+ds 1
+hInvulnCheat:        db ; $FFF9 ; [TCRF] Full invulnerability. Shots pass through & pits act like bouncy surfaces.
 
 SECTION "FFFA", HRAM[$FFFA]
 hWarmBootFlag:       db ; $FFFA ; [TCRF] Value checked during boot, but has no effect due to the lack of soft-reset

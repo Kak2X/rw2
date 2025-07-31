@@ -1,4 +1,4 @@
-L0B4000: db $00
+GFX_Player: db $00
 L0B4001: db $00
 L0B4002: db $00
 L0B4003: db $00
@@ -2046,7 +2046,7 @@ L0B47FC: db $7E
 L0B47FD: db $3C
 L0B47FE: db $3C
 L0B47FF: db $00
-L0B4800: db $0C
+GFX_Space1OBJ: db $0C
 L0B4801: db $00
 L0B4802: db $0F
 L0B4803: db $04
@@ -6142,7 +6142,7 @@ L0B57FC: db $00
 L0B57FD: db $00
 L0B57FE: db $00
 L0B57FF: db $00
-L0B5800: db $00
+GFX_GetWpn: db $00
 L0B5801: db $00
 L0B5802: db $00
 L0B5803: db $00
@@ -8190,7 +8190,7 @@ L0B5FFC: db $FF
 L0B5FFD: db $80
 L0B5FFE: db $FF
 L0B5FFF: db $00
-L0B6000: db $00
+GFX_LvlCastle: db $00
 L0B6001: db $00
 L0B6002: db $00
 L0B6003: db $00
@@ -15358,7 +15358,7 @@ L0B7BFC: db $00
 L0B7BFD: db $00
 L0B7BFE: db $00
 L0B7BFF: db $00
-L0B7C00: db $00
+GFX_GameOverFont: db $00
 L0B7C01: db $00
 L0B7C02: db $00
 L0B7C03: db $00

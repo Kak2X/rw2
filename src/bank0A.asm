@@ -1,4 +1,4 @@
-L0A4000: db $00
+GFX_LvlTop: db $00
 L0A4001: db $00
 L0A4002: db $00
 L0A4003: db $00
@@ -1278,7 +1278,7 @@ L0A44FC: db $DD
 L0A44FD: db $FF
 L0A44FE: db $FF
 L0A44FF: db $FF
-L0A4500: db $00
+GFX_LvlMagnet: db $00
 L0A4501: db $00
 L0A4502: db $00
 L0A4503: db $00
@@ -2558,7 +2558,7 @@ L0A49FC: db $00
 L0A49FD: db $00
 L0A49FE: db $00
 L0A49FF: db $00
-L0A4A00: db $00
+GFX_LvlNeedle: db $00
 L0A4A01: db $00
 L0A4A02: db $00
 L0A4A03: db $00
@@ -3838,7 +3838,7 @@ L0A4EFC: db $F0
 L0A4EFD: db $EF
 L0A4EFE: db $E0
 L0A4EFF: db $DF
-L0A4F00: db $00
+GFX_LvlCrash: db $00
 L0A4F01: db $00
 L0A4F02: db $00
 L0A4F03: db $00
@@ -5118,7 +5118,7 @@ L0A53FC: db $00
 L0A53FD: db $00
 L0A53FE: db $00
 L0A53FF: db $00
-L0A5400: db $00
+GFX_LvlMetal: db $00
 L0A5401: db $00
 L0A5402: db $00
 L0A5403: db $00
@@ -6398,7 +6398,7 @@ L0A58FC: db $2F
 L0A58FD: db $FF
 L0A58FE: db $FF
 L0A58FF: db $FF
-L0A5900: db $00
+GFX_LvlWood: db $00
 L0A5901: db $00
 L0A5902: db $00
 L0A5903: db $00
@@ -7678,7 +7678,7 @@ L0A5DFC: db $F3
 L0A5DFD: db $FF
 L0A5DFE: db $FD
 L0A5DFF: db $F3
-L0A5E00: db $00
+GFX_LvlAir: db $00
 L0A5E01: db $00
 L0A5E02: db $00
 L0A5E03: db $00
@@ -8958,7 +8958,7 @@ L0A62FC: db $00
 L0A62FD: db $00
 L0A62FE: db $00
 L0A62FF: db $00
-L0A6300: db $00
+GFX_LvlStation: db $00
 L0A6301: db $00
 L0A6302: db $00
 L0A6303: db $00
@@ -10238,7 +10238,7 @@ L0A67FC: db $02
 L0A67FD: db $FE
 L0A67FE: db $FE
 L0A67FF: db $FE
-L0A6800: db $00
+GFX_Title: db $00
 L0A6801: db $00
 L0A6802: db $00
 L0A6803: db $00
@@ -12286,7 +12286,7 @@ L0A6FFC: db $7C
 L0A6FFD: db $00
 L0A6FFE: db $00
 L0A6FFF: db $00
-L0A7000: db $00
+GFX_StageSel: db $00
 L0A7001: db $00
 L0A7002: db $00
 L0A7003: db $00
@@ -12926,7 +12926,7 @@ L0A727C: db $00
 L0A727D: db $00
 L0A727E: db $00
 L0A727F: db $00
-L0A7280: db $C0
+GFX_TitleCursor: db $C0
 L0A7281: db $00
 L0A7282: db $F0
 L0A7283: db $00
@@ -14846,7 +14846,7 @@ L0A79FC: db $18
 L0A79FD: db $18
 L0A79FE: db $00
 L0A79FF: db $00
-L0A7A00: db $87
+GFX_LvlShared: db $87
 L0A7A01: db $85
 L0A7A02: db $67
 L0A7A03: db $65
@@ -15870,7 +15870,7 @@ L0A7DFC: db $00;X
 L0A7DFD: db $00;X
 L0A7DFE: db $00;X
 L0A7DFF: db $00;X
-L0A7E00: db $7C
+GFX_Unused_HexFont: db $7C
 L0A7E01: db $7C
 L0A7E02: db $C6
 L0A7E03: db $C6

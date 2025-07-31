@@ -1,4 +1,4 @@
-L0C4000: db $11
+GFX_WilyCastle: db $11
 L0C4001: db $EE
 L0C4002: db $5F
 L0C4003: db $A0
@@ -4094,7 +4094,7 @@ L0C4FFC: db $E8
 L0C4FFD: db $FF
 L0C4FFE: db $78
 L0C4FFF: db $FF
-L0C5000: db $17
+GFX_WilyStation: db $17
 L0C5001: db $1C
 L0C5002: db $13
 L0C5003: db $1F
@@ -8190,7 +8190,7 @@ L0C5FFC: db $FF
 L0C5FFD: db $FF
 L0C5FFE: db $FF
 L0C5FFF: db $FF
-L0C6000: db $00
+GFX_Space: db $00
 L0C6001: db $00
 L0C6002: db $FF
 L0C6003: db $FF
@@ -10238,7 +10238,7 @@ L0C67FC: db $00
 L0C67FD: db $00
 L0C67FE: db $00
 L0C67FF: db $00
-L0C6800: db $00
+GFX_Space0OBJ: db $00
 L0C6801: db $00
 L0C6802: db $00
 L0C6803: db $00

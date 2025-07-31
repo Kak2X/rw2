@@ -27,7 +27,7 @@ L024014:;R
 	ldh  a, [$FFA0]
 	bit  7, a
 	jr   z, L024038
-	ldh  a, [$FF97]
+	ldh  a, [hWorkOAMPos]
 	cp   $A0
 	call c, L00244C
 L024038:;R
@@ -46,9 +46,9 @@ L024045:;R
 	ld   b, a
 	ld   a, l
 	add  $10
-	cp   a, b
+	cp   b
 	jr   nz, L024005
-	ldh  a, [$FF97]
+	ldh  a, [hWorkOAMPos]
 	cp   $A0
 	ret  nz
 	ld   a, [$CF30]
@@ -57,7 +57,7 @@ L024045:;R
 L02405B:;C
 	ldh  a, [$FFA0]
 	and  $7F
-	rst  $00
+	rst  $00 ; DynJump
 L024060: db $60
 L024061: db $41
 L024062: db $92
@@ -317,7 +317,7 @@ L02415F: db $7C
 L024160:;I
 	ldh  a, [$FFA1]
 	and  $7F
-	rst  $00
+	rst  $00 ; DynJump
 L024165: db $69
 L024166: db $41
 L024167: db $7C
@@ -331,7 +331,7 @@ L024169:;I
 	sub  [hl]
 	ldh  [$FFA7], a
 	ld   a, $04
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	jp   L001EB1
 L02417C:;I
 	ldh  a, [$FFA2]
@@ -347,7 +347,7 @@ L02417C:;I
 	jp   L00242F
 L024192:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024195: db $A3
 L024196: db $41
 L024197: db $A9
@@ -435,7 +435,7 @@ L024216:;I
 	ret
 L024227:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02422A: db $2E
 L02422B: db $42
 L02422C: db $39
@@ -453,7 +453,7 @@ L024239:;I
 	ret
 L024246:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024249: db $55
 L02424A: db $42
 L02424B: db $64
@@ -504,7 +504,7 @@ L02428C:;I
 	ld   b, a
 	ldh  a, [$FFAC]
 	and  $F0
-	cp   a, b
+	cp   b
 	ret  nz
 	call L001E9C
 	ld   a, $00
@@ -543,7 +543,7 @@ L0242E3:;I
 	ret
 L0242EC:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0242EF: db $F9
 L0242F0: db $42
 L0242F1: db $18
@@ -576,7 +576,7 @@ L024318:;I
 	ld   b, a
 	ldh  a, [$FFAC]
 	and  $F0
-	cp   a, b
+	cp   b
 	ret  nz
 	ld   a, $00
 	ldh  [$FFAC], a
@@ -630,7 +630,7 @@ L024356:;I
 	ret
 L02438A:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02438D: db $93
 L02438E: db $43
 L02438F: db $A9
@@ -689,7 +689,7 @@ L0243EA:;R
 	ret
 L0243F9:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0243FC: db $06
 L0243FD: db $44
 L0243FE: db $1A
@@ -761,7 +761,7 @@ L024460:;I
 	ret
 L02447C:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02447F: db $85
 L024480: db $44
 L024481: db $A0
@@ -844,7 +844,7 @@ L0244EC:;I
 	ret
 L024508:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02450B: db $11
 L02450C: db $45
 L02450D: db $17
@@ -886,7 +886,7 @@ L024544:;I
 	ret
 L024552:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024555: db $63
 L024556: db $45
 L024557: db $7A
@@ -969,7 +969,7 @@ L0245E4:;I
 	ret
 L0245F3:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0245F6: db $06
 L0245F7: db $46
 L0245F8: db $1D
@@ -1072,7 +1072,7 @@ L0246A1:;I
 	ret
 L0246AA:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0246AD: db $B3
 L0246AE: db $46
 L0246AF: db $BC
@@ -1114,7 +1114,7 @@ L0246F3:;R
 	ret
 L0246F5:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0246F8: db $02
 L0246F9: db $47
 L0246FA: db $1F
@@ -1176,7 +1176,7 @@ L02475B:;I
 	ret
 L02476A:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02476D: db $77
 L02476E: db $47
 L02476F: db $83
@@ -1234,7 +1234,7 @@ L0247C0:;I
 	ret
 L0247CC:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0247CF: db $D5
 L0247D0: db $47
 L0247D1: db $E2
@@ -1276,7 +1276,7 @@ L024809:;I
 	ret
 L024817:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02481A: db $24
 L02481B: db $48
 L02481C: db $3F
@@ -1336,7 +1336,7 @@ L024875:;I
 	ret
 L024886:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024889: db $8D
 L02488A: db $48
 L02488B: db $96
@@ -1357,7 +1357,7 @@ L024896:;I
 	ret
 L0248A8:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0248AB: db $AF
 L0248AC: db $48
 L0248AD: db $BB
@@ -1379,7 +1379,7 @@ L0248BB:;I
 	ret
 L0248CD:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0248D0: db $DC
 L0248D1: db $48
 L0248D2: db $E2
@@ -1463,7 +1463,7 @@ L024951:;I
 	ret
 L02495F:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024962: db $6A
 L024963: db $49
 L024964: db $76
@@ -1497,7 +1497,7 @@ L02498C:;I
 	ret
 L02499B:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02499E: db $A6
 L02499F: db $49
 L0249A0: db $B1
@@ -1545,7 +1545,7 @@ L0249DA:;I
 	ret
 L0249F8:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0249FB: db $FF
 L0249FC: db $49
 L0249FD: db $08
@@ -1584,7 +1584,7 @@ L024A2C:;R
 	add  $0C
 	ld   b, a
 	ld   a, [wPlRelY]
-	cp   a, b
+	cp   b
 	ret  c
 	xor  a
 	ld   [$CF1B], a
@@ -1595,7 +1595,7 @@ L024A2C:;R
 	ret
 L024A4E:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024A51: db $5B
 L024A52: db $4A
 L024A53: db $64
@@ -1682,7 +1682,7 @@ L024AC0:;I
 	ret
 L024ADA:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024ADD: db $E5
 L024ADE: db $4A
 L024ADF: db $F7
@@ -1763,7 +1763,7 @@ L024B60:;R
 	ld   a, [wPlRelX]
 	ld   b, a
 	ldh  a, [$FFA5]
-	cp   a, b
+	cp   b
 	jr   c, L024B77
 	ldh  a, [$FFA2]
 	bit  7, a
@@ -1786,7 +1786,7 @@ L024B82:;I
 	ret
 L024B89:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024B8C: db $92
 L024B8D: db $4B
 L024B8E: db $9E
@@ -1821,7 +1821,7 @@ L024BBB:;I
 	ret
 L024BCA:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024BCD: db $D1
 L024BCE: db $4B
 L024BCF: db $E0
@@ -1843,7 +1843,7 @@ L024BE8: db $25;X
 L024BE9: db $1C;X
 L024BEA:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024BED: db $F9
 L024BEE: db $4B
 L024BEF: db $18
@@ -1867,7 +1867,7 @@ L024BF9:;I
 	ldh  a, [$FFA0]
 	and  $7F
 	sub  $20
-	cp   a, b
+	cp   b
 	ret  nz
 	ld   a, $3C
 	ldh  [$FFAC], a
@@ -1878,7 +1878,7 @@ L024C18:;I
 	ldh  [$FFAC], a
 	ret  nz
 	ld   a, $10
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ld   b, $04
 	call L001F16
 	ld   a, $0A
@@ -1926,7 +1926,7 @@ L024C68:;I
 	ret
 L024C79:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024C7C: db $90
 L024C7D: db $4C
 L024C7E: db $9F
@@ -2032,7 +2032,7 @@ L024D22:;I
 	ret
 L024D37:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024D3A: db $42
 L024D3B: db $4D
 L024D3C: db $58
@@ -2056,7 +2056,7 @@ L024D58:;I
 	and  $01
 	ld   b, a
 	ldh  a, [$FFAC]
-	cp   a, b
+	cp   b
 	ret  nz
 	jp   L001EB1
 L024D65:;I
@@ -2146,7 +2146,7 @@ L024DDA: db $07
 L024DDB: db $0F
 L024DDC:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024DDF: db $EF
 L024DE0: db $4D
 L024DE1: db $FE
@@ -2235,7 +2235,7 @@ L024E75:;I
 	ret
 L024E7E:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024E81: db $93
 L024E82: db $4E
 L024E83: db $A5
@@ -2347,7 +2347,7 @@ L024F3D:;I
 	ret
 L024F44:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L024F47: db $53
 L024F48: db $4F
 L024F49: db $5C
@@ -2458,7 +2458,7 @@ L025008:;R
 	jp   L027C29
 L02500E:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025011: db $15
 L025012: db $50
 L025013: db $22
@@ -2477,7 +2477,7 @@ L025022:;I
 	jp   L001E11
 L02502F:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025032: db $38
 L025033: db $50
 L025034: db $3F
@@ -2516,7 +2516,7 @@ L025062:;I
 	jp   L001EB6
 L025070:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025073: db $7D
 L025074: db $50
 L025075: db $89
@@ -2594,7 +2594,7 @@ L0250E8:;I
 	ld   a, [$CF2F]
 	ld   b, a
 	ld   a, [$CF4A]
-	cp   a, b
+	cp   b
 	jr   nz, L0250FD
 	ldh  a, [$FFA2]
 	ld   bc, $0080
@@ -2699,7 +2699,7 @@ L025167: db $C0
 L025168: db $FF
 L025169:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02516C: db $78
 L02516D: db $51
 L02516E: db $C9
@@ -2913,7 +2913,7 @@ L0252CF:;C
 	ret
 L0252F2:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0252F5: db $FF
 L0252F6: db $52
 L0252F7: db $08
@@ -2997,7 +2997,7 @@ L02536F: db $80
 L025370: db $01
 L025371:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025374: db $7C
 L025375: db $53
 L025376: db $95
@@ -3041,7 +3041,7 @@ L0253AE:;I
 	ret
 L0253BB:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0253BE: db $C4
 L0253BF: db $53
 L0253C0: db $CF
@@ -3092,7 +3092,7 @@ L0253F4:;I
 	ret
 L025413:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025416: db $1E
 L025417: db $54
 L025418: db $3D
@@ -3208,7 +3208,7 @@ L0254BC: db $B4
 L0254BD: db $00
 L0254BE:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0254C1: db $C7
 L0254C2: db $54
 L0254C3: db $CE
@@ -3238,7 +3238,7 @@ L0254E6:;I
 	ret
 L0254F2:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0254F5: db $FF
 L0254F6: db $54
 L0254F7: db $0F
@@ -3339,7 +3339,7 @@ L025599:;C
 	ret
 L0255A5:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0255A8: db $B2
 L0255A9: db $55
 L0255AA: db $C5
@@ -3407,7 +3407,7 @@ L025616:;I
 	ret
 L025627:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02562A: db $2E
 L02562B: db $56
 L02562C: db $35
@@ -3441,7 +3441,7 @@ L025635:;I
 	ret
 L02565C:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02565F: db $6D
 L025660: db $56
 L025661: db $81
@@ -3544,7 +3544,7 @@ L025709:;C
 	ret
 L025715:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025718: db $24
 L025719: db $57
 L02571A: db $33
@@ -3684,7 +3684,7 @@ L0257F2:;C
 	ret
 L025807:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02580A: db $16
 L02580B: db $58
 L02580C: db $21
@@ -3708,7 +3708,7 @@ L025821:;I
 	call L0022F7
 	ldh  a, [$FFAD]
 	ld   hl, $FFA7
-	cp   a, [hl]
+	cp   [hl]
 	ret  nc
 	ld   [hl], a
 	ld   bc, $0200
@@ -3759,7 +3759,7 @@ L025868:;C
 	ret
 L025880:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025883: db $91
 L025884: db $58
 L025885: db $BB
@@ -3871,7 +3871,7 @@ L025901:;C
 	ret
 L02593C:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02593F: db $43
 L025940: db $59
 L025941: db $6E
@@ -3912,7 +3912,7 @@ L02596E:;I
 	jp   L001EB6
 L025978:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02597B: db $85
 L02597C: db $59
 L02597D: db $97
@@ -3952,7 +3952,7 @@ L0259B3:;I
 	ldh  a, [$FFA7]
 	ld   b, a
 	ldh  a, [$FFAD]
-	cp   a, b
+	cp   b
 	ret  nz
 	ld   a, $5A
 	ldh  [$FFAC], a
@@ -3967,7 +3967,7 @@ L0259C4:;I
 	ret
 L0259D0:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0259D3: db $DD
 L0259D4: db $59
 L0259D5: db $F4
@@ -4028,7 +4028,7 @@ L025A33:;I
 	ret
 L025A3F:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025A42: db $46
 L025A43: db $5A
 L025A44: db $4C
@@ -4042,7 +4042,7 @@ L025A4C:;I
 	ret
 L025A53:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025A56: db $5E
 L025A57: db $5A
 L025A58: db $70
@@ -4104,7 +4104,7 @@ L025AB4:;I
 	jp   L001EB6
 L025AC9:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025ACC: db $D0
 L025ACD: db $5A
 L025ACE: db $F2
@@ -4134,7 +4134,7 @@ L025AF2:;I
 	jp   L001EB6
 L025AFC:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025AFF: db $0D
 L025B00: db $5B
 L025B01: db $14
@@ -4193,7 +4193,7 @@ L025B54:;I
 	ld   a, [$CF5D]
 	ld   b, a
 	ld   a, [$CF2F]
-	cp   a, b
+	cp   b
 	jp   z, L001EB1
 	ldh  a, [$FFAC]
 	sub  $01
@@ -4256,7 +4256,7 @@ L025BC6:;C
 	ret
 L025BDF:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025BE2: db $EE
 L025BE3: db $5B
 L025BE4: db $F8
@@ -4339,7 +4339,7 @@ L025C59:;I
 	ret
 L025C72:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025C75: db $79
 L025C76: db $5C
 L025C77: db $8E
@@ -4369,7 +4369,7 @@ L025C8E:;I
 	ret
 L025CA5:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025CA8: db $B0
 L025CA9: db $5C
 L025CAA: db $C2
@@ -4418,7 +4418,7 @@ L025CEC:;I
 	ret
 L025CFA:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025CFD: db $03
 L025CFE: db $5D
 L025CFF: db $1F
@@ -4507,7 +4507,7 @@ L025D59:;I
 	jp   L001EB6
 L025DA0:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025DA3: db $AB
 L025DA4: db $5D
 L025DA5: db $C1
@@ -4569,7 +4569,7 @@ L025DFC:;I
 	ret
 L025E1C:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025E1F: db $23
 L025E20: db $5E
 L025E21: db $2A
@@ -4594,7 +4594,7 @@ L025E2A:;I
 	ret
 L025E44:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025E47: db $51
 L025E48: db $5E
 L025E49: db $5C
@@ -4665,7 +4665,7 @@ L025EB0:;C
 	ret
 L025EBD:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025EC0: db $C6
 L025EC1: db $5E
 L025EC2: db $CD
@@ -4721,7 +4721,7 @@ L025F06:;R
 	jp   L001EB6
 L025F1F:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025F22: db $28
 L025F23: db $5F
 L025F24: db $33
@@ -4777,7 +4777,7 @@ L025F71:;C
 	ret
 L025F80:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025F83: db $87
 L025F84: db $5F
 L025F85: db $A3
@@ -4809,7 +4809,7 @@ L025FA3:;I
 	ld   a, [$CF2F]
 	ld   b, a
 	ld   a, [$CF4A]
-	cp   a, b
+	cp   b
 	ret  nz
 	ldh  a, [$FFA8]
 	ld   c, a
@@ -4819,7 +4819,7 @@ L025FA3:;I
 	jp   L0018B9
 L025FCE:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L025FD1: db $D7
 L025FD2: db $5F
 L025FD3: db $F2
@@ -4851,7 +4851,7 @@ L026001:;I
 	ret
 L02600D:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026010: db $14
 L026011: db $60
 L026012: db $2A
@@ -4882,7 +4882,7 @@ L02602A:;I
 	ret
 L02604B:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02604E: db $52
 L02604F: db $60
 L026050: db $59
@@ -4918,7 +4918,7 @@ L026059:;I
 	ret
 L026081:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026084: db $96
 L026085: db $7D
 L026086: db $9A
@@ -5066,7 +5066,7 @@ L026181:;C
 	ld   hl, $FFA2
 	ld   a, [hl]
 	and  $C0
-	cp   a, c
+	cp   c
 	ld   [hl], b
 	ret  z
 	ld   a, $10
@@ -5092,12 +5092,12 @@ L0261A3:;C
 	ld   [$CCEF], a
 	call L001C8D
 	ld   a, $06
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	pop  hl
 	jp   L001E11
 L0261CB:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0261CE: db $96
 L0261CF: db $7D
 L0261D0: db $DE
@@ -5241,7 +5241,7 @@ L0262B1:;C
 	ld   hl, $FFA2
 	ld   a, [hl]
 	and  $80
-	cp   a, b
+	cp   b
 	ld   [hl], c
 	ret  z
 L0262C5: db $3E;X
@@ -5273,12 +5273,12 @@ L0262D3:;C
 	ld   [$CCEF], a
 	call L001C8D
 	ld   a, $06
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	pop  hl
 	jp   L001E11
 L0262FB:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0262FE: db $0C
 L0262FF: db $63
 L026300: db $96
@@ -5384,7 +5384,7 @@ L0263A5:;I
 	ret
 L0263BA:;C
 	ldh  a, [$FFAD]
-	rst  $00
+	rst  $00 ; DynJump
 L0263BD: db $CB
 L0263BE: db $63
 L0263BF: db $E1
@@ -5492,7 +5492,7 @@ L026469:;C
 	ret
 L026476:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026479: db $95
 L02647A: db $64
 L02647B: db $9C
@@ -5683,7 +5683,7 @@ L0265C6:;I
 	ld   bc, $0400
 	call L001E95
 	ld   a, $0D
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	jp   L001EB1
 L0265DC:;I
 	ld   a, $0B
@@ -5722,7 +5722,7 @@ L02660D:;C
 	ret
 L026619:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02661C: db $22
 L02661D: db $66
 L02661E: db $37
@@ -5767,7 +5767,7 @@ L026658:;C
 	ret
 L026660:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026663: db $69
 L026664: db $66
 L026665: db $77
@@ -5790,7 +5790,7 @@ L026682:;I
 	ret
 L026683:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026686: db $92
 L026687: db $66
 L026688: db $9A
@@ -5854,7 +5854,7 @@ L0266E5:;I
 	ret
 L0266F0:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0266F3: db $FF
 L0266F4: db $66
 L0266F5: db $16
@@ -5923,7 +5923,7 @@ L026767:;I
 	jp   L001E11
 L026771:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026774: db $7A
 L026775: db $67
 L026776: db $8C
@@ -5951,7 +5951,7 @@ L026796:;I
 	jp   L001EB6
 L0267A6:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0267A9: db $AD
 L0267AA: db $67
 L0267AB: db $B9
@@ -5966,7 +5966,7 @@ L0267B9:;I
 	ret
 L0267BD:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0267C0: db $CA
 L0267C1: db $67
 L0267C2: db $D6
@@ -5998,7 +5998,7 @@ L0267E0:;I
 	call L001ED7
 	pop  af
 	ld   hl, $FFA2
-	cp   a, [hl]
+	cp   [hl]
 	ld   [hl], a
 	jp   z, L001EB6
 	res  6, [hl]
@@ -6026,7 +6026,7 @@ L026826:;I
 	ret
 L02682D:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026830: db $34
 L026831: db $68
 L026832: db $3D
@@ -6041,7 +6041,7 @@ L02683D:;I
 	ret
 L026844:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026847: db $4D
 L026848: db $68
 L026849: db $54
@@ -6067,7 +6067,7 @@ L026867:;I
 	ret
 L02686E:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026871: db $77
 L026872: db $68
 L026873: db $83
@@ -6092,7 +6092,7 @@ L02688D:;I
 	ret
 L026899:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02689C: db $B0
 L02689D: db $68
 L02689E: db $CE
@@ -6296,7 +6296,7 @@ L0269FD:;C
 	ret
 L026A10:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026A13: db $D0
 L026A14: db $6C
 L026A15: db $17
@@ -6321,7 +6321,7 @@ L026A35:;R
 	ld   a, [$CF6A]
 	ld   b, a
 	ld   a, [$CF2F]
-	cp   a, b
+	cp   b
 	ret  nz
 	ldh  a, [$FFA2]
 	bit  3, a
@@ -6337,7 +6337,7 @@ L026A35:;R
 	jp   L003A0B
 L026A59:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026A5C: db $D0
 L026A5D: db $6C
 L026A5E: db $64
@@ -6397,7 +6397,7 @@ L026ABB:;R
 	ld   a, [$CF6A]
 	ld   b, a
 	ld   a, [$CF2F]
-	cp   a, b
+	cp   b
 	ret  nz
 	xor  a
 	ld   [$CF75], a
@@ -6449,7 +6449,7 @@ L026B06:;R
 	sub  $10
 	ld   [$CF5E], a
 	call c, L003A0B
-	ld   a, [$CFE0]
+	ld   a, [wWpnAmmoCur]
 	or   a
 	ret  nz
 	xor  a
@@ -6461,7 +6461,7 @@ L026B06:;R
 	ret
 L026B3F:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026B42: db $D0
 L026B43: db $6C
 L026B44: db $4A
@@ -6521,7 +6521,7 @@ L026B90:;R
 	ld   a, [$CF2F]
 	ld   b, a
 	ld   a, [$CF6A]
-	cp   a, b
+	cp   b
 	ret  nz
 	ld   bc, $0100
 	call L001E8E
@@ -6538,7 +6538,7 @@ L026BB4:;R
 	ld   a, [$CF2F]
 	ld   b, a
 	ld   a, [$CF4A]
-	cp   a, b
+	cp   b
 	ret  nz
 	ldh  a, [hJoyKeys]
 	rla  
@@ -6592,7 +6592,7 @@ L026C21:;R
 	sub  $20
 	ld   [$CF5E], a
 	call c, L003A0B
-	ld   a, [$CFE0]
+	ld   a, [wWpnAmmoCur]
 	or   a
 	ret  nz
 L026C31:;R
@@ -6603,7 +6603,7 @@ L026C31:;R
 	ret
 L026C3B:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026C3E: db $D0
 L026C3F: db $6C
 L026C40: db $46
@@ -6632,7 +6632,7 @@ L026C64:;R
 	ld   a, [$CF6A]
 	ld   b, a
 	ld   a, [$CF2F]
-	cp   a, b
+	cp   b
 	ret  nz
 	ld   a, $01
 	call L001F34
@@ -6668,7 +6668,7 @@ L026CA1:;I
 	sub  $40
 	ld   [$CF5E], a
 	call c, L003A0B
-	ld   a, [$CFE0]
+	ld   a, [wWpnAmmoCur]
 	or   a
 	ret  nz
 L026CBF:;R
@@ -6683,7 +6683,7 @@ L026CBF:;R
 L026CD0:;I
 	ld   a, [$CFF1]
 	dec  a
-	rst  $00
+	rst  $00 ; DynJump
 L026CD5: db $E5
 L026CD6: db $6C
 L026CD7: db $05
@@ -6708,7 +6708,7 @@ L026CE5:;I
 	ldh  [$FFAB], a
 	ld   hl, $CFF1
 	inc  [hl]
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	cp   $0C
 	ret  nz
 	ld   hl, $4D00
@@ -6721,7 +6721,7 @@ L026D05:;I
 	ld   b, a
 	ld   a, [wPlRelY]
 	sub  $18
-	cp   a, b
+	cp   b
 	ret  nc
 	ld   hl, $CFF1
 	inc  [hl]
@@ -6734,7 +6734,7 @@ L026D17:;I
 	ld   [$CFF1], a
 	ret
 L026D23:;R
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	cp   $01
 	jr   nz, L026D37
 	call L0023A8
@@ -6751,7 +6751,7 @@ L026D37:;R
 	ldh  a, [$FFA7]
 	ld   b, a
 	ld   a, [wPlRelY]
-	cp   a, b
+	cp   b
 	ret  nc
 	ldh  [$FFA7], a
 	ld   a, $00
@@ -6766,7 +6766,7 @@ L026D51:;R
 	ldh  a, [$FFA7]
 	ld   b, a
 	ld   a, [wPlRelY]
-	cp   a, b
+	cp   b
 	ret  nc
 	ldh  [$FFA7], a
 	ld   a, $00
@@ -6816,7 +6816,7 @@ L026D8B:;I
 	ld   a, $FF
 	ld   [$CFF1], a
 	ld   a, $0C
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ld   a, $B4
 	ldh  [$FFAC], a
 	jp   L001EB1
@@ -6850,7 +6850,7 @@ L026DE2:;I
 	ld   bc, $0400
 	call L001E95
 	ld   a, $0D
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ld   hl, $CFF1
 	inc  [hl]
 	ret
@@ -6865,7 +6865,7 @@ L026E09:;I
 	ret
 L026E18:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026E1B: db $21
 L026E1C: db $6E
 L026E1D: db $39
@@ -6918,26 +6918,26 @@ L026E78:;I
 	ret
 L026E79:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026E7C: db $80
 L026E7D: db $6E
 L026E7E: db $AB
 L026E7F: db $6E
 L026E80:;I
 	ld   b, $00
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $40
 	call z, L026F16
 	ld   b, $01
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $01
 	call z, L026F16
 	ld   b, $02
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $80
 	call z, L026F16
 	ld   b, $03
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $20
 	call z, L026F16
 	jp   L001EB1
@@ -6954,7 +6954,7 @@ L026EAB:;I
 	ld   a, b
 	cp   $20
 	jr   nc, L026ED2
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $40
 	ret  nz
 	ld   a, $10
@@ -6966,7 +6966,7 @@ L026ED2:;R
 	ld   a, b
 	cp   $90
 	ret  c
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $01
 	ret  nz
 	ld   a, $20
@@ -6981,7 +6981,7 @@ L026EE7:;R
 	ld   a, b
 	cp   $20
 	jr   nc, L026F01
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $80
 	ret  nz
 	ld   a, $30
@@ -6993,7 +6993,7 @@ L026F01:;R
 	ld   a, b
 	cp   $90
 	ret  c
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $20
 	ret  nz
 	ld   a, $40
@@ -7031,7 +7031,7 @@ L026F3B:;I
 	ret
 L026F41:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L026F44: db $84
 L026F45: db $7D
 L026F46: db $64
@@ -7289,7 +7289,7 @@ L0270F5: db $C0;X
 L0270F6: db $03;X
 L0270F7:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0270FA: db $84
 L0270FB: db $7D
 L0270FC: db $0C
@@ -7393,7 +7393,7 @@ L0271A0:;R
 	ret
 L0271AD:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0271B0: db $84
 L0271B1: db $7D
 L0271B2: db $D6
@@ -7568,7 +7568,7 @@ L0272D3:;X
 	ret
 L0272DD:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0272E0: db $84
 L0272E1: db $7D
 L0272E2: db $FE
@@ -7759,7 +7759,7 @@ L027422: db $0B;X
 L027423: db $0B;X
 L027424:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L027427: db $84
 L027428: db $7D
 L027429: db $37
@@ -7875,7 +7875,7 @@ L0274E2:;I
 	ret
 L0274F3:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0274F6: db $84
 L0274F7: db $7D
 L0274F8: db $0E
@@ -8030,7 +8030,7 @@ L0275E5:;J
 	ret
 L0275EA:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0275ED: db $84
 L0275EE: db $7D
 L0275EF: db $03
@@ -8207,7 +8207,7 @@ L02772F:;C
 	ret
 L027738:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02773B: db $84
 L02773C: db $7D
 L02773D: db $51
@@ -8425,7 +8425,7 @@ L027887: db $CC
 L027888: db $00
 L027889:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L02788C: db $96
 L02788D: db $78
 L02788E: db $AB
@@ -8496,7 +8496,7 @@ L0278FC:;I
 	ret
 L027903:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L027906: db $0E
 L027907: db $79
 L027908: db $1A
@@ -8541,7 +8541,7 @@ L027948:;I
 	ret
 L027954:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L027957: db $5F
 L027958: db $79
 L027959: db $6C
@@ -8583,7 +8583,7 @@ L02799A:;R
 	jp   L001E11
 L02799D:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0279A0: db $A4
 L0279A1: db $79
 L0279A2: db $AD
@@ -8598,7 +8598,7 @@ L0279AD:;I
 	ret
 L0279B4:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0279B7: db $C1
 L0279B8: db $79
 L0279B9: db $CA
@@ -8636,7 +8636,7 @@ L0279E8:;I
 	jp   L001E11
 L0279F3:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L0279F6: db $FA
 L0279F7: db $79
 L0279F8: db $05
@@ -8654,7 +8654,7 @@ L027A05:;I
 	ret
 L027A11:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L027A14: db $1C
 L027A15: db $7A
 L027A16: db $3A
@@ -8711,7 +8711,7 @@ L027A70:;I
 	ret
 L027A74:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L027A77: db $7D
 L027A78: db $7A
 L027A79: db $8A
@@ -8863,7 +8863,7 @@ L027B3E: db $FD
 L027B3F: db $FE
 L027B40:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L027B43: db $47
 L027B44: db $7B
 L027B45: db $56
@@ -8880,7 +8880,7 @@ L027B56:;I
 	ret
 L027B5A:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L027B5D: db $61
 L027B5E: db $7B
 L027B5F: db $7A
@@ -8911,7 +8911,7 @@ L027B7A:;I
 	ret
 L027B92:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L027B95: db $99
 L027B96: db $7B
 L027B97: db $A0
@@ -8930,14 +8930,14 @@ L027BA0:;I
 	jp   L001E11
 L027BAF:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L027BB2: db $B6
 L027BB3: db $7B
 L027BB4: db $C5
 L027BB5: db $7B
 L027BB6:;I
 	ld   a, $04
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ld   de, $0002
 	ld   c, $08
 	call L001F7D
@@ -8956,7 +8956,7 @@ L027BCD:;I
 	ret
 L027BD9:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L027BDC: db $E0
 L027BDD: db $7B
 L027BDE: db $ED
@@ -8987,7 +8987,7 @@ L027C08:;R
 	ret
 L027C11:;I
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L027C14: db $18
 L027C15: db $7C
 L027C16: db $22
@@ -9169,7 +9169,7 @@ L027D75:;JC
 	ret
 L027D84:;I
 	ld   a, [$CF3A]
-	rst  $00
+	rst  $00 ; DynJump
 L027D88: db $A8;X
 L027D89: db $7D;X
 L027D8A: db $A8
@@ -9186,7 +9186,7 @@ L027D94: db $2A
 L027D95: db $7E
 L027D96:;I
 	ld   a, [$CF3A]
-	rst  $00
+	rst  $00 ; DynJump
 L027D9A: db $A8;X
 L027D9B: db $7D;X
 L027D9C: db $A8
@@ -9216,7 +9216,7 @@ L027DA9:;I
 	ld   hl, $CF3A
 	inc  [hl]
 	ld   a, $05
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	ret
 L027DC7:;I
 	ldh  a, [$FFAC]
@@ -9266,7 +9266,7 @@ L027E05:;I
 	and  $07
 	jr   nz, L027E1F
 	ld   a, $0B
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 L027E1F:;R
 	ld   a, [$CF44]
 	cp   $98
@@ -9438,7 +9438,7 @@ L027F2F:;R
 	xor  a
 	ldi  [hl], a
 	inc  a
-	ld   [wPkgEv], a
+	ld   [wTilemapEv], a
 	scf  
 	ret
 L027F51: db $0B

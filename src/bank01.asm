@@ -1,6 +1,6 @@
 L014000:;C
 	ld   hl, $4CA9
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	add  a
 	add  a
 	ld   b, $00
@@ -14,8 +14,8 @@ L014000:;C
 	ld   [$CFF0], a
 	ld   a, [hl]
 	ld   [$CFEF], a
-	ld   a, [$CFDF]
-	rst  $00
+	ld   a, [wWpnSel]
+	rst  $00 ; DynJump
 L014020: db $60
 L014021: db $40
 L014022: db $A8
@@ -55,14 +55,14 @@ L014048:;JR
 	ld   a, $0C
 	ld   [$CF22], a
 	ld   hl, $4C9C
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
 	ld   [$CF23], a
 	ld   a, $02
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ret
 L014060:;JI
 	xor  a
@@ -608,7 +608,7 @@ L014407:;C
 	jr   nz, L01442C
 	ldh  a, [$FFA0]
 	and  $7F
-	rst  $00
+	rst  $00 ; DynJump
 L014412: db $65
 L014413: db $44
 L014414: db $65;X
@@ -762,7 +762,7 @@ L0144F1:;R
 	ld   b, a
 	ld   a, c
 	and  $03
-	rst  $00
+	rst  $00 ; DynJump
 L0144F6: db $FE
 L0144F7: db $44
 L0144F8: db $0E
@@ -887,7 +887,7 @@ L0145A9:;R
 	call z, L003A0B
 L0145B9:;R
 	ldh  a, [$FFA2]
-	rst  $00
+	rst  $00 ; DynJump
 L0145BC: db $C4
 L0145BD: db $45
 L0145BE: db $CC
@@ -923,7 +923,7 @@ L0145E4:;I
 	add  $05
 	ldh  [$FFA8], a
 	ldh  a, [$FFA2]
-	rst  $00
+	rst  $00 ; DynJump
 L0145F1: db $01
 L0145F2: db $46
 L0145F3: db $09
@@ -1203,7 +1203,7 @@ L014767:;R
 L014771:;R
 	ldh  a, [$FFA7]
 	inc  l
-	cp   a, [hl]
+	cp   [hl]
 	ld   a, $02
 	jr   nc, L01477A
 	inc  a
@@ -1260,7 +1260,7 @@ L0147C3:;R
 	jr   c, L014812
 L0147CD:;R
 	ld   d, $DF
-	ldh  a, [$FF97]
+	ldh  a, [hWorkOAMPos]
 	ld   e, a
 	ldh  a, [$FFA8]
 	add  a
@@ -1311,7 +1311,7 @@ L014804:;R
 	dec  b
 	jr   nz, L0147E3
 	ld   a, e
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ret
 L014812:;R
 	xor  a
@@ -2540,424 +2540,695 @@ L014CD9: db $03
 L014CDA: db $03
 L014CDB: db $01
 L014CDC: db $00
-L014CDD:;C
-	ld   a, $02
-	call L0003CC
-	ld   de, $4F55
-	call Scr_ApplyPkg
-	ld   de, $5086
-	call Scr_ApplyPkg
-	call L0006D2
-	ld   a, $04
-	ldh  [$FF98], a
+; =============== Module_Password ===============
+; Password screen.
+; OUT
+; - C flag: If set, the password is invalid.
+Module_Password:
+	;--
+	;
+	; Load VRAM
+	;
+	
+	ld   a, GFXSET_PASSWORD
+	call GFXSet_Load
+	
+	ld   de, GfxDef_PasswordCursor
+	call LoadTilemapDef
+	
+	ld   de, TilemapDef_Password
+	call LoadTilemapDef
+	call StartLCDOperation
+	
+	;--
+	ld   a, BGM_PASSWORD
+	ldh  [hBGMSet], a
+	
+	;
+	; Init memory
+	;
+	
+	; Reset cursor pos
 	xor  a
-	ld   [$CFF4], a
-	ld   [$CFF5], a
-	ld   hl, $CFC0
-	ld   b, $10
-L014D01:;R
+	ld   [wPassCursorX], a
+	ld   [wPassCursorY], a
+	
+	; Clear all 16 dots from the selection table
+	ld   hl, wPassSelTbl
+	ld   b, wPassSelTbl_End-wPassSelTbl
+.clrDotLoop:
 	ldi  [hl], a
 	dec  b
-	jr   nz, L014D01
+	jr   nz, .clrDotLoop
+	
+	; Set up the four sprites thar make up the cursor.
 	ld   a, $00
-	ld   [$DF02], a
-	ld   [$DF06], a
-	ld   [$DF0A], a
-	ld   [$DF0E], a
+	ld   [wPassCursorULObj+iObjTileId], a
+	ld   [wPassCursorURObj+iObjTileId], a
+	ld   [wPassCursorDLObj+iObjTileId], a
+	ld   [wPassCursorDRObj+iObjTileId], a
 	xor  a
-	ld   [$DF03], a
-	xor  $20
-	ld   [$DF07], a
-	xor  $60
-	ld   [$DF0B], a
-	xor  $20
-	ld   [$DF0F], a
-L014D26:;R
-	ld   a, [$CFF5]
+	ld   [wPassCursorULObj+iObjAttr], a ; 0
+	xor  SPR_XFLIP
+	ld   [wPassCursorURObj+iObjAttr], a	; SPR_XFLIP
+	xor  SPR_YFLIP|SPR_XFLIP
+	ld   [wPassCursorDLObj+iObjAttr], a	; SPR_YFLIP
+	xor  SPR_XFLIP
+	ld   [wPassCursorDRObj+iObjAttr], a	; SPR_YFLIP|SPR_XFLIP
+	
+	;
+	; MAIN LOOP
+	;
+	
+.loop:
+	;
+	; Update the cursor's sprite position depending on the current selection.
+	; The cursor has four different sprites 8px apart from each other, one for each corner. 
+	; Their relative positioning is handled manually rather than going with sprite mappings.
+	;
+
+	; YPos = $2C + (wPassCursorY * $10)
+	ld   a, [wPassCursorY]
 	swap a
-	add  $2C
-	ld   [$DF00], a
-	ld   [$DF04], a
-	add  $08
-	ld   [$DF08], a
-	ld   [$DF0C], a
-	ld   a, [$CFF4]
+	add  $2C ; Top
+	ld   [wPassCursorULObj+iObjY], a
+	ld   [wPassCursorURObj+iObjY], a
+	add  $08 ; Bottom
+	ld   [wPassCursorDLObj+iObjY], a
+	ld   [wPassCursorDRObj+iObjY], a
+	; XPos = $3C + (wPassCursorY * $10)
+	ld   a, [wPassCursorX]
 	swap a
-	add  $3C
-	ld   [$DF01], a
-	ld   [$DF09], a
-	add  $08
-	ld   [$DF05], a
-	ld   [$DF0D], a
-L014D50:;JR
-	rst  $08
-	call JoyKeys_Sync
+	add  $3C ; Left
+	ld   [wPassCursorULObj+iObjX], a
+	ld   [wPassCursorDLObj+iObjX], a
+	add  $08 ; Right
+	ld   [wPassCursorURObj+iObjX], a
+	ld   [wPassCursorDRObj+iObjX], a
+	
+	
+.inputLoop:
+	rst  $08 ; Wait Frame
+	
+	; Check for input
+	call JoyKeys_Refresh
+	
+	; If none of the keys we're looking for were pressed, wait for new keys
 	ldh  a, [hJoyNewKeys]
-	and  $F9
-	jr   z, L014D50
+	and  KEY_DOWN|KEY_UP|KEY_LEFT|KEY_RIGHT|KEY_START|KEY_A
+	jr   z, .inputLoop
+	
 	ldh  a, [hJoyNewKeys]
-	bit  0, a
-	jr   nz, L014D9F
-	bit  3, a
-	jr   nz, L014DDA
+	bit  KEYB_A, a		; Pressed A?
+	jr   nz, .toggleSel	; If so, toggle the current dot
+	bit  KEYB_START, a	; Pressed START?
+	jr   nz, .validate	; If so, validate the password
+	
+.chkMove:
+	; Otherwise, we're moving the cursor.
+
+	; Good SFX reuse
 	push af
-	ld   a, $0B
-	ldh  [$FF99], a
+		ld   a, SFX_BOSSBAR
+		ldh  [hSFXSet], a
 	pop  af
-	rla  
-	jr   c, L014D89
-	rla  
-	jr   c, L014D94
-	rla  
-	jr   c, L014D7E
-	ld   a, [$CFF4]
+	
+	; Which direction we're moving to?
+	; This goes off the four direction bits being stored in the upper nybble,
+	; so we can push them out to the carry one by one.
+	rla  				; Pressed DOWN?
+	jr   c, .moveD		; If so, jump
+	rla  				; Pressed UP?
+	jr   c, .moveU		; If so, jump
+	rla  				; Pressed LEFT?
+	jr   c, .moveL		; If so, jump
+.moveR:					; Otherwise, we pressed RIGHT
+	; Regardless of direction, the movement logic is the same: inc/dec X/Y, then modulo 4.
+	ld   a, [wPassCursorX]
 	inc  a
 	and  $03
-	ld   [$CFF4], a
-	jr   L014D26
-L014D7E:;R
-	ld   a, [$CFF4]
+	ld   [wPassCursorX], a
+	jr   .loop
+.moveL:
+	ld   a, [wPassCursorX]
 	dec  a
 	and  $03
-	ld   [$CFF4], a
-	jr   L014D26
-L014D89:;R
-	ld   a, [$CFF5]
+	ld   [wPassCursorX], a
+	jr   .loop
+.moveD:
+	ld   a, [wPassCursorY]
 	inc  a
 	and  $03
-	ld   [$CFF5], a
-	jr   L014D26
-L014D94:;R
-	ld   a, [$CFF5]
+	ld   [wPassCursorY], a
+	jr   .loop
+.moveU:
+	ld   a, [wPassCursorY]
 	dec  a
 	and  $03
-	ld   [$CFF5], a
-	jr   L014D26
-L014D9F:;R
-	ld   a, $02
-	ldh  [$FF99], a
-	ld   hl, $CFF5
-	ldd  a, [hl]
+	ld   [wPassCursorY], a
+	jr   .loop
+	
+.toggleSel:
+	;
+	; Play toggle sound
+	;
+	ld   a, SFX_SHOOT
+	ldh  [hSFXSet], a
+	
+	;
+	; Toggle the selection
+	;
+	
+	; Create index to the dot table from the coords
+	; A = wPassCursorY * 4 + wPassCursorX
+	ld   hl, wPassCursorY
+	ldd  a, [hl]		; A = wPassCursorY, seek to wPassCursorX
+	add  a				; A *= 4
 	add  a
-	add  a
-	or   [hl]
-	ld   e, a
-	ld   hl, $CFC0
+	or   [hl]			; A += wPassCursorX
+	ld   e, a			; Save to E for later
+	
+	; Index the dot table with it
+	ld   hl, wPassSelTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
+	
+	; Do toggle the selection
 	ld   a, [hl]
-	xor  $FF
+	xor  $FF			; Also updates the Z flag, used for the upcoming check
 	ld   [hl], a
-	ld   b, $1D
-	jr   z, L014DBC
-	ld   b, $02
-L014DBC:;R
-	ld   hl, $4EA2
-	ld   d, $00
+	
+	;
+	; Request a screen update by building a TilemapDef and triggering it.
+	; It will take effect on the next VBlank.
+	;
+	
+	; Pick which tile to draw
+	ld   b, $1D			; B = Blank tile
+	jr   z, .setSelTile	; Did we just clear the dot (Z flag set)? If so, jump 
+	ld   b, $02			; Otherwise, B = Selected tile
+.setSelTile:
+
+	; Map the dot ID to its respective tilemap pointer
+	ld   hl, Password_SelTilemapPtrTbl	; HL = Table base
+	ld   d, $00			; DE = E * 2
 	sla  e
-	add  hl, de
-	ld   de, wScrEvRows
-	call L003B9B
-	ld   a, $01
+	add  hl, de			; HL = Ptr to Big endian tilemap ptr
+	
+	; bytes0-1: Big endian pointer
+	ld   de, wTilemapBuf	; DE = Destination
+	call CopyWord			
+	
+	; byte2: Flags + Byte count
+	ld   a, $01				; Only one tile to copy
 	ld   [de], a
 	inc  de
+	
+	; byte3: Payload (the single tile ID)
 	ld   a, b
 	ld   [de], a
 	inc  de
+	
+	; End terminator
 	xor  a
 	ld   [de], a
-	dec  a
-	ld   [wPkgEv], a
-	jp   L014D50
-L014DDA:;R
+	
+	; Trigger write with a non-zero wTilemapEv
+	dec  a					; A = $FF
+	ld   [wTilemapEv], a
+	jp   .inputLoop
+	
+.validate:
+	;
+	; PASSWORD DECODER
+	;
+	; The password is 16 bits long, represented as 16 different dots, with the selection screen placing
+	; each into a separate byte.
+	; These separate bytes are either $00 or $FF to simplify the password entry code, and during
+	; decoding they can be accumulated by shifting any bit from them to a single register.
+	;
+	; At the basis of this password system are groups of bits/dots and giant tables containing 
+	; valid combinations for each group. It's all hardcoded!
+	; The selected bits/dots do *not* represent the data directly, instead the game looks for a match inside
+	; these tables. If a match is found, its *index* is treated as the data, which may be offsetted.
+	;
+	; The password contains the following:
+	; - 4  bits: Number of E-Tanks.
+	;            Makes up a single group of 4 bits.
+	; - 12 bits: Unlocked Weapons.
+	;            Split into 4 groups of 3 bits each, however after the value -> index mapping 
+	;            only 2 bits get stored, for a total of 8 bits (wWpnUnlock0).
+	;            Depending on the number of E-Tanks selected, both the group order
+	;            and the valid bit combinations differ.
+	;
+	; There's no checksum to the password, but it *does* get validated.
+	;
+	
+	;
+	; -> E TANK COUNT
+	;
+	; Start with the number of E-Tanks, since it affects the bit locations 
+	; used to read the rest of the data.
+	;
+	
+	;
+	; Accumulate the E Tank bits.
+	;
+	; B = ----A4,B2,C1,D3
+	;
 	ld   b, $00
-	ld   a, [$CFC3]
+	ld   a, [wPassSelTbl+iDotA4]	
+	rra		; Shift in carry
+	rl   b	; << to B
+	ld   a, [wPassSelTbl+iDotB2]
+	rra  	; and so on for the others
+	rl   b
+	ld   a, [wPassSelTbl+iDotC1]
 	rra  
 	rl   b
-	ld   a, [$CFC5]
+	ld   a, [wPassSelTbl+iDotD3]
 	rra  
 	rl   b
-	ld   a, [$CFC8]
-	rra  
-	rl   b
-	ld   a, [$CFCE]
-	rra  
-	rl   b
-	ld   hl, $4EC6
-	ld   c, $05
-L014DF9:;R
-	ldd  a, [hl]
-	cp   a, b
-	jr   z, L014E03
-	dec  c
-	jr   nz, L014DF9
-	jp   L014E79
-L014E03:;R
-	ld   a, c
+	
+	;
+	; Find a match for the accumulated value into Password_ETankTruthTbl.
+	; If found, the index to that entry (-1) will be the number of E Tanks.
+	;
+	ld   hl, Password_ETankTruthTbl.end - 1					; HL = Ptr to last table entry
+	ld   c, Password_ETankTruthTbl.end-Password_ETankTruthTbl	; C = Bytes left to check
+.etankChkLoop:
+	ldd  a, [hl]			; Read potential match, seek to prev
+	cp   b					; Does it match our value?
+	jr   z, .etankOk		; If so, we found it
+	dec  c					; Otherwise, BytesLeft--
+	jr   nz, .etankChkLoop	; Checked them all? If not, loop
+	jp   .passErr			; Otherwise, the password is not valid
+.etankOk:
+	ld   a, c				; wETanks = C - 1
 	dec  a
-	ld   [$CFE9], a
-	add  a
-	ld   hl, $4ED3
+	ld   [wETanks], a
+	
+	;
+	; -> WEAPONS UNLOCKED 
+	;
+	
+	;
+	; As previously mentioned, this data is split into 4 groups of 3 bits each.
+	; Depending on the number of E-Tanks, these groups are processed in a different order.
+	;
+	; Even though the valid bit combinations differ between E-Tanks values, 
+	; the same group number will always point to the same three bit positions.
+	;
+	
+	; This order is defined into the pointer table at Password_OrderPtrTbl.
+	; Index it by E-Tank count and seek HL to the retrieved pointer.
+	add  a								; Index = wETanks * 2
+	ld   hl, Password_OrderPtrTbl		; HL = Table base
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ldi  a, [hl]
+	add  hl, bc							; Index it
+	ldi  a, [hl]						; Read the pointer out to HL
 	ld   h, [hl]
 	ld   l, a
-	xor  a
-	ld   [$CFE2], a
-	ld   b, a
+	
+	; HL now points to a table containing four group numbers (see below),
+	; which is then immediately followed by the truth table for each group.
+	
+	;
+	; Then, process the four groups in a loop, with BC keeping track of the index
+	; to this structure.
+	; If this loop ends successfully, wPassWpnError will still be 0 and wWpnUnlock0
+	; will have received all 8 bits.
+	;
+	xor  a					; A = 0
+	ld   [wPassWpnError], a	; ErrorFlag = 0
+	ld   b, a				; GroupNum = 0
 	ld   c, a
-L014E19:;R
-	push bc
+
+.wpnLoop:
+	push bc ; Save GroupNum
 	push hl
-	push bc
-	push hl
-	add  hl, bc
-	ld   a, [hl]
-	add  a
-	add  [hl]
-	ld   c, a
-	ld   hl, $4EC7
-	add  hl, bc
-	ld   d, $00
-	call L014E8F
-	call L014E8F
-	call L014E8F
-	pop  hl
-	pop  bc
-	ld   a, c
-	add  a
-	add  a
-	add  $04
-	ld   c, a
-	add  hl, bc
-	ld   b, $04
-L014E3C:;R
-	ldi  a, [hl]
-	cp   a, d
-	jr   z, L014E4A
-	dec  b
-	jr   nz, L014E3C
-	ld   a, $FF
-	ld   [$CFE2], a
-	jr   L014E56
-L014E4A:;R
-	ld   a, $04
-	sub  b
-	ld   hl, $CFDE
-	rra  
-	rr   [hl]
-	rra  
-	rr   [hl]
-L014E56:;R
-	pop  hl
-	pop  bc
-	ld   a, [$CFE2]
+	
+		;
+		; Shift left to D the three bits associated with the current group.
+		;
+		
+		push bc
+		push hl ; Save base OrderTable ptr
+		
+			; HL = Ptr to order table entry.
+			; This points to a group number (will be in range $00-$03)
+			add  hl, bc
+			
+			;
+			; Seek to the dot position list for the current group (in Password_WpnDotTbl).
+			; Each group is 3 dots long, so its index will be:
+			; BC = GroupNum * 3
+			;
+			ld   a, [hl]	; Read group number
+			add  a			; *= 2
+			add  [hl]		; += GroupNum (*3)
+			ld   c, a		; B will always be 0 anyway
+			; And index it
+			ld   hl, Password_WpnDotTbl
+			add  hl, bc
+			
+			; Read out the three bits associated to this group.
+			; Accumulate the 3 bits by shifting them left to D.
+			; For example, assuming the group number was 0, D will contain the following:
+			; D = -----A1,A2,B1
+			ld   d, $00					; D = 0
+			call Password_AccumSel		; << 1st dot
+			call Password_AccumSel		; << 2nd dot
+			call Password_AccumSel		; << 3rd dot
+		pop  hl ; Restore base OrderTable ptr
+		pop  bc
+		
+		;
+		; Verify that the value we got is valid for this group.
+		; If it is, the bits at ($04 - Value) will be pushed to wWpnUnlock0.
+		;
+		
+		; Seek to the truth table.
+		; There are four truth tables, one for each group, and they immediately follow the 4 bytes of the order table.
+		; Therefore, given a pointer to the start of the order table...
+		; TruthTbl = OrderTbl + (GroupNum * 4) + 4 
+		ld   a, c
+		add  a		; *2
+		add  a		; *2
+		add  $04	; +4
+		ld   c, a
+		add  hl, bc	; B is 0 as always
+		
+		;
+		; Verify that these bits are one of the three valid combinations.
+		; Similar to the E Tank validation code, except we're advancing the pointer forwards!
+		;
+		ld   b, $04				; B = Matches left
+	.wpnChkLoop:
+		ldi  a, [hl]			; Read potential match, seek to next
+		cp   d					; Does it match?
+		jr   z, .wpnOk			; If so, we're done
+		dec  b					; Checked all matches?
+		jr   nz, .wpnChkLoop	; If not, loop
+		ld   a, $FF				; Otherwise, the password is invalid
+		ld   [wPassWpnError], a
+		jr   .chkErr
+	.wpnOk:
+		; Convert the remaining matches to the table index for the matched entry
+		; A = 4 - B
+		ld   a, $04
+		sub  b
+		
+		; Push from the top the two bits to the weapon unlock flags.
+		; Note that this is the only bitmask used here, meaning that
+		; passwords won't record anything stored in wWpnUnlock1.
+		ld   hl, wWpnUnlock0	; Seek to unlocked weapons 
+		rra			; push bit 0 to carry
+		rr   [hl]	; >> to result
+		rra  		; push bit 1 to carry
+		rr   [hl]	; >> to result
+		
+	.chkErr:
+	pop  hl ; Restore base OrderTable ptr
+	pop  bc ; Restore GroupNum
+	
+	; If any matching failed, abort
+	ld   a, [wPassWpnError]
 	and  a
-	jr   nz, L014E79
-	inc  c
+	jr   nz, .passErr
+	
+	; Processed all 4 groups?
+	inc  c				; GroupNum++
 	ld   a, c
-	cp   $04
-	jr   c, L014E19
-	ld   a, [$CFDE]
-	and  $E1
-	jr   z, L014E74
-	ld   a, [$CFDE]
-	and  $1E
-	cp   $1E
-	jr   nz, L014E79
-L014E74:;R
-	call L000612
-	xor  a
+	cp   $04			; GroupNum < 4?
+	jr   c, .wpnLoop	; If so, loop
+	
+	;
+	; Reject invalid weapon combinations.
+	; If the any of the second set of bosses is marked as defeated,
+	; then the entirety of the first set must be as well.
+	;
+	
+	ld   a, [wWpnUnlock0]
+	and  WPN_MG|WPN_HA|WPN_NE|WPN_TP	; Got any of the second weapons?
+	jr   z, .passOk						; If not, skip
+	
+	ld   a, [wWpnUnlock0]
+	and  WPN_CR|WPN_ME|WPN_WD|WPN_AR	; Filter out 2nd weapons
+	cp   WPN_CR|WPN_ME|WPN_WD|WPN_AR	; Did we get *all* of the first weapons?
+	jr   nz, .passErr					; If not, reject ot
+	
+.passOk:
+	call FlashBGPal
+	xor  a ; C Flag clear
 	ret
-L014E79:;JR
-	ld   hl, $4F41
-	ld   de, wScrEvRows
+	
+.passErr:
+	; Write "PASS WORD ERROR!"
+	ld   hl, TilemapDef_PasswordError
+	ld   de, wTilemapBuf
 	ld   bc, $0014
-	call L0006B9
-	ld   a, $FF
-	ld   [wPkgEv], a
+	call CopyMemory
+	ld   a, $FF				; Trigger
+	ld   [wTilemapEv], a
+	; Wait for 4.25 seconds
 	call WaitFrames
-	scf  
+	scf ; C Flag set
 	ret
-L014E8F:;C
+	
+; =============== Password_AccumSel ===============
+; Accumulates the selection into D, shifting it in to the left.
+; IN
+; - D: Accumulated result
+; - HL: Points to the selection number (value used to index wPassSelTbl)
+Password_AccumSel:
 	push af
 	push hl
-	ld   a, $C0
-	add  [hl]
-	ld   l, a
-	ld   a, $CF
-	adc  a, $00
-	ld   h, a
-	ld   a, [hl]
-	rra  
-	rl   d
+		; Read the specified selection
+		; A = wPassSelTbl[*HL]
+		ld   a, LOW(wPassSelTbl)
+		add  [hl]
+		ld   l, a
+		ld   a, HIGH(wPassSelTbl)
+		adc  a, $00
+		ld   h, a
+		ld   a, [hl]
+		
+		; Store the selection into the carry, by rotating a bit there.
+		; These are either $00 or $FF, so the rotation direction doesn't matter.
+		rra
+		; Shift left the carry into the accumulated result.
+		rl   d
 	pop  hl
 	pop  af
+	; Seek to next selection number
 	inc  hl
 	ret
-L014EA2: db $98
-L014EA3: db $87
-L014EA4: db $98
-L014EA5: db $89
-L014EA6: db $98
-L014EA7: db $8B
-L014EA8: db $98
-L014EA9: db $8D
-L014EAA: db $98
-L014EAB: db $C7
-L014EAC: db $98
-L014EAD: db $C9
-L014EAE: db $98
-L014EAF: db $CB
-L014EB0: db $98
-L014EB1: db $CD
-L014EB2: db $99
-L014EB3: db $07
-L014EB4: db $99
-L014EB5: db $09
-L014EB6: db $99
-L014EB7: db $0B
-L014EB8: db $99
-L014EB9: db $0D
-L014EBA: db $99
-L014EBB: db $47
-L014EBC: db $99
-L014EBD: db $49
-L014EBE: db $99
-L014EBF: db $4B
-L014EC0: db $99
-L014EC1: db $4D
-L014EC2: db $00
-L014EC3: db $02
-L014EC4: db $05
-L014EC5: db $0A
-L014EC6: db $0B
-L014EC7: db $00
-L014EC8: db $01
-L014EC9: db $04
-L014ECA: db $02
-L014ECB: db $06
-L014ECC: db $07
-L014ECD: db $09
-L014ECE: db $0C
-L014ECF: db $0D
-L014ED0: db $0A
-L014ED1: db $0B
-L014ED2: db $0F
-L014ED3: db $DD
-L014ED4: db $4E
-L014ED5: db $F1
-L014ED6: db $4E
-L014ED7: db $05
-L014ED8: db $4F
-L014ED9: db $19;X
-L014EDA: db $4F;X
-L014EDB: db $2D
-L014EDC: db $4F
-L014EDD: db $00
-L014EDE: db $01
-L014EDF: db $02
-L014EE0: db $03
-L014EE1: db $04
-L014EE2: db $05
-L014EE3: db $03
-L014EE4: db $06
-L014EE5: db $03
-L014EE6: db $06
-L014EE7: db $04
-L014EE8: db $05
-L014EE9: db $01
-L014EEA: db $03;X
-L014EEB: db $04;X
-L014EEC: db $06;X
-L014EED: db $05
-L014EEE: db $03;X
-L014EEF: db $01;X
-L014EF0: db $06;X
-L014EF1: db $01
-L014EF2: db $02
-L014EF3: db $03
-L014EF4: db $00
-L014EF5: db $01
-L014EF6: db $06
-L014EF7: db $02
-L014EF8: db $05;X
-L014EF9: db $02
-L014EFA: db $03
-L014EFB: db $04
-L014EFC: db $06
-L014EFD: db $05
-L014EFE: db $01;X
-L014EFF: db $03;X
-L014F00: db $04;X
-L014F01: db $03
-L014F02: db $04;X
-L014F03: db $01;X
-L014F04: db $02;X
-L014F05: db $02
-L014F06: db $03
-L014F07: db $00
-L014F08: db $01
-L014F09: db $01;X
-L014F0A: db $04;X
-L014F0B: db $03
-L014F0C: db $05;X
-L014F0D: db $03;X
-L014F0E: db $04;X
-L014F0F: db $02;X
-L014F10: db $06
-L014F11: db $01;X
-L014F12: db $02
-L014F13: db $05;X
-L014F14: db $03;X
-L014F15: db $00
-L014F16: db $06;X
-L014F17: db $04;X
-L014F18: db $01;X
-L014F19: db $03;X
-L014F1A: db $00;X
-L014F1B: db $01;X
-L014F1C: db $02;X
-L014F1D: db $06;X
-L014F1E: db $02;X
-L014F1F: db $05;X
-L014F20: db $03;X
-L014F21: db $05;X
-L014F22: db $01;X
-L014F23: db $06;X
-L014F24: db $04;X
-L014F25: db $04;X
-L014F26: db $03;X
-L014F27: db $01;X
-L014F28: db $06;X
-L014F29: db $00;X
-L014F2A: db $02;X
-L014F2B: db $01;X
-L014F2C: db $03;X
-L014F2D: db $00
-L014F2E: db $02
-L014F2F: db $03
-L014F30: db $01
-L014F31: db $02
-L014F32: db $03
-L014F33: db $01
-L014F34: db $04
-L014F35: db $05
-L014F36: db $02
-L014F37: db $04
-L014F38: db $06
-L014F39: db $00
-L014F3A: db $02
-L014F3B: db $03;X
-L014F3C: db $04
-L014F3D: db $03
-L014F3E: db $02
-L014F3F: db $04;X
-L014F40: db $06
-L014F41: db $99
+	
+; =============== Password_SelTilemapPtrTbl ===============
+; Table of tilemap pointers for each dot, indexed by the selection ID.
+; These pointers need to be Big Endian since they are used as-is as
+; part of a TilemapDef.
+Password_SelTilemapPtrTbl:
+	db $98,$87 ; $00
+	db $98,$89 ; $01
+	db $98,$8B ; $02
+	db $98,$8D ; $03
+	db $98,$C7 ; $04
+	db $98,$C9 ; $05
+	db $98,$CB ; $06
+	db $98,$CD ; $07
+	db $99,$07 ; $08
+	db $99,$09 ; $09
+	db $99,$0B ; $0A
+	db $99,$0D ; $0B
+	db $99,$47 ; $0C
+	db $99,$49 ; $0D
+	db $99,$4B ; $0E
+	db $99,$4D ; $0F
+	
+; =============== Password_ETankTruthTbl ===============
+; Truth table for E Tank bit combinations.
+; Matches by value the accumulated password bits A4,B2,C1,D3 to the number of E Tanks.
+; See: .etankLoop
+Password_ETankTruthTbl:
+	db %0000 ; 0 ;
+	db %0010 ; 1 ; C1
+	db %0101 ; 2 ; B2,D3
+	db %1010 ; 3 ; A4,C1
+	db %1011 ; 4 ; A4,C1,D3
+.end:
+
+; =============== Password_WpnDotTbl ===============
+; Dot positions used to store unlocked weapons, for each group.
+Password_WpnDotTbl:
+	db iDotA1 ; Group $00
+	db iDotA2
+	db iDotB1
+	db iDotA3 ; Group $01
+	db iDotB3
+	db iDotB4
+	db iDotC2 ; Group $02
+	db iDotD1
+	db iDotD2
+	db iDotC3 ; Group $03
+	db iDotC4
+	db iDotD4
+
+; =============== Password_OrderPtrTbl ===============
+; Truth & group order tables for unlocked weapon bits combinations.
+; These are completely different depending on the amount of E-Tanks saved into the password.
+Password_OrderPtrTbl:
+	dw Password_OrderTbl0 ; 0 Tanks
+	dw Password_OrderTbl1 ; 1 Tank
+	dw Password_OrderTbl2 ; 2 Tanks
+	dw Password_OrderTbl3 ; 3 Tanks
+	dw Password_OrderTbl4 ; 4 Tanks
+
+; --------------- Password_OrderTbl0 ---------------
+; Order table used when zero E Tanks are recorded into the password.
+; These four numbers right below are the group numbers -- they are multiplied by 3,
+; and used to index Password_WpnDotTbl.
+Password_OrderTbl0:
+	db $00 ; A1,A2,B1 (bit0-1)
+	db $01 ; A3,B3,B4 (bit2-3)
+	db $02 ; C2,D1,D2 (bit4-5)
+	db $03 ; C3,C4,D4 (bit6-7)
+; Immediately following are the truth tables for each group.
+.truth0: ; For the 1st group (here it's $00 | A1,A2,B1)
+	db %100
+	db %101
+	db %011
+	db %110
+.truth1: ; For the 2nd group (here it's $01 | A3,B3,B4)
+	db %011
+	db %110
+	db %100
+	db %101
+.truth2: ; ...
+	db %001
+	db %011
+	db %100
+	db %110
+.truth3:	
+	db %101
+	db %011
+	db %001
+	db %110
+	
+; --------------- Password_OrderTbl1 ---------------
+; Like above, but when 1 E Tank is recorded.
+Password_OrderTbl1:
+	db $01 ; A3,B3,B4
+	db $02 ; C2,D1,D2
+	db $03 ; C3,C4,D4
+	db $00 ; A1,A2,B1
+	
+.truth0: ; For the 1st group (here it's $01 | A3,B3,B4)
+	db %001
+	db %110
+	db %010
+	db %101
+.truth1: ; For the 2nd group (here it's $02 | C2,D1,D2)
+	db %010
+	db %011
+	db %100
+	db %110
+.truth2: ; ...
+	db %101
+	db %001
+	db %011
+	db %100
+.truth3:
+	db %011
+	db %100
+	db %001
+	db %010
+	
+; --------------- Password_OrderTbl2 ---------------
+Password_OrderTbl2:
+	db $02 ; C2,D1,D2
+	db $03 ; C3,C4,D4
+	db $00 ; A1,A2,B1
+	db $01 ; A3,B3,B4
+Password_OrderTbl2r0:
+	db %001
+	db %100
+	db %011
+	db %101
+Password_OrderTbl2r1:
+	db %011
+	db %100
+	db %010
+	db %110
+Password_OrderTbl2r2:
+	db %001
+	db %010
+	db %101
+	db %011
+Password_OrderTbl2r3:
+	db %000
+	db %110
+	db %100
+	db %001
+	
+; --------------- Password_OrderTbl3 ---------------
+Password_OrderTbl3:
+	db $03 ; C3,C4,D4
+	db $00 ; A1,A2,B1
+	db $01 ; A3,B3,B4
+	db $02 ; C2,D1,D2
+Password_OrderTbl3r0:
+	db %110
+	db %010
+	db %101
+	db %011
+Password_OrderTbl3r1:
+	db %101
+	db %001
+	db %110
+	db %100
+Password_OrderTbl3r2:
+	db %100
+	db %011
+	db %001
+	db %110
+Password_OrderTbl3r3:
+	db %000
+	db %010
+	db %001
+	db %011
+	
+; --------------- Password_OrderTbl4 ---------------
+Password_OrderTbl4: 
+	db $00 ; A1,A2,B1
+	db $02 ; C2,D1,D2
+	db $03 ; C3,C4,D4
+	db $01 ; A3,B3,B4
+Password_OrderTbl4r0: 
+	db %010
+	db %011
+	db %001
+	db %100
+Password_OrderTbl4r1: 
+	db %101
+	db %010
+	db %100
+	db %110
+Password_OrderTbl4r2: 
+	db %000
+	db %010
+	db %011
+	db %100
+Password_OrderTbl4r3: 
+	db %011
+	db %010
+	db %100
+	db %110
+	
+TilemapDef_PasswordError: db $99
 L014F42: db $E2
 L014F43: db $10
 L014F44: db $50
@@ -2977,7 +3248,7 @@ L014F51: db $4F
 L014F52: db $52
 L014F53: db $5B
 L014F54: db $00
-L014F55: db $80
+GfxDef_PasswordCursor: db $80
 L014F56: db $00
 L014F57: db $10
 L014F58: db $00
@@ -2998,23 +3269,23 @@ L014F66: db $00
 L014F67: db $00
 L014F68: db $00
 L014F69:;C
-	ld   a, $02
-	call L0003CC
+	ld   a, GFXSET_PASSWORD
+	call GFXSet_Load
 	ld   de, $4F55
-	call Scr_ApplyPkg
+	call LoadTilemapDef
 	ld   de, $5086
-	call Scr_ApplyPkg
+	call LoadTilemapDef
 	ld   de, $5049
-	call Scr_ApplyPkg
-	call L0006D2
+	call LoadTilemapDef
+	call StartLCDOperation
 	xor  a
-	ld   hl, $CFC0
+	ld   hl, wPassSelTbl
 	ld   b, $10
 L014F89:;R
 	ldi  [hl], a
 	dec  b
 	jr   nz, L014F89
-	ld   a, [$CFE9]
+	ld   a, [wETanks]
 	ld   hl, $4EC2
 	ld   b, $00
 	ld   c, a
@@ -3037,7 +3308,7 @@ L014FAF:;R
 	jr   nc, L014FB6
 	ld   [$CFC3], a
 L014FB6:;R
-	ld   a, [$CFE9]
+	ld   a, [wETanks]
 	add  a
 	ld   hl, $4ED3
 	ld   b, $00
@@ -3046,7 +3317,7 @@ L014FB6:;R
 	ldi  a, [hl]
 	ld   h, [hl]
 	ld   l, a
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	ld   e, a
 	xor  a
 	ld   b, a
@@ -3092,8 +3363,8 @@ L014FCB:;R
 	ld   hl, $505D
 	ld   de, wScrEvRows
 	ld   bc, $0029
-	call L0006B9
-	ld   de, $CFC0
+	call CopyMemory
+	ld   de, wPassSelTbl
 	ld   hl, $DD03
 	ld   c, $04
 L015014:;R
@@ -3114,10 +3385,10 @@ L01501D:;R
 	dec  c
 	jr   nz, L015014
 	ld   a, $FF
-	ld   [wPkgEv], a
+	ld   [wTilemapEv], a
 L01502C:;R
-	rst  $08
-	call JoyKeys_Sync
+	rst  $08 ; Wait Frame
+	call JoyKeys_Refresh
 	ldh  a, [hJoyNewKeys]
 	rra  
 	jr   nc, L01502C
@@ -3198,7 +3469,7 @@ L015082: db $1D
 L015083: db $12
 L015084: db $1D
 L015085: db $00
-L015086: db $98
+TilemapDef_Password: db $98
 L015087: db $00
 L015088: db $54
 L015089: db $01
@@ -3609,9 +3880,9 @@ L01521D: db $DF;X
 L01521E: db $C9;X
 L01521F:;C
 	call L003156
-	call L0006D2
+	call StartLCDOperation
 	ld   a, $11
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	ld   a, $78
 	call WaitFrames
 	xor  a
@@ -3646,7 +3917,7 @@ L01524D:;R
 	ld   [$CCF7], a
 L01525D:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
@@ -3654,8 +3925,8 @@ L01525D:;R
 	ld   hl, $6275
 	ld   a, $02
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   a, [$CCF8]
 	inc  a
 	and  $01
@@ -3692,7 +3963,7 @@ L01525D:;R
 	jr   L01524D
 L0152BB:;R
 	call L0031A0
-	call L0006D2
+	call StartLCDOperation
 	ld   a, $78
 	call WaitFrames
 	ld   hl, $CCEE
@@ -3719,7 +3990,7 @@ L0152BB:;R
 	ld   [$CCF7], a
 L0152E8:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
@@ -3727,8 +3998,8 @@ L0152E8:;R
 	ld   hl, $6275
 	ld   a, $02
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   hl, $2612
 	ld   a, [$CCF6]
 	ld   b, $00
@@ -3749,7 +4020,7 @@ L0152E8:;R
 	ld   [$CCF7], a
 L015329:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
@@ -3757,8 +4028,8 @@ L015329:;R
 	ld   hl, $6275
 	ld   a, $02
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   hl, $CCF6
 	dec  [hl]
 	dec  [hl]
@@ -3783,7 +4054,7 @@ L015329:;R
 	ld   [$CCF7], a
 L01536E:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
@@ -3791,8 +4062,8 @@ L01536E:;R
 	ld   hl, $6275
 	ld   a, $02
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   hl, $2612
 	ld   a, [$CCF6]
 	ld   b, $00
@@ -3822,7 +4093,7 @@ L0153BA:;R
 	dec  [hl]
 	dec  [hl]
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
@@ -3830,8 +4101,8 @@ L0153BA:;R
 	ld   hl, $6275
 	ld   a, $02
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   hl, $2612
 	ld   a, [$CCF6]
 	ld   b, $00
@@ -3846,30 +4117,30 @@ L0153BA:;R
 	dec  [hl]
 	jr   nz, L0153BA
 	xor  a
-	ldh  [$FF97], a
-	call L000667
-	rst  $08
+	ldh  [hWorkOAMPos], a
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   a, $78
 	call WaitFrames
-	ld   a, $08
-	call L0003CC
+	ld   a, GFXSET_SPACE
+	call GFXSet_Load
 	ld   de, $5AEA
-	call Scr_ApplyPkg
+	call LoadTilemapDef
 	ld   a, $F0
 	ldh  [hScrollX], a
-	call L0006D2
+	call StartLCDOperation
 	ld   a, $80
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, $00
 	ld   [$CF0D], a
 L01541E:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   hl, $627D
 	xor  a
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   a, [$CF0D]
 	inc  a
 	ld   [$CF0D], a
@@ -3886,7 +4157,7 @@ L01541E:;R
 	ld   [hl], a
 L015448:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEE]
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCEF]
@@ -3901,8 +4172,8 @@ L015448:;R
 	ld   hl, $6289
 	xor  a
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   hl, $CCF1
 	dec  [hl]
 	ld   hl, hScrollX
@@ -3912,7 +4183,7 @@ L015448:;R
 	jr   nz, L015448
 L015483:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEE]
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCEF]
@@ -3927,8 +4198,8 @@ L015483:;R
 	ld   hl, $6289
 	xor  a
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   a, [$CCF0]
 	cp   $A0
 	adc  a, $00
@@ -3940,7 +4211,7 @@ L015483:;R
 	jr   nz, L015483
 L0154C5:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEE]
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCEF]
@@ -3955,8 +4226,8 @@ L0154C5:;R
 	ld   hl, $6289
 	xor  a
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   a, [$CCF0]
 	dec  a
 	ld   [$CCF0], a
@@ -3992,19 +4263,19 @@ L01551A: db $C3;X
 L01551B: db $67;X
 L01551C: db $06;X
 L01551D:;C
-	ld   a, $08
-	call L0003CC
+	ld   a, GFXSET_SPACE
+	call GFXSet_Load
 	ld   de, $5AEA
-	call Scr_ApplyPkg
+	call LoadTilemapDef
 	ld   a, $20
 	ldh  [hScrollX], a
-	call L0006D2
+	call StartLCDOperation
 	ld   hl, $4F00
 	ld   de, $8500
 	ld   bc, $0B08
 	call GfxCopy_Req
 	ld   a, $01
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	ld   hl, $CCEE
 	xor  a
 	ld   de, $80C0
@@ -4163,7 +4434,7 @@ L01551D:;C
 	ld   [$CCFE], a
 L015684:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CD06]
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CD07]
@@ -4195,8 +4466,8 @@ L0156AE:;R
 	pop  bc
 	dec  b
 	jr   nz, L0156AE
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   hl, $CCEE
 	ld   b, $04
 L0156CE:;R
@@ -4217,13 +4488,13 @@ L0156CE:;R
 	dec  a
 	ld   [$CCFE], a
 	jr   nz, L015684
-	ld   a, $08
-	call L0003CC
+	ld   a, GFXSET_SPACE
+	call GFXSet_Load
 	ld   de, $5C9B
-	call Scr_ApplyPkg
-	call L0006D2
+	call LoadTilemapDef
+	call StartLCDOperation
 	ld   a, $02
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	ld   hl, $CCEE
 	xor  a
 	ld   de, $8040
@@ -4245,16 +4516,16 @@ L0156CE:;R
 	ld   [$CCFE], a
 L01571A:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   hl, $6291
 	ld   a, [wPl_Unk_Alt_Y]
 	rrca 
 	rrca 
 	and  $01
 	call L015A39
-	call L000667
-	rst  $08
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
+	rst  $08 ; Wait Frame
 	ld   hl, wPl_Unk_Alt_Y
 	inc  [hl]
 	ld   hl, $CF0D
@@ -4265,12 +4536,12 @@ L01571A:;R
 	xor  a
 	ld   [$CCFE], a
 	ld   a, $00
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	ld   a, $11
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 L01574A:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   hl, $6295
 	ld   a, [$CCFE]
 	rrca 
@@ -4279,8 +4550,8 @@ L01574A:;R
 	rrca 
 	and  $07
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   hl, $CCFE
 	inc  [hl]
 	ld   a, [hl]
@@ -4306,7 +4577,7 @@ L01576E:;CR
 	ret
 L01578D:;C
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, [$CCF1]
@@ -4333,8 +4604,8 @@ L01578D:;C
 	ld   a, [$CD01]
 	add  b
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   a, [$CD04]
 	and  a
 	ret  z
@@ -4344,11 +4615,11 @@ L01578D:;C
 	ld   h, a
 	ld   de, wScrEvRows
 	ld   bc, $0015
-	call L0006B9
+	call CopyMemory
 	xor  a
 	ld   [de], a
 	inc  a
-	ld   [wPkgEv], a
+	ld   [wTilemapEv], a
 	ld   a, l
 	ld   [$CD02], a
 	ld   a, h
@@ -4384,29 +4655,29 @@ L0157FB:;C
 	add  c
 	ld   [hl], a
 	ld   a, $06
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ret
 L015827:;C
 	ld   a, $12
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	ld   hl, $5F5D
 	ld   a, l
 	ld   [$CD02], a
 	ld   a, h
 	ld   [$CD03], a
 L015836:;JR
-	rst  $08
-	rst  $08
-	rst  $08
-	rst  $08
+	rst  $08 ; Wait Frame
+	rst  $08 ; Wait Frame
+	rst  $08 ; Wait Frame
+	rst  $08 ; Wait Frame
 	ld   hl, wPl_Unk_Alt_Y
 	inc  [hl]
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   hl, $6295
 	ld   a, $07
 	call L015A39
-	call L000667
+	call OAM_ClearRest
 	ld   hl, hScrollY
 	dec  [hl]
 	ld   a, [hl]
@@ -4418,11 +4689,11 @@ L015836:;JR
 	ld   h, a
 	ld   de, wScrEvRows
 	ld   bc, $000D
-	call L0006B9
+	call CopyMemory
 	xor  a
 	ld   [de], a
 	inc  a
-	ld   [wPkgEv], a
+	ld   [wTilemapEv], a
 	ld   a, l
 	ld   [$CD02], a
 	ld   a, h
@@ -4460,7 +4731,7 @@ L0158A1:;R
 	call L0159B9
 L0158B4:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, $50
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, $88
@@ -4475,8 +4746,8 @@ L0158B4:;R
 	ld   hl, $65CC
 	ld   a, [$CCEE]
 	call L015A39
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	ld   hl, $CCF7
 	dec  [hl]
 	ld   a, [hl]
@@ -4503,7 +4774,7 @@ L01590D:;R
 	push bc
 	call L0159A7
 	call L0159EB
-	rst  $08
+	rst  $08 ; Wait Frame
 	pop  bc
 	dec  b
 	jr   nz, L01590D
@@ -4531,7 +4802,7 @@ L01590D:;R
 	xor  a
 	ld   [de], a
 	inc  a
-	ld   [wPkgEv], a
+	ld   [wTilemapEv], a
 	ld   a, [$CD02]
 	and  a
 	jr   nz, L01590B
@@ -4552,7 +4823,7 @@ L015961:;R
 	push bc
 	call L0159D5
 	call L0159EB
-	rst  $08
+	rst  $08 ; Wait Frame
 	pop  bc
 	dec  b
 	jr   nz, L015961
@@ -4562,11 +4833,11 @@ L015961:;R
 	ld   h, a
 	ld   de, wScrEvRows
 	ld   bc, $0010
-	call L0006B9
+	call CopyMemory
 	xor  a
 	ld   [de], a
 	inc  a
-	ld   [wPkgEv], a
+	ld   [wTilemapEv], a
 	ld   a, l
 	ld   [$CD02], a
 	ld   a, h
@@ -4577,14 +4848,14 @@ L015961:;R
 L015990:;R
 	call L0159D5
 	call L0159EB
-	rst  $08
+	rst  $08 ; Wait Frame
 	ldh  a, [hScrollY]
 	cp   $80
 	jr   nz, L015990
 L01599D:;R
 	call L015A2B
 	call L0159EB
-	rst  $08
+	rst  $08 ; Wait Frame
 	jr   L01599D
 L0159A6: db $C9;X
 L0159A7:;C
@@ -4600,7 +4871,7 @@ L0159A7:;C
 L0159B9:;CR
 	call L0159A7
 	push bc
-	rst  $08
+	rst  $08 ; Wait Frame
 	pop  bc
 	dec  b
 	jr   nz, L0159B9
@@ -4613,10 +4884,10 @@ L0159C3:;C
 L0159C9:;CR
 	push bc
 	call L0159A7
-	rst  $08
+	rst  $08 ; Wait Frame
 	pop  bc
 	ldh  a, [hScrollY]
-	cp   a, b
+	cp   b
 	jr   nz, L0159C9
 	ret
 L0159D5:;C
@@ -4633,7 +4904,7 @@ L0159D5:;C
 	ret
 L0159EB:;C
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, $50
 	ld   [wPl_Unk_Alt_Y], a
 	ld   a, $88
@@ -4641,8 +4912,8 @@ L0159EB:;C
 	ld   hl, $62B1
 	xor  a
 	call L015A39
-	ld   hl, $DF00
-	ldh  a, [$FF97]
+	ld   hl, wWorkOAM
+	ldh  a, [hWorkOAMPos]
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
@@ -4669,8 +4940,8 @@ L015A0F:;R
 	dec  b
 	jr   nz, L015A0F
 	ld   a, e
-	ldh  [$FF97], a
-	call L000667
+	ldh  [hWorkOAMPos], a
+	call OAM_ClearRest
 	ret
 L015A2B:;C
 	ld   a, [$CCFE]
@@ -4690,8 +4961,8 @@ L015A39:;C
 	ld   d, [hl]
 	ld   l, e
 	ld   h, d
-	ld   de, $DF00
-	ldh  a, [$FF97]
+	ld   de, wWorkOAM
+	ldh  a, [hWorkOAMPos]
 	add  e
 	ld   e, a
 	ld   a, d
@@ -4721,7 +4992,7 @@ L015A50:;R
 	dec  b
 	jr   nz, L015A50
 	ld   a, e
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ret
 L015A6F:;C
 	ld   a, [$CCEE]
@@ -4745,8 +5016,8 @@ L015A6F:;C
 	add  a
 	ld   [$CD07], a
 	ld   [$CD08], a
-	ld   de, $DF00
-	ldh  a, [$FF97]
+	ld   de, wWorkOAM
+	ldh  a, [hWorkOAMPos]
 	add  e
 	ld   e, a
 	ld   a, d
@@ -4774,7 +5045,7 @@ L015A9C:;R
 	cp   $2E
 	jr   nz, L015A9C
 	ld   a, e
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ret
 L015AC1:;C
 	ld   a, $50

@@ -1,13 +1,13 @@
 L074000:;C
-	ldh  a, [$FF98]
+	ldh  a, [hBGMSet]
 	cp   $FF
 	jp   z, L0740A4
 	ld   b, a
-	ldh  a, [$FF9A]
-	cp   a, b
+	ldh  a, [hBGMCur]
+	cp   b
 	jp   z, L0740A4
 	ld   a, b
-	ldh  [$FF9A], a
+	ldh  [hBGMCur], a
 	add  a
 	ld   e, a
 	ld   d, $00
@@ -62,7 +62,7 @@ L074024:;R
 	ldh  [$FFF2], a
 	ld   a, $80
 	ldh  [rNR52], a
-	ldh  a, [$FF98]
+	ldh  a, [hBGMSet]
 	add  a
 	ld   c, a
 	ld   b, $00
@@ -92,9 +92,9 @@ L074081:;R
 	ld   a, $80
 	ldh  [rNR34], a
 	ld   a, $FF
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 L0740A4:;J
-	ldh  a, [$FF99]
+	ldh  a, [hSFXSet]
 	cp   $FF
 	jr   z, L0740F2
 	ld   c, a
@@ -108,12 +108,12 @@ L0740A4:;J
 	add  hl, bc
 	ld   b, [hl]
 	ldh  a, [$FFF8]
-	cp   a, b
+	cp   b
 	jr   c, L0740EE
 	ld   a, b
 	ldh  [$FFF8], a
 L0740C2:;R
-	ldh  a, [$FF99]
+	ldh  a, [hSFXSet]
 	add  a
 	ld   e, a
 	ld   d, $00
@@ -144,7 +144,7 @@ L0740DB:;X
 	ldh  [$FFF4], a
 L0740EE:;R
 	ld   a, $FF
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 L0740F2:;R
 	ldh  a, [$FFD0]
 	or   a

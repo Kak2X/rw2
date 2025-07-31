@@ -55,9 +55,15 @@ DEF TILESIZE EQU $10
 
 DEF OBJ_SIZE     EQU 4		; Size of one OBJ
 DEF OBJCOUNT_MAX EQU $28	; Max number of OBJ
+DEF OAM_SIZE     EQU OBJ_SIZE * OBJCOUNT_MAX
 ; The hardware subtracts these from the object positions before displaying them.
 DEF OBJ_OFFSET_X EQU $08
 DEF OBJ_OFFSET_Y EQU $10
+; OBJ struct
+DEF iObjY      EQU $00
+DEF iObjX      EQU $01
+DEF iObjTileId EQU $02
+DEF iObjAttr   EQU $03
 
 ; interrupt flags
 DEF IB_VBLANK        EQU 0

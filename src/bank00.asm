@@ -15,13 +15,13 @@ SECTION "Rst08", ROM0[$0008]
 	mIncJunk "L00000B"
 ; =============== RESET VECTOR $10 ===============
 SECTION "Rst10", ROM0[$0010]
-;Rst_PkgEv_RunSync:
-	jp   PkgEv_RunSync
+;Rst_TilemapEv_RunSync:
+	jp   TilemapEv_RunSync
 	mIncJunk "L000013"
 ; =============== RESET VECTOR $18 ===============
 SECTION "Rst18", ROM0[$0018]
-;Rst_PkgBarEv_RunSync:
-	jp   PkgBarEv_RunSync
+;Rst_TilemapBarEv_RunSync:
+	jp   TilemapBarEv_RunSync
 	mIncJunk "L00001B"
 ; =============== RESET VECTOR $20 ===============
 SECTION "Rst20", ROM0[$0020]
@@ -106,7 +106,7 @@ EntryPoint:
 	xor  a
 	ldh  [rLCDC], a
 	
-	; Set stack pointer at the very bottom of WRAM (lower half of $DF00)
+	; Set stack pointer at the very bottom of WRAM (lower half of wWorkOAM)
 	ld   sp, WRAM_End
 	
 	;
@@ -140,7 +140,7 @@ EntryPoint:
 	; If hWarmBootFlag already contains $55, assume warm boot
 	ld   a, $55
 	ld   hl, hWarmBootFlag	; Seek to hWarmBootFlag
-	cp   a, [hl]			; hWarmBootFlag == $55?
+	cp   [hl]			; hWarmBootFlag == $55?
 	jr   z, .warmBoot		; If so, jump (we never do)
 	ld   [hl], a			; Otherwise, write $55 there...
 	; ...and reset the RNG state.
@@ -152,12 +152,13 @@ EntryPoint:
 	ldh  [hRandSt3], a
 .warmBoot:
 
-	; BANK $01 is the default switchable bank.
-	; A bunch of subroutines assume this to be the loaded bank.
+	; BANK $01 is the default switchable bank, so it gets put into hRomBankLast.
+	; With one exception, hRomBankLast will always contain that value, so when
+	; subroutines restore the last ROM bank loaded, they assume it will point there.
 	push af
 		ld   a, $01
+		ldh  [hRomBankLast], a
 		ldh  [hRomBank], a
-		ldh  [hRomBank2], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -200,12 +201,12 @@ EntryPoint:
 	
 	; Done setting up
 	ei
-	jp   L00266D
+	jp   Game_Main
 	
 ; =============== OAMDMA_Code ===============
 ; OAMDMA routine, copied to HRAM at boot.
 OAMDMA_Code:
-	ld   a, HIGH(wWorkOAM)	; $DF00-$DF9F
+	ld   a, HIGH(wWorkOAM)	; wWorkOAM-$DF9F
 	ldh  [rDMA], a			; Send over to OAM
 	ld   a, $28				; and wait
 .wait:
@@ -247,30 +248,30 @@ EndOfFrame:
 	pop  af
 	ret
 	
-; =============== PkgEv_RunSync ===============
-; Triggers the tilemap packet write event, and waits in a loop until it has been processed.
+; =============== TilemapEv_RunSync ===============
+; Triggers the tilemap write event, and waits in a loop until it has been processed.
 ; This and the following subroutines all involve VBlank events, so they may wait multiple frames for them to return.
-PkgEv_RunSync:
+TilemapEv_RunSync:
 	push af
 		ld   a, $01
-		ld   [wPkgEv], a
+		ld   [wTilemapEv], a
 	.wait:
-		rst  $08
-		ld   a, [wPkgEv]
+		rst  $08 ; Wait Frame
+		ld   a, [wTilemapEv]
 		or   a
 		jr   nz, .wait
 	pop  af
 	ret
 
-; =============== PkgBarEv_RunSync ===============
+; =============== TilemapBarEv_RunSync ===============
 ; Triggers the tilemap life/weapon bar redraw event, and waits in a loop until it has been processed.
-PkgBarEv_RunSync:
+TilemapBarEv_RunSync:
 	push af
 		ld   a, $01
-		ld   [wPkgBarEv], a
+		ld   [wTilemapBarEv], a
 	.wait:
-		rst  $08
-		ld   a, [wPkgBarEv]
+		rst  $08 ; Wait Frame
+		ld   a, [wTilemapBarEv]
 		or   a
 		jr   nz, .wait
 	pop  af
@@ -284,7 +285,7 @@ GfxCopyEv_Wait:
 		ld   a, [wGfxEvSrcBank]
 		or   a					; Is the event still active?
 		jr   z, .done			; If not, we're done
-		rst  $08
+		rst  $08 ; Wait Frame
 		jr   .wait
 .done:
 	pop  af
@@ -297,9 +298,9 @@ Ev_WaitAll:
 	xor  a
 	ld   hl, wLvlScrollEvMode
 	or   [hl]
-	ld   hl, wPkgEv
+	ld   hl, wTilemapEv
 	or   [hl]
-	ld   hl, wPkgBarEv
+	ld   hl, wTilemapBarEv
 	or   [hl]
 	ld   hl, wShutterEvMode
 	or   [hl]
@@ -307,7 +308,7 @@ Ev_WaitAll:
 	or   [hl]
 	ret  z
 	; Otherwise, keep wasting frames
-	rst  $08
+	rst  $08 ; Wait Frame
 	jr   Ev_WaitAll
 	
 ; =============== VBlankHandler ===============
@@ -348,7 +349,7 @@ VBlankHandler:
 	
 	ld   a, [wLvlScrollEvMode]
 	or   a							; Requesting draw for scrolling the screen?
-	jr   z, .chkPkg					; If not, jump
+	jr   z, .chkBg					; If not, jump
 	
 	bit  SCREVB_SCROLLV, a			; Doing vertical scrolling? 
 	jr   z, .scrollH				; If not, jump
@@ -359,37 +360,37 @@ VBlankHandler:
 	call ScrEv_LvlScrollH
 	jp   VBlankHandler_UpdateScreen
 	
-.chkPkg:
+.chkBg:
 	;
-	; TILEMAP PACKET WRITE, generic.
+	; TILEMAP WRITE, generic.
 	; Instant.
 	;
-	ld   a, [wPkgEv]
+	ld   a, [wTilemapEv]
 	or   a							; Enabled?
-	jr   z, .chkBarPkg				; If not, jump
+	jr   z, .chkBarBg				; If not, jump
 	
-	ld   de, wPkgBuf
-	call Scr_ApplyPkg
+	ld   de, wTilemapBuf
+	call LoadTilemapDef
 	
 	xor  a
-	ld   [wPkgEv], a
+	ld   [wTilemapEv], a
 	jp   VBlankHandler_UpdateScreen
 	
-.chkBarPkg:
+.chkBarBg:
 	;
-	; TILEMAP PACKET WRITE, for redrawing the large life/weapon bars.
+	; TILEMAP WRITE, for redrawing the large life/weapon bars.
 	; Instant.
 	;
-	ld   a, [wPkgBarEv]
+	ld   a, [wTilemapBarEv]
 	or   a							; Enabled?
 	jr   z, .chkShut				; If not, jump
 	
-	ld   de, wPkgBarBuf
-	call Scr_ApplyPkg
+	ld   de, wTilemapBarBuf
+	call LoadTilemapDef
 	
 	xor  a
 	ld   [wBarDrawQueued], a		; Signal out there's no bar to draw
-	ld   [wPkgBarEv], a
+	ld   [wTilemapBarEv], a
 	jp   VBlankHandler_UpdateScreen
 	
 .chkShut:
@@ -565,7 +566,7 @@ VBlankHandler:
 	ld   [wGfxEvDestPtr_High], a
 	
 	; Restore main bank
-	ldh  a, [hRomBank2]
+	ldh  a, [hRomBank]
 	ld   [MBC1RomBank], a
 	
 VBlankHandler_UpdateScreen:
@@ -671,7 +672,7 @@ VBlankHandler_UpdateScreen:
 	ldh  [rJOYP], a
 	
 	; For (presumably?) performance reason, VBlank does not actually set the actual hJoyKeys/hJoyNewKeys values.
-	; Code that needs to poll for inputs must manually call JoyKeys_Sync to sync those values.
+	; Code that needs to poll for inputs must manually call JoyKeys_Refresh to sync those values.
 
 .end:
 	; Tick global timer
@@ -714,11 +715,11 @@ TimerHandler:
 	push bc
 	push de
 	push hl
-		; Don't alter hRomBank2 to save on some stack usage
+		; Don't alter hRomBank to save on some stack usage
 		ld   a, BANK(L074000) ; BANK $07
 		ld   [MBC1RomBank], a
 		call L074000
-		ldh  a, [hRomBank2]
+		ldh  a, [hRomBank]
 		ld   [MBC1RomBank], a
 	pop  hl
 	pop  de
@@ -726,355 +727,453 @@ TimerHandler:
 	pop  af
 	reti
 	
-L0003CC:;C
+; =============== GFXSet_Load ===============
+; Loads a set of graphics and wipes the tilemaps clean.
+;
+; Each has a specific palette assigned, as well as custom code
+; used for uploading graphics to VRAM.
+;
+; After calling the subroutine, typically you'd want to load in
+; the tilemaps as needed (ie: passing them to LoadTilemapDef).
+;
+; IN
+; - A: Set ID (GFXSET_*)
+GFXSet_Load:
+	;
+	; Stop the screen first, since we're going to write a bunch to VRAM.
+	;
 	push af
-	call L00065F
-	rst  $08
-	call L0006D9
+		call OAM_ClearAll	; Start fresh, deleting any old sprites
+		rst  $08 ; Wait Frame, to visually see the sprites being gone
+		call StopLCDOperation ; Only then stop the screen
 	pop  af
+	
+	;
+	; Apply the color palette.
+	;
 	push af
-	add  a
-	add  a
-	ld   hl, $03EF
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ldi  a, [hl]
-	ldh  [hBGP], a
-	ldi  a, [hl]
-	ldh  [hOBP0], a
-	ldi  a, [hl]
-	ldh  [hOBP1], a
+		; Index .palTbl by scene ID
+		add  a				; Each entry is 4 bytes long
+		add  a
+		ld   hl, .palTbl	; Seek to .palTbl[A]
+		ld   b, $00
+		ld   c, a
+		add  hl, bc
+		
+		; Apply the entry's palettes
+		ldi  a, [hl]	; byte0 - BG Palette
+		ldh  [hBGP], a
+		ldi  a, [hl]	; byte1 - OBJ Palette 0
+		ldh  [hOBP0], a
+		ldi  a, [hl]	; byte2 - OBJ Palette 1
+		ldh  [hOBP1], a
 	pop  af
-	call L000413
-	jp   L000682
-L0003EF: db $E4
-L0003F0: db $E4
-L0003F1: db $E4
-L0003F2: db $00;X
-L0003F3: db $E4
-L0003F4: db $1C
-L0003F5: db $C4
-L0003F6: db $00;X
-L0003F7: db $E4
-L0003F8: db $1C
-L0003F9: db $C4
-L0003FA: db $00;X
-L0003FB: db $E4
-L0003FC: db $1C
-L0003FD: db $C4
-L0003FE: db $00;X
-L0003FF: db $E4
-L000400: db $E4
-L000401: db $E4
-L000402: db $00;X
-L000403: db $E4
-L000404: db $1C
-L000405: db $E4
-L000406: db $00;X
-L000407: db $E4
-L000408: db $1C
-L000409: db $E4
-L00040A: db $00;X
-L00040B: db $E4
-L00040C: db $E4
-L00040D: db $E4
-L00040E: db $00;X
-L00040F: db $1B
-L000410: db $1C
-L000411: db $E4
-L000412: db $00;X
-L000413:;C
-	rst  $00
-L000414: db $26
-L000415: db $04
-L000416: db $51
-L000417: db $04
-L000418: db $7C
-L000419: db $04
-L00041A: db $B0
-L00041B: db $04
-L00041C: db $08
-L00041D: db $05
-L00041E: db $3C
-L00041F: db $05
-L000420: db $67
-L000421: db $05
-L000422: db $86
-L000423: db $05
-L000424: db $D2
-L000425: db $05
-L000426:;I
+	
+	;
+	; Run the set-specific GFX loader code
+	;
+	call .exec
+	
+	;
+	; With the GFX loaded, clear the tilemaps using the first blank tile found.
+	;
+	jp   ClearTilemaps
+	
+; =============== .palTbl ===============
+; Palettes associated with each set of graphics.	
+.palTbl:
+	;     BG ,OBJ0,OBJ1, PAD
+.set0: db $E4, $E4, $E4, $00 ; GFXSET_TITLE
+.set1: db $E4, $1C, $C4, $00 ; GFXSET_STAGESEL
+.set2: db $E4, $1C, $C4, $00 ; GFXSET_PASSWORD
+.set3: db $E4, $1C, $C4, $00 ; GFXSET_LEVEL
+.set4: db $E4, $E4, $E4, $00 ; GFXSET_GETWPN
+.set5: db $E4, $1C, $E4, $00 ; GFXSET_CASTLE
+.set6: db $E4, $1C, $E4, $00 ; GFXSET_STATION
+.set7: db $E4, $E4, $E4, $00 ; GFXSET_GAMEOVER
+.set8: db $1B, $1C, $E4, $00 ; GFXSET_SPACE
+
+; =============== .exec ===============
+; Jump table to set-specific init code.
+; IN
+; - A: Set ID (GFXSET_*)
+.exec:
+	rst  $00 ; DynJump
+	dw LoadGFX_Title       ; GFXSET_TITLE
+	dw LoadGFX_StageSel    ; GFXSET_STAGESEL
+	dw LoadGFX_Password    ; GFXSET_PASSWORD
+	dw LoadGFX_Level       ; GFXSET_LEVEL
+	dw LoadGFX_GetWpn      ; GFXSET_GETWPN
+	dw LoadGFX_WilyCastle  ; GFXSET_CASTLE
+	dw LoadGFX_WilyStation ; GFXSET_STATION
+	dw LoadGFX_GameOver    ; GFXSET_GAMEOVER
+	dw LoadGFX_Space       ; GFXSET_SPACE
+	
+; The graphics being loaded are sometimes cropped from larger graphic sets.
+; For example, GFX_TitleCursor is directly inside GFX_StageSel,
+; while GFX_StageSel itself loads less tiles in the password screen code.
+	
+; =============== LoadGFX_Title ===============
+LoadGFX_Title:
 	push af
-	ld   a, $0A
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_TitleCursor) ; BANK $0A
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $7280
-	ld   de, $8000
-	ld   bc, $0080
-	call L0006B9
-	ld   hl, $6800
+	
+	; !!! PARTIAL
+	ld   hl, GFX_TitleCursor	; HL = Source ptr
+	ld   de, $8000				; DE = Destination ptr
+	ld   bc, $0080				; BC = Bytes to copy
+	call CopyMemory				; Go!
+	
+	ld   hl, GFX_Title
 	ld   de, $9000
 	ld   bc, $0800
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L000451:;I
+	
+; =============== LoadGFX_StageSel ===============	
+LoadGFX_StageSel:
 	push af
-	ld   a, $0A
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_StageSel) ; BANK $0A
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $7000
-	ld   de, $8000
+	
+	; GFX_StageSel contains both the BG and OBJ graphics, so it needs to be loaded twice.
+
+	ld   hl, GFX_StageSel
+	ld   de, $8000			; For OBJ
 	ld   bc, $0800
-	call L0006B9
-	ld   hl, $7000
-	ld   de, $9000
+	call CopyMemory
+	
+	ld   hl, GFX_StageSel
+	ld   de, $9000			; For BG
 	ld   bc, $0800
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L00047C:;I
+	
+; =============== LoadGFX_Password ===============	
+LoadGFX_Password:
 	push af
-	ld   a, $0A
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_StageSel) ; BANK $0A
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $7000
+	
+	; !!! PARTIAL (crops out boss pics)
+	ld   hl, GFX_StageSel
 	ld   de, $9000
 	ld   bc, $0300
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ld   a, $09
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_SmallFont) ; BANK $09
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $7800
+	
+	ld   hl, GFX_SmallFont
 	ld   de, $9400
 	ld   bc, $0200
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L0004B0:;I
-	ld   hl, ActS_GFXReqTbl
+	
+; =============== LoadGFX_Level ===============
+; GFX loader for levels.
+; This is an unique one, as it needs to load different graphics depending on the current level.
+LoadGFX_Level:
+	
+	;
+	; First, load the player graphics.
+	; These are always at GFX_Player, but for some reason, its pointer is defined 
+	; in the actor art set table, as its first entry.
+	;
+	ld   hl, ActS_GFXSetTbl		; Seek to first table entry
 	push af
-	ldi  a, [hl]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldi  a, [hl]			; Read bank number ($0B), seek to high byte of art pointer
+		ldh  [hRomBank], a		
+		ld   [MBC1RomBank], a	; Bankswitch
 	pop  af
-	ld   a, [hl]
+	
+	ld   a, [hl]				; HL = Source ptr (GFX_Player)
 	ld   h, a
 	ld   l, $00
-	ld   de, $8000
-	ld   bc, $0800
-	call L0006B9
-	ld   hl, $3BFE
-	ld   a, [$CF0A]
+	ld   de, $8000				; DE = Destination ptr (1st section)
+	ld   bc, $0800				; BC = Bytes to copy
+	call CopyMemory
+	
+	;
+	; Load the level graphics.
+	; These are defined in a separate table using the same format as ActS_GFXSetTbl,
+	; except they are indexed by level ID and these graphics are $500 bytes long.
+	;
+	ld   hl, Lvl_GFXSetTbl		; HL = Table base ptr
+	ld   a, [wLvlId]			; BC = wLvlId * 2
 	sla  a
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
+	add  hl, bc					; Index it
+	
 	push af
-	ldi  a, [hl]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldi  a, [hl]			; Read bank number (byte0)
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a	; Bankswitch
 	pop  af
-	ld   a, [hl]
+	
+	ld   a, [hl]				; Read ptr high byte (byte1)
 	ld   h, a
-	ld   l, $00
-	ld   de, $9000
-	ld   bc, $0500
-	call L0006B9
+	ld   l, $00					; Low byte is hardcoded $00
+	ld   de, $9000				; DE = Destination ptr (3rd section)
+	ld   bc, $0500				; BC = Bytes to copy
+	call CopyMemory
+	
+	;
+	; Load shared graphics (status bar, ...)
+	;
 	push af
-	ld   a, $0A
-	ldh  [hRomBank2], a
+	ld   a, BANK(GFX_LvlShared) ; BANK $0A
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $7A00
+	ld   hl, GFX_LvlShared
 	ld   de, $9500
 	ld   bc, $0300
-	call L0006B9
+	call CopyMemory
+	
+	; We're done, restore the default bank
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L000508:;I
+	
+; =============== LoadGFX_GetWpn ===============
+LoadGFX_GetWpn:
 	push af
-	ld   a, $0B
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_GetWpn) ; BANK $0B
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $5800
+	ld   hl, GFX_GetWpn
 	ld   de, $9000
 	ld   bc, $0800
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ld   a, $09
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_SmallFont) ; BANK $09
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $7800
+	ld   hl, GFX_SmallFont
 	ld   de, $8C00
 	ld   bc, $0200
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L00053C:;I
+	
+; =============== LoadGFX_WilyCastle ===============
+LoadGFX_WilyCastle:
 	push af
-	ld   a, $0C
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_Space0OBJ) ; BANK $0C
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $6800
+	
+	ld   hl, GFX_Space0OBJ
 	ld   de, $8000
 	ld   bc, $0800
-	call L0006B9
-	ld   hl, $4000
+	call CopyMemory
+	
+	ld   hl, GFX_WilyCastle
 	ld   de, $8800
 	ld   bc, $1000
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L000567:;I
+	
+; =============== LoadGFX_WilyCastle ===============
+LoadGFX_WilyStation:
 	push af
-	ld   a, $0C
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_WilyStation) ; BANK $0C
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $5000
+	
+	ld   hl, GFX_WilyStation
 	ld   de, $8800
 	ld   bc, $1000
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L000586:;I
+	
+; =============== LoadGFX_WilyCastle ===============
+LoadGFX_GameOver:
 	push af
-	ld   a, $0B
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_GameOverFont) ; BANK $0B
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $7C00
+	
+	ld   hl, GFX_GameOverFont
 	ld   de, $8400
 	ld   bc, $0200
-	call L0006B9
-	ld   hl, $7C00
+	call CopyMemory
+	
+	ld   hl, GFX_GameOverFont
 	ld   de, $9400
 	ld   bc, $0200
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ld   a, $0A
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_Unused_HexFont) ; BANK $0A
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $7E00
+	
+	; [TCRF] Why is this being loaded on the game over screen ... ?
+	
+	ld   hl, GFX_Unused_HexFont
 	ld   de, $8600
 	ld   bc, $0200
-	call L0006B9
-	ld   hl, $7E00
+	call CopyMemory
+	
+	ld   hl, GFX_Unused_HexFont
 	ld   de, $9600
 	ld   bc, $0200
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L0005D2:;I
+	
+; =============== LoadGFX_Space ===============
+LoadGFX_Space:
 	push af
-	ld   a, $0B
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_Space1OBJ) ; BANK $0B
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $4800
+	
+	ld   hl, GFX_Space1OBJ
 	ld   de, $8800
 	ld   bc, $0800
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ld   a, $0C
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(GFX_Space0OBJ) ; BANK $0C
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $6800
+	
+	ld   hl, GFX_Space0OBJ
 	ld   de, $8000
 	ld   bc, $0800
-	call L0006B9
-	ld   hl, $6000
+	call CopyMemory
+	
+	ld   hl, GFX_Space
 	ld   de, $9000
 	ld   bc, $0800
-	call L0006B9
+	call CopyMemory
+	
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L000612:;C
-	ld   b, $08
-L000614:;R
-	ld   a, $D8
+	
+; =============== FlashBGPal ===============
+; Flashes the BG palette 8 times, every 2 frames.
+; This takes exclusive control for 32 frames.
+FlashBGPal:
+	; In a loop, flash between $D8 and $E4, ending with the latter when we return.
+	; This does not keep track or restore the existing palette, instead it relies on the 
+	; default BG palette being basically always $E4 (see GFXSet_Load.palTbl).
+	ld   b, $08		; B = Flashes remaining
+.loop:
+	ld   a, $D8		; Flash palette
 	ldh  [hBGP], a
+	rst  $08 		; Wait 2 frames
 	rst  $08
-	rst  $08
-	ld   a, $E4
+	ld   a, $E4		; Restore palette
 	ldh  [hBGP], a
+	rst  $08		; Wait 2 frames
 	rst  $08
-	rst  $08
-	dec  b
-	jr   nz, L000614
+	dec  b			; Are we done?
+	jr   nz, .loop	; If not, loop
 	ret
-L000624:;C
-	ld   c, $09
-L000626:;R
-	ld   b, $3C
-L000628:;R
+	
+; =============== FlashBGPalLong ===============
+; Randomly flashes the BG palette for 9 seconds every 4 frames, taking exclusive control.
+; Exclusively used by the Wily Castle cutscene.
+FlashBGPalLong:
+	ld   c, $09		; For 9 seconds...
+.loop:
+	ld   b, 60		; For each frame...
+.secLoop:
 	push bc
-	ldh  a, [hTimer]
-	and  $03
-	jr   nz, L00063D
-	ld   b, $E4
-	call Rand
-	cp   $20
-	jr   nc, L00063A
-	ld   b, $C0
-L00063A:;R
-	ld   a, b
-	ldh  [hBGP], a
-L00063D:;R
-	rst  $08
+		
+		; Every 4 frames...
+		ldh  a, [hTimer]
+		and  $03			; hTimer % 4 != 0?
+		jr   nz, .wait		; If so, skip
+		
+		; ... 1/8 chance of flashing the palette
+		ld   b, $E4			; B = Normal palette
+		call Rand			; A = Rand()
+		cp   $20			; A >= $20?
+		jr   nc, .setPal	; If so, skip
+		ld   b, $C0			; B = Flashed palette
+	.setPal:
+		ld   a, b			; Update the BG palette
+		ldh  [hBGP], a
+		
+	.wait:
+		rst  $08 ; Wait Frame
 	pop  bc
-	dec  b
-	jr   nz, L000628
-	dec  c
-	jr   nz, L000626
+	dec  b					; Second ticked down?
+	jr   nz, .secLoop		; If not, jump
+	dec  c					; All seconds ticked down?
+	jr   nz, .loop			; If not, jump
 	ret
 	
 ; =============== GfxCopy_Req ===============
@@ -1098,84 +1197,134 @@ GfxCopy_Req:
 	ld   a, b
 	ld   [wGfxEvSrcBank], a
 	ret
+
+; =============== OAM_ClearAll ===============
+; Zeroes out the entirety of the OAM mirror.
+OAM_ClearAll:
+	ld   hl, wWorkOAM
+	ld   bc, OAM_SIZE
+	jr   ZeroMemory
 	
-L00065F:;C
-	ld   hl, $DF00
-	ld   bc, $00A0
-	jr   L00067A
-L000667:;C
-	ldh  a, [$FF97]
-	cp   $A0
-	ret  z
-	ld   l, a
-	ld   h, $DF
-L00066F:;R
-	xor  a
-	ldi  [hl], a
-	inc  l
+; =============== OAM_ClearRest ===============
+; Zeroes out the remaining/unused part of the OAM mirror.
+OAM_ClearRest:
+	; Don't do anything if it's filled
+	ldh  a, [hWorkOAMPos]
+	cp   OAM_SIZE			; Pointing to the end of WorkOAM?
+	ret  z					; If so, return
+	
+	; Otherwise, clear memory from (wWorkOAM+hWorkOAMPos) to (hWorkOAMPos+OAM_SIZE)
+	ld   l, a				; HL = Starting address
+	ld   h, HIGH(wWorkOAM)
+.loop:
+	xor  a					; A = Byte to write
+	ldi  [hl], a			; Clear first OBJ byte only (that's enough to disable the sprite), seek to next
+	inc  l					; Skip to next entry
 	inc  l
 	inc  l
 	ld   a, l
-	cp   $A0
-	jr   c, L00066F
+	cp   OAM_SIZE			; Reached the end of WorkOAM?
+	jr   c, .loop			; If not, loop
 	ret
-L00067A:;JCR
+	
+; =============== ZeroMemory ===============
+; Zeroes out the specified memory range.
+; IN
+; - HL: Starting address
+; - BC: Number of bytes
+ZeroMemory:
 	xor  a
-	ldi  [hl], a
-	dec  bc
+	ldi  [hl], a		; Clear address, seek to next
+	dec  bc				; BytesLeft--
 	ld   a, b
-	or   c
-	jr   nz, L00067A
+	or   c				; BytesLeft != 0?
+	jr   nz, ZeroMemory	; If so, loop
 	ret
-L000682:;J
+
+; =============== ClearTilemaps ===============
+; Clears the BG and WINDOW tilemaps using the first blank tile found.
+ClearTilemaps:
+	; Since we're wiping them clear...
 	call Scroll_Reset
-	ld   de, $9000
-	ld   c, $00
-L00068A:;R
-	ld   a, [de]
-	or   a
-	jr   nz, L0006A8
-	ld   l, e
+	
+	;
+	; Find the first fully blank tile (all 0s), from tile $00 to $7F.
+	; This makes the subroutine "just work" regardless of whatever graphics are stored in VRAM,
+	; and without having to pass in a tile ID manually.
+	;
+	ld   de, $9000		; HL = Ptr to tile graphics
+	ld   c, $00			; C = Respective tile ID
+.loop:
+
+	; If the first byte of the tile is non-zero, it's not blank (don't waste time on the loop)
+	ld   a, [de]		; Read first byte
+	or   a				; Is the it non-zero?
+	jr   nz, .seekNext	; If so, jump
+	
+	; Otherwise, check every byte of the tile.
+	ld   l, e			; So copy it to HL
 	ld   h, d
-	ld   b, $10
-L000692:;R
-	ldi  a, [hl]
-	or   a
-	jr   nz, L0006A8
-	dec  b
-	jr   nz, L000692
-	ld   e, c
-L00069A:;R
-	ld   hl, $9800
-	ld   bc, $0800
-L0006A0:;R
+	ld   b, TILESIZE	; B = Bytes to check
+.tcLoop:
+	ldi  a, [hl]		; Read byte
+	or   a				; != 0?
+	jr   nz, .seekNext	; If so, it's not blank
+	dec  b				; Checked all bytes?
+	jr   nz, .tcLoop	; If not, loop
+	
+	;--
+	;
+	; Found a blank tile!
+	; Overwrite all tilemaps with it.
+	;
+.found:
+	ld   e, c			; E = Blank tile ID
+.clrTilemaps:
+	ld   hl, BGMap_Begin				; HL = Destination ptr
+	ld   bc, WINDOWMap_End-BGMap_Begin	; BC = Bytes to write
+.clrLoop:
 	ld   a, e
-	ldi  [hl], a
-	dec  bc
+	ldi  [hl], a		; Write blank tile, DestPtr++
+	dec  bc				; BytesLeft--
 	ld   a, b
-	or   c
-	jr   nz, L0006A0
+	or   c				; Overwrote everything?
+	jr   nz, .clrLoop	; If not, loop
 	ret
-L0006A8:;R
-	inc  c
-	ld   a, e
-	add  $10
+	;--
+	
+.seekNext:
+	; Tile isn't blank, seek to the next.
+	; TileId++
+	inc  c				
+	; VramPtr += TILESIZE
+	ld   a, e			
+	add  TILESIZE
 	ld   e, a
 	ld   a, d
 	adc  a, $00
 	ld   d, a
-	cp   $98
-	jr   nz, L00068A
+	
+	; If we haven't found any blank tile between $9000-$9800,
+	; peter out by using tile ID $80 ($8800).
+	cp   HIGH(Tiles_End)	; Reached the end of the GFX area?
+	jr   nz, .loop			; If not, continue searching
 	ld   e, $80
-	jr   L00069A
-L0006B9:;JCR
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	dec  bc
+	jr   .clrTilemaps
+	
+; =============== CopyMemory ===============
+; Copies the specified amount of bytes from the source to the destination.
+; IN
+; - HL: Source ptr
+; - DE: Destination ptr
+; - BC: Bytes to copy
+CopyMemory:
+	ldi  a, [hl]	; Read src, Src++
+	ld   [de], a	; Write to dest
+	inc  de			; Dest++
+	dec  bc			; BytesLeft--
 	ld   a, b
-	or   c
-	jr   nz, L0006B9
+	or   c				; Copied everything?
+	jr   nz, CopyMemory	; If not, jump
 	ret
 	
 ; =============== Scroll_Reset ===============
@@ -1193,34 +1342,48 @@ Scroll_Reset:
 	ldh  [hScrollY], a
 	ret
 	
-L0006D2:;C
+; =============== StartLCDOperation ===============
+; Enables the screen output.
+StartLCDOperation:
 	ldh  a, [rLCDC]
-	or   $80
+	or   LCDC_ENABLE
 	ldh  [rLCDC], a
 	ret
-L0006D9:;C
-	ldh  a, [rIE]
-	ldh  [$FF8C], a
-	res  0, a
+	
+; =============== StopLCDOperation ===============
+; Disables the screen output in a safe way.
+;
+; This will wait for VBlank before stopping the LCD.
+StopLCDOperation:
+	ldh  a, [rIE]		; Backup the interrupt enable flag
+	ldh  [hIE], a	
+	
+	res  IB_VBLANK, a	; Prevent the VBlank interrupt from triggering
 	ldh  [rIE], a
-L0006E1:;R
-	ldh  a, [rLY]
-	cp   $91
-	jr   nz, L0006E1
-	ldh  a, [rLCDC]
-	res  7, a
+.waitVBlank:
+	ldh  a, [rLY]		; Wait for it...
+	cp   LY_VBLANK+1
+	jr   nz, .waitVBlank
+	
+	ldh  a, [rLCDC]		; Disable the LCD
+	res  LCDCB_ENABLE, a
 	ldh  [rLCDC], a
-	ldh  a, [$FF8C]
+	
+	ldh  a, [hIE]		; Restore VBlank interrupt
 	ldh  [rIE], a
 	ret
 	
-; =============== Scr_ApplyPkg ===============
-; Applies a list of packets/update requests to the tilemap.
+; =============== LoadTilemapDef ===============
+; Applies one or more tilemaps definitions (TilemapDef) to VRAM. 
+;
+; TODO!!! This is also used to load a tiny amount of graphics occasionally.
+;         Depending on how often it gets done, this might need to get renamed.
+;
 ; IN
-; - DE: Ptr to multiple packets stored in sequence, terminated by a null byte.
-Scr_ApplyPkg:
+; - DE: Ptr to one or more TilemapDef stored in sequence, terminated by a null byte.
+LoadTilemapDef:
 	
-	; A null byte marks the end of the packet list
+	; A null byte marks the end of the TilemapDef list
 	ld   a, [de]
 	or   a
 	ret  z
@@ -1232,27 +1395,33 @@ Scr_ApplyPkg:
 	ld   l, a
 	inc  de
 	
-	; byte2: Number of bytes to write (capped to $3F)
+	; byte2: Writing mode + Number of bytes to write
+	;        FORMAT: RDCCCCCC
+	;        - C: Number of bytes to write ($00-$3F)
+	;        - D: Writing direction (if clear, Right; if set, Down)
+	;        - R: Repeat mode (if clear, <C> bytes should be copied from src to dest;
+	;                          if set, the next byte should be repeated <C> tiles)
+	
+	; B = Number of bytes to write
 	ld   a, [de]
 	and  $3F
 	ld   b, a
 	
-	; byte3: Writing mode (in upper two bits)
-	; Determines the following:
-	; - Writing direction (right or down)
-	; - If <byte2> bytes should be copied from src to dest, or if a single byte from src should be repeated <byte2> times.
+	; A = Writing flags
 	; To simplify the if/else chain, these will be >> 6'd to the bottom
-	ld   a, [de]
+	ld   a, [de]		
 	inc  de
 	rlca
 	rlca 
-	and  $03			; Filter out other bits
+	and  $03			; Filter out count bits
+	
+	; byte3+: payload
 	
 	;
 	; Which writing mode are we using?
 	;
 .chkModeMR:
-	; PKG_MVRIGHT, PKG_NOREPEAT
+	; BG_MVRIGHT, BG_NOREPEAT
 	jr   nz, .chkModeRR	; Mode == 0? If not, jump
 .loop0:
 	ld   a, [de]		; A = Byte from src
@@ -1260,10 +1429,10 @@ Scr_ApplyPkg:
 	inc  de				; SrcPtr++
 	dec  b				; Are we done?
 	jr   nz, .loop0		; If not, loop
-	jr   Scr_ApplyPkg	; Otherwise, process the next packet
+	jr   LoadTilemapDef	; Otherwise, process the next TilemapDef
 	
 .chkModeRR:
-	; PKG_MVRIGHT, PKG_REPEAT
+	; BG_MVRIGHT, BG_REPEAT
 	dec  a				; Mode == 1?
 	jr   nz, .chkModeMD	; If not, jump
 	ld   a, [de]		; A = Single byte from src to repeat
@@ -1272,10 +1441,10 @@ Scr_ApplyPkg:
 	ldi  [hl], a		; Write to dest, seek ptr right
 	dec  b				; Are we done?
 	jr   nz, .loop1		; If not, loop
-	jr   Scr_ApplyPkg	; Otherwise, process the next packet
+	jr   LoadTilemapDef	; Otherwise, process the next TilemapDef
 	
 .chkModeMD:
-	; PKG_MVDOWN, PKG_NOREPEAT
+	; BG_MVDOWN, BG_NOREPEAT
 	dec  a				; Mode == 2?
 	jr   nz, .chkMode3	; If not, jump
 .loop2:
@@ -1290,10 +1459,10 @@ Scr_ApplyPkg:
 	;--
 	dec  b				; Are we done?
 	jr   nz, .loop2		; If not, loop
-	jr   Scr_ApplyPkg	; Otherwise, process the next packet
+	jr   LoadTilemapDef	; Otherwise, process the next TilemapDef
 	
 .chkMode3:
-	; PKG_MVDOWN, PKG_REPEAT
+	; BG_MVDOWN, BG_REPEAT
 .loop3:
 	ld   a, [de]		; A = Read same byte from src (could have been done outside the loop)
 	ld   [hl], a		; Write to dest
@@ -1306,7 +1475,7 @@ Scr_ApplyPkg:
 	dec  b				; Are we done?
 	jr   nz, .loop3		; If not, loop
 	inc  de				; DestPtr++ now that the repeat is done
-	jr   Scr_ApplyPkg	; Next packet
+	jr   LoadTilemapDef	; Next TilemapDef
 	
 ; =============== Unused_WaitSeconds ===============
 ; [TCRF] Unreferenced code.
@@ -1327,14 +1496,14 @@ Unused_WaitSeconds:
 ; IN
 ; - A: Number of frames to wait
 WaitFrames:
-	rst  $08
+	rst  $08 ; Wait Frame
 	dec  a
 	jr   nz, WaitFrames
 	ret
 	
-; =============== JoyKeys_Sync ===============
+; =============== JoyKeys_Refresh ===============
 ; Updates the joypad input fieds from the updated polled value.
-JoyKeys_Sync:
+JoyKeys_Refresh:
 	ldh  a, [hJoyKeysRaw]	; B = Polled keys the current frame
 	ld   b, a
 	
@@ -1467,10 +1636,10 @@ L0007C5: db $C9;X
 L0007C6:;C
 	push af
 	ld   a, $05
-	ldh  [hRomBank2], a
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	ld   hl, $4000
 	ld   b, $00
 	sla  a
@@ -1507,7 +1676,7 @@ L0007F4:;R
 	xor  a
 	ld   hl, $DC00
 	ld   bc, $0100
-	call L00067A
+	call ZeroMemory
 	jr   L000818
 L00080B:;R
 	ld   l, $00
@@ -1521,16 +1690,16 @@ L00080D:;R
 	inc  l
 	jr   nz, L00080D
 L000818:;R
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	ld   b, a
 	ld   c, $00
 	ld   hl, $7600
 	add  hl, bc
 	ld   de, $CA00
 	ld   bc, $0100
-	call L0006B9
+	call CopyMemory
 	ld   hl, $0B78
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	add  a
 	ld   b, $00
 	ld   c, a
@@ -1566,7 +1735,7 @@ L000844:;R
 	dec  b
 	jr   nz, L000844
 	ld   hl, $0B78
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	add  a
 	ld   b, $00
 	ld   c, a
@@ -1578,9 +1747,9 @@ L000844:;R
 	add  hl, de
 	ld   de, $CC00
 	ld   bc, $0019
-	call L0006B9
+	call CopyMemory
 	ld   hl, $0B78
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	add  a
 	ld   b, $00
 	ld   c, a
@@ -1592,9 +1761,9 @@ L000844:;R
 	add  hl, de
 	ld   de, wRoomTrsU
 	ld   bc, $0019
-	call L0006B9
+	call CopyMemory
 	ld   hl, $0B78
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	add  a
 	ld   b, $00
 	ld   c, a
@@ -1606,15 +1775,15 @@ L000844:;R
 	add  hl, de
 	ld   de, wRoomTrsD
 	ld   bc, $0019
-	call L0006B9
+	call CopyMemory
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
+	ldh  a, [hRomBankLast]
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
 L0008B6:;C
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	add  a
 	ld   hl, $3C24
 	ld   b, $00
@@ -1626,14 +1795,14 @@ L0008B6:;C
 	ld   a, [hl]
 	ldh  [$FFB7], a
 	ld   b, $00
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	cp   $07
 	jr   nz, L0008D4
 	ld   b, $80
 L0008D4:;R
 	ld   a, b
 	ld   [$CF67], a
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	ld   hl, $3C6A
 	ld   b, $00
 	ld   c, a
@@ -1699,7 +1868,7 @@ L000923:;R
 	cp   $08
 	jr   nz, L000921
 	ld   de, $0BB2
-	jp   Scr_ApplyPkg
+	jp   LoadTilemapDef
 L00094C:;C
 	ldh  a, [hScrollX]
 	sub  $20
@@ -2400,23 +2569,35 @@ L000BE9: db $20
 L000BEA: db $54
 L000BEB: db $5D
 L000BEC: db $00
-L000BED:;C
+
+; =============== Pl_ResetAllProgress ===============
+; Resets all progress from the game.
+; ie: when starting a new game
+Pl_ResetAllProgress:
 	xor  a
-	ld   [$CFDE], a
-	ld   [$CFDD], a
-	ld   [$CFE9], a
-L000BF7:;C
+	ld   [wWpnUnlock0], a
+	ld   [wWpnUnlock1], a
+	ld   [wETanks], a
+	
+; =============== Pl_ResetLivesAndWpnAmmo ===============
+; Resets the player's lives and all ammo.
+; ie: after entering a password or continuing from a game over
+Pl_ResetLivesAndWpnAmmo:
 	ld   a, $02
-	ld   [$CFE8], a
-L000BFC:;C
-	ld   a, $98
-	ld   hl, $CFD1
-	ld   b, $0C
-L000C03:;R
-	ldi  [hl], a
+	ld   [wLives], a
+	
+; =============== Pl_RefillAllWpn ===============
+; Refills all of the weapon ammo.
+Pl_RefillAllWpn:
+	ld   a, BAR_MAX							; A = Max ammo value
+	ld   hl, wWpnAmmo_Start					; HL = From the first weapon
+	ld   b, wWpnAmmo_End - wWpnAmmo_Start	; B = Bytes to reset
+.loop:
+	ldi  [hl], a	; Write it over in a loop
 	dec  b
-	jr   nz, L000C03
+	jr   nz, .loop
 	ret
+	
 L000C08:;C
 	ld   a, $12
 	ld   [$CF1D], a
@@ -2437,7 +2618,7 @@ L000C08:;C
 	ld   [$CF45], a
 	ld   [$CF44], a
 	ld   [$CF49], a
-	ld   [$CFDF], a
+	ld   [wWpnSel], a
 	ld   [$CFF1], a
 	ld   [$CF5E], a
 	ld   [$CF5F], a
@@ -2446,11 +2627,11 @@ L000C08:;C
 	ld   [$CF6C], a
 	ld   [$CF70], a
 	ld   a, $98
-	ld   [$CFD0], a
-	ld   hl, $CFDD
+	ld   [wPlHealth], a
+	ld   hl, wWpnUnlock1
 	xor  a
 	ld   [hl], a
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	bit  4, a
 	jr   z, L000C67
 	set  0, [hl]
@@ -2486,10 +2667,10 @@ L000C99: db $50
 L000C9A: db $60;X
 L000C9B: db $58
 L000C9C:;C
-	ld   a, [$CFD0]
+	ld   a, [wPlHealth]
 	ld   c, $00
 	call L003A25
-	ld   a, [$CFE8]
+	ld   a, [wLives]
 	call L003A9A
 	rst  $18
 	call ActS_LoadGFXForRoom
@@ -2504,7 +2685,7 @@ L000CB0:;C
 	or   a
 	jp   z, L000DEC
 	dec  a
-	rst  $00
+	rst  $00 ; DynJump
 L000CC3: db $CD
 L000CC4: db $0C
 L000CC5: db $1A
@@ -2575,7 +2756,7 @@ L000D27:;R
 	ld   a, $01
 	ld   [wShutterEvMode], a
 	ld   a, $0A
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	jp   L000E4C
 L000D42:;R
 	ld   a, $28
@@ -2625,7 +2806,7 @@ L000D8E:;R
 	ld   a, $02
 	ld   [wShutterEvMode], a
 	ld   a, $0A
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	jp   L000E4C
 L000DA9:;R
 	ld   b, $30
@@ -2717,7 +2898,7 @@ L000E4C:;J
 	ldh  [hJoyNewKeys], a
 L000E51:;R
 	ld   a, [$CF1D]
-	rst  $00
+	rst  $00 ; DynJump
 L000E55: db $8D
 L000E56: db $0E
 L000E57: db $68
@@ -3242,7 +3423,7 @@ L00128F:;J
 	or   a
 	jp   nz, L001AE9
 	ld   a, $01
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	jp   L001AE9
 L0012A4:;I
 	call L014000 ; BANK $01
@@ -3802,7 +3983,7 @@ L001707:;I
 	jp   L001AE9
 L00171E:;R
 	ld   a, $0C
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	xor  a
 	ld   [$CF1D], a
 	ret
@@ -3827,7 +4008,7 @@ L001738:;I
 	jp   L001AE9
 L00174D:;R
 	ld   a, $0D
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ld   hl, $CF1D
 	inc  [hl]
 	jp   L001AE9
@@ -3863,7 +4044,7 @@ L00177E:;I
 	jp   L001AE9
 L001793:;R
 	ld   a, $0D
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ld   hl, $CF1D
 	inc  [hl]
 	jp   L001AE9
@@ -3872,7 +4053,7 @@ L00179E:;I
 	ld   [$CF60], a
 	ret
 L0017A5:;J
-	ldh  a, [$FFF9]
+	ldh  a, [hInvulnCheat]
 	or   a
 	jr   z, L0017BC
 L0017AA: db $3E;X
@@ -3903,7 +4084,7 @@ L0017BC:;R
 	ld   [$CF60], a
 	jp   L001AE9
 L0017D2:;C
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	cp   $04
 	ret  nz
 	xor  a
@@ -4352,7 +4533,7 @@ L001B1A:;R
 L001B22:;R
 	push af
 	ld   a, $03
-	ldh  [hRomBank2], a
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, $4900
@@ -4365,7 +4546,7 @@ L001B22:;R
 	ld   a, [hl]
 	ld   d, a
 	ld   h, $DF
-	ldh  a, [$FF97]
+	ldh  a, [hWorkOAMPos]
 	ld   l, a
 	ld   a, [de]
 	or   a
@@ -4400,7 +4581,7 @@ L001B4A:;R
 	dec  b
 	jr   nz, L001B4A
 	ld   a, l
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	jr   L001B94
 L001B6D:;R
 	ld   a, [wPlRelY]
@@ -4430,11 +4611,11 @@ L001B6D:;R
 	dec  b
 	jr   nz, L001B6D
 	ld   a, l
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 L001B94:;R
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
+	ldh  a, [hRomBankLast]
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 L001B9D:;J
@@ -4454,7 +4635,7 @@ L001B9D:;J
 	ld   a, [$CF31]
 	ld   c, a
 	ld   h, $DF
-	ldh  a, [$FF97]
+	ldh  a, [hWorkOAMPos]
 	ld   l, a
 	ld   a, [$CF36]
 	sub  $07
@@ -4469,7 +4650,7 @@ L001B9D:;J
 	ld   a, [$CF67]
 	ldi  [hl], a
 	ld   a, l
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ret
 L001BD6: db $62
 L001BD7: db $61
@@ -4481,7 +4662,7 @@ L001BD9:;C
 	ld   [$CF37], a
 	ld   hl, $CD00
 	ld   bc, $0200
-	jp   L00067A
+	jp   ZeroMemory
 L001BEB:;C
 	ld   d, $C8
 	ld   hl, $CD00
@@ -4508,7 +4689,7 @@ L001C00:;R
 	xor  a
 	ld   [$CFF1], a
 	ld   [$CF6C], a
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	cp   $04
 	ret  z
 	xor  a
@@ -4780,7 +4961,7 @@ L001D57:;R
 	ld   [hl], a
 	push af
 	ld   a, $03
-	ldh  [hRomBank2], a
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   a, [$CF2D]
@@ -4814,8 +4995,8 @@ L001D93:;R
 	ld   [de], a
 	pop  hl
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
+	ldh  a, [hRomBankLast]
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
@@ -4826,7 +5007,7 @@ ActS_LoadGFXForRoom:
 
 	;
 	; Each column in a level can be associated to a potential set of actor graphics,
-	; with the table at wLvlGFXReqTbl maps every column to an art request ID.
+	; with the table at wLvlGFXReqTbl mapping every column to an art request ID.
 	;
 	; This subroutine scans a room worth of columns, loading the first set found.
 	;
@@ -4852,26 +5033,26 @@ ActS_LoadGFXForRoom:
 	or   a
 	jr   nz, .nextCol
 	
-	; Skip if there's no request for this column
+	; Skip if there's no art set for this column
 	ld   h, HIGH(wLvlGFXReqTbl)
 	ld   a, [hl]
 	or   a
 	jr   z, .nextCol
 	
 ; IN
-; - A: GFX request ID
+; - A: Actor GFX set ID
 .tryLoadBySetId:
 	ld   hl, wActGfxId
-	cp   a, [hl]		; Requesting the same set as last time?
+	cp   [hl]		; Requesting the same set as last time?
 	ret  z				; If so, return (graphics already loaded)
 	
 ; IN
-; - A: GFX request ID
+; - A: Actor GFX set ID
 .loadBySetId:
 	ld   [wActGfxId], a	; Mark as the currently loaded set
 	
-	; Index the global request table and read out the settings
-	ld   hl, ActS_GFXReqTbl
+	; Index the set table and read out its entry
+	ld   hl, ActS_GFXSetTbl
 	sla  a				; 2 bytes/entry
 	ld   b, $00
 	ld   c, a
@@ -4986,7 +5167,7 @@ L001E6C:;R
 	or   a
 	jr   z, L001E75
 	inc  c
-	cp   a, e
+	cp   e
 	jr   nz, L001E75
 	inc  b
 L001E75:;R
@@ -5079,7 +5260,7 @@ L001EE4:;R
 	ld   a, [wPlRelX]
 	ld   b, a
 	ldh  a, [$FFA5]
-	cp   a, b
+	cp   b
 	rra  
 	and  $80
 	ld   b, a
@@ -5182,7 +5363,7 @@ L001F5F:;C
 	ld   d, a
 	ld   a, c
 	and  $38
-	cp   a, b
+	cp   b
 	jr   nz, L001F78
 	xor  a
 L001F78:;R
@@ -5213,7 +5394,7 @@ L001F8B:;C
 	ld   b, a
 L001F9B:;R
 	ldh  a, [$FFAC]
-	cp   a, c
+	cp   c
 	jr   nc, L001FA7
 	ld   a, d
 	ld   [$CF38], a
@@ -5223,7 +5404,7 @@ L001F9B:;R
 L001FA7:;R
 	inc  d
 	ld   a, e
-	cp   a, d
+	cp   d
 	jr   c, L001FB1
 	ld   a, c
 	add  b
@@ -5893,7 +6074,7 @@ L00243D:;R
 L00244C:;C
 	push af
 	ld   a, $03
-	ldh  [hRomBank2], a
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   a, [$CF2F]
@@ -5941,7 +6122,7 @@ L00246A:;R
 	ld   e, a
 	ld   a, [hl]
 	ld   d, a
-	ldh  a, [$FF97]
+	ldh  a, [hWorkOAMPos]
 	ld   l, a
 	ld   h, $DF
 	ld   a, [de]
@@ -5980,7 +6161,7 @@ L0024AE:;R
 	dec  b
 	jr   nz, L0024AE
 	ld   a, l
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	jr   L002508
 L0024D4:;R
 	ldh  a, [$FFA7]
@@ -6013,16 +6194,16 @@ L0024D4:;R
 	dec  b
 	jr   nz, L0024D4
 	ld   a, l
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	jr   L002508
 L002500:;R
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CF2F]
 	ld   [$CF30], a
 L002508:;JR
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
+	ldh  a, [hRomBankLast]
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
@@ -6373,29 +6554,45 @@ L002669: db $0D
 L00266A: db $09
 L00266B: db $04;X
 L00266C: db $00;X
-L00266D:;JR
+; =============== Game_Main ===============
+; Main sequence of operations.
+Game_Main:
 	ld   sp, WRAM_End
 	push af
-	ld   a, $01
-	ldh  [hRomBank], a
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(Module_Password) ; BANK $01
+		ldh  [hRomBankLast], a
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	call L000BED
-	call L002B99
-	jr   z, L00269E
-	call L014CDD ; BANK $01
-	jr   c, L00266D
-	ld   a, [$CFDE]
-	cp   $FF
-	jp   z, L002752
-	ld   a, [$CFDE]
-	and  $E1
-	jr   nz, L00270C
-	ld   a, [$CFDE]
-	cp   $1E
-	jr   z, L0026E4
-L00269E:;R
+	call Pl_ResetAllProgress
+	
+	call Module_Title		; Wait for response
+	jr   z, .toStageSel		; GAME START selected? If so, jump
+.toPassword:
+	call Module_Password 	; Is the password invalid?
+	jr   c, Game_Main		; If so, return to the title screen
+	
+	; Otherwise, decide where to go to next
+	
+	; If all 8 bosses are defeated, warp to the pre-Quint room
+	ld   a, [wWpnUnlock0]
+	cp   WPN_MG|WPN_HA|WPN_NE|WPN_CR|WPN_ME|WPN_WD|WPN_AR|WPN_TP
+	jp   z, Game_Main_ToPreQuint
+	
+	; If any, but not all, of the second set of bosses is defeated,
+	; warp to the teleport room
+	ld   a, [wWpnUnlock0]
+	and  WPN_MG|WPN_HA|WPN_NE|WPN_TP
+	jr   nz, Game_Main_ToTeleport
+	
+	; If the first set of bosses is defeated, but noone in the second,
+	; warp to the Wily Castle cutscene.
+	ld   a, [wWpnUnlock0]
+	cp   WPN_CR|WPN_ME|WPN_WD|WPN_AR
+	jr   z, Game_Main_ToWilyCastle
+	
+.toStageSel:
+	
 	call L002C0C
 	ld   a, $01
 	ld   [wLvlRoomId], a
@@ -6409,7 +6606,7 @@ L0026AC:;R
 	jr   c, L0026AC
 	ld   a, [$CF6E]
 	bit  1, a
-	jr   z, L00269E
+	jr   z, Game_Main.toStageSel
 	ld   a, $01
 	ld   [wLvlRoomId], a
 	call L002AC7
@@ -6420,32 +6617,32 @@ L0026CC:;R
 	call L002A6F
 	call L002FAA
 	call L014F69 ; BANK $01
-	call L000BFC
-	ld   a, [$CFDE]
+	call Pl_RefillAllWpn
+	ld   a, [wWpnUnlock0]
 	and  $1E
 	cp   $1E
-	jr   nz, L00269E
-L0026E4:;X
+	jr   nz, Game_Main.toStageSel
+Game_Main_ToWilyCastle:;X
 	call L003156
 	call L003174
-	call L0006D2
+	call StartLCDOperation
 	ld   a, $10
-	ldh  [$FF98], a
-	call L000624
+	ldh  [hBGMSet], a
+	call FlashBGPalLong
 	ld   a, $01
 	ld   [wLvlRoomId], a
 	ld   a, $08
-	ld   [$CF0A], a
+	ld   [wLvlId], a
 	call L002AC7
 	call L002ADE
 	call L0031BE
 	call L0032C6
 	jr   L00271F
-L00270C:;R
+Game_Main_ToTeleport:;R
 	ld   a, $03
 	ld   [wLvlRoomId], a
 	ld   a, $08
-	ld   [$CF0A], a
+	ld   [wLvlId], a
 	call L002AC7
 	call L0032C6
 	call L002ADE
@@ -6457,7 +6654,7 @@ L00271F:;R
 	jr   c, L00271F
 	ld   a, [$CF6E]
 	bit  1, a
-	jr   z, L00270C
+	jr   z, Game_Main_ToTeleport
 	ld   a, $01
 	ld   [wLvlRoomId], a
 	call L002AC7
@@ -6468,14 +6665,14 @@ L00273F:;R
 	call L002A6F
 	call L002FAA
 	call L014F69 ; BANK $01
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	cp   $FF
-	jr   nz, L00270C
-L002752:;X
+	jr   nz, Game_Main_ToTeleport
+Game_Main_ToPreQuint:;X
 	ld   a, $04
 	ld   [wLvlRoomId], a
 	ld   a, $08
-	ld   [$CF0A], a
+	ld   [wLvlId], a
 	call L002AC7
 	call L002ADE
 	call L0027C9
@@ -6513,11 +6710,11 @@ L002785:;R
 	ld   a, $01
 	ld   [wLvlRoomId], a
 	ld   a, $09
-	ld   [$CF0A], a
+	ld   [wLvlId], a
 	call L002AC7
 	call L002ADE
 L002798:;R
-	ld   hl, $CFDD
+	ld   hl, wWpnUnlock1
 	set  3, [hl]
 	call L0027C9
 	cp   $02
@@ -6548,7 +6745,7 @@ L0027C6: db $C3;X
 L0027C7: db $C6;X
 L0027C8: db $27;X
 L0027C9:;JCR
-	rst  $08
+	rst  $08 ; Wait Frame
 	ld   hl, $FFB6
 	ldh  a, [hTimer]
 	and  $07
@@ -6559,7 +6756,7 @@ L0027D6:;R
 	ld   a, [hl]
 	ldh  [hBGP], a
 L0027D9:;R
-	call JoyKeys_Sync
+	call JoyKeys_Refresh
 	ldh  a, [hJoyNewKeys]
 	bit  3, a
 	jr   z, L0027EA
@@ -6569,7 +6766,7 @@ L0027D9:;R
 L0027EA:;R
 	bit  2, a
 	jr   z, L0027F8
-	ldh  a, [$FFF9]
+	ldh  a, [hInvulnCheat]
 	or   a
 	jr   z, L0027F8
 L0027F3: db $CD;X
@@ -6579,7 +6776,7 @@ L0027F6: db $18;X
 L0027F7: db $D1;X
 L0027F8:;R
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ldh  a, [hTimer]
 	ld   [$CF39], a
 	call L000CB0
@@ -6587,21 +6784,21 @@ L0027F8:;R
 	call L0143B4 ; BANK $01
 	push af
 	ld   a, BANK(L024000) ; BANK $02
+	ldh  [hRomBankLast], a
 	ldh  [hRomBank], a
-	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L024000
 	push af
 	ld   a, $01
+	ldh  [hRomBankLast], a
 	ldh  [hRomBank], a
-	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
-	call L000667
+	call OAM_ClearRest
 	ld   hl, hTimer
 	ld   a, [$CF39]
-	cp   a, [hl]
+	cp   [hl]
 	jr   nz, L0027D9
 	call L002AF3
 	ld   a, [$CF60]
@@ -6620,7 +6817,7 @@ L0027F8:;R
 	swap a
 	dec  a
 	and  $03
-	ld   [$CF0A], a
+	ld   [wLvlId], a
 	ld   a, $01
 	ld   [wLvlRoomId], a
 	call L002AC7
@@ -6644,9 +6841,9 @@ L002873:;R
 	jr   L002896
 L00287F:;R
 	ld   a, $00
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	ld   a, $06
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 L002887:;R
 	ld   a, [$CF63]
 	ld   [$CF2B], a
@@ -6654,33 +6851,33 @@ L002887:;R
 	ld   [$CF2C], a
 	call L001C8D
 L002896:;R
-	rst  $08
+	rst  $08 ; Wait Frame
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	call L0143B4 ; BANK $01
 	push af
 	ld   a, BANK(L024000) ; BANK $02
+	ldh  [hRomBankLast], a
 	ldh  [hRomBank], a
-	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L024000
 	push af
 	ld   a, $01
+	ldh  [hRomBankLast], a
 	ldh  [hRomBank], a
-	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
-	call L000667
+	call OAM_ClearRest
 	call L002AF3
 	pop  bc
 	dec  b
 	jr   nz, L002873
-	ld   a, [$CFE8]
+	ld   a, [wLives]
 	sub  $01
-	ld   [$CFE8], a
+	ld   [wLives], a
 	jr   c, L00292C
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	add  a
 	add  a
 	or   $03
@@ -6698,13 +6895,13 @@ L0028DD:;R
 	jr   L0028DD
 L0028E6:;R
 	ld   a, b
-	cp   a, [hl]
+	cp   [hl]
 	jr   nc, L002908
 	dec  hl
-	cp   a, [hl]
+	cp   [hl]
 	jr   nc, L0028F3
 	dec  hl
-	cp   a, [hl]
+	cp   [hl]
 	jr   nc, L0028F3
 	dec  hl
 L0028F3:;R
@@ -6740,17 +6937,17 @@ L002916:;R
 	ret
 L00292C:;R
 	ld   a, $04
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	call L014F69 ; BANK $01
-	call L000BF7
-	ld   a, $07
-	call L0003CC
+	call Pl_ResetLivesAndWpnAmmo
+	ld   a, GFXSET_GAMEOVER
+	call GFXSet_Load
 	ld   de, $2953
-	call Scr_ApplyPkg
-	call L0006D2
+	call LoadTilemapDef
+	call StartLCDOperation
 L002944:;R
-	rst  $08
-	call JoyKeys_Sync
+	rst  $08 ; Wait Frame
+	call JoyKeys_Refresh
 	ldh  a, [hJoyNewKeys]
 	and  $03
 	jr   z, L002944
@@ -6848,7 +7045,7 @@ L00299F:;C
 	ld   [$CF6A], a
 	call L002A81
 	ld   a, $00
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	ld   b, $C0
 L0029C5:;R
 	ld   a, b
@@ -6856,7 +7053,7 @@ L0029C5:;R
 	and  $3F
 	jr   nz, L0029DE
 	ld   a, $06
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ld   a, [$CF63]
 	ld   [$CF2B], a
 	ld   a, [$CF64]
@@ -6868,7 +7065,7 @@ L0029DE:;R
 	dec  b
 	jr   nz, L0029C5
 	ld   a, $06
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	ld   b, $78
 	call L002A90
 L0029EE:;R
@@ -6920,7 +7117,7 @@ L002A28:;R
 L002A44:;R
 	call L001CC2
 	ld   a, $0F
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	jr   L002A50
 L002A4D:;R
 	call L002A81
@@ -6941,14 +7138,14 @@ L002A5C:;R
 	ld   b, $78
 	jp   L002A90
 L002A6F:;C
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	ld   hl, $3C1A
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	or   [hl]
-	ld   [$CFDE], a
+	ld   [wWpnUnlock0], a
 	ret
 L002A81:;C
 	ld   bc, $1000
@@ -6969,33 +7166,33 @@ L002A97:;C
 	push hl
 	push de
 	push bc
-	rst  $08
+	rst  $08 ; Wait Frame
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	call L000CB0
 	call L0143B4 ; BANK $01
 	push af
 	ld   a, BANK(L024000); BANK $02
+	ldh  [hRomBankLast], a
 	ldh  [hRomBank], a
-	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
 	call L024000
 	push af
 	ld   a, $01
+	ldh  [hRomBankLast], a
 	ldh  [hRomBank], a
-	ldh  [hRomBank2], a
 	ld   [MBC1RomBank], a
 	pop  af
-	call L000667
+	call OAM_ClearRest
 	call L002AF3
 	pop  bc
 	pop  de
 	pop  hl
 	ret
 L002AC7:;C
-	ld   a, $03
-	call L0003CC
+	ld   a, GFXSET_LEVEL
+	call GFXSet_Load
 	call L0007C6
 	call L0008B6
 	call L0008F4
@@ -7003,16 +7200,16 @@ L002AC7:;C
 	call L001BD9
 	jp   L001C25
 L002ADE:;C
-	call L0006D2
+	call StartLCDOperation
 	call L000C9C
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	ld   hl, $3C38
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
 	ld   a, a
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	ret
 L002AF3:;C
 	ld   a, [$CF4C]
@@ -7028,7 +7225,7 @@ L002B06:;R
 	xor  a
 	ld   hl, wLvlScrollEvMode
 	or   [hl]
-	ld   hl, wPkgEv
+	ld   hl, wTilemapEv
 	or   [hl]
 	ret  nz
 	ld   a, [$CFF3]
@@ -7036,7 +7233,7 @@ L002B06:;R
 	jr   z, L002B3B
 	dec  a
 	ld   [$CFF3], a
-	ld   a, [$CFD0]
+	ld   a, [wPlHealth]
 	ld   c, a
 	inc  a
 	cp   $98
@@ -7044,7 +7241,7 @@ L002B06:;R
 	ld   a, $98
 L002B25:;R
 	ld   b, a
-	ld   [$CFD0], a
+	ld   [wPlHealth], a
 	xor  c
 	and  $08
 	jr   z, L002B3B
@@ -7053,17 +7250,17 @@ L002B25:;R
 	ld   hl, $CF70
 	set  0, [hl]
 	ld   a, $07
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 L002B3B:;R
 	ld   a, [$CFF2]
 	or   a
 	jr   z, L002B6A
 	dec  a
 	ld   [$CFF2], a
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	or   a
 	ret  z
-	ld   a, [$CFE0]
+	ld   a, [wWpnAmmoCur]
 	ld   c, a
 	inc  a
 	cp   $98
@@ -7071,7 +7268,7 @@ L002B3B:;R
 	ld   a, $98
 L002B55:;R
 	ld   b, a
-	ld   [$CFE0], a
+	ld   [wWpnAmmoCur], a
 	xor  c
 	and  $08
 	ret  z
@@ -7080,7 +7277,7 @@ L002B55:;R
 	ld   hl, $CF70
 	set  1, [hl]
 	ld   a, $07
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 L002B6A:;R
 	ld   a, [$CF70]
 	ld   b, a
@@ -7106,88 +7303,133 @@ L002B6A:;R
 	xor  a
 	ld   [$CF70], a
 	inc  a
-	ld   [wPkgBarEv], a
+	ld   [wTilemapBarEv], a
 	ret
-L002B99:;C
-	xor  a
-	call L0003CC
+	
+; =============== Module_Title ===============
+; Title screen module.
+; OUT
+; - Z Flag: If set, GAME START was selected. PASS WORD otherwise.
+Module_Title:
+	;
+	; Load VRAM
+	;
+	xor  a ; GFXSET_TITLE
+	call GFXSet_Load
 	push af
-	ld   a, $04
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(TilemapDef_Title) ; BANK $04
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   de, $4000
-	call Scr_ApplyPkg
+	
+	ld   de, TilemapDef_Title
+	call LoadTilemapDef
+	
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	call L0006D2
-	ld   a, $01
-	ldh  [$FF98], a
-	ld   hl, $DF00
-	ld   a, $68
+	call StartLCDOperation
+	;--
+	
+	ld   a, BGM_TITLE
+	ldh  [hBGMSet], a
+	
+	;
+	; Define the cursor sprite.
+	; Its Y position also doubles as the selected option.
+	;
+	ld   hl, wCursorObj
+	ld   a, $68		; Y Position
 	ldi  [hl], a
-	ld   a, $2E
+	ld   a, $2E		; X Position
 	ldi  [hl], a
 	xor  a
-	ldi  [hl], a
-	ld   [hl], a
-L002BC8:;R
-	ld   a, [$DF00]
+	ldi  [hl], a	; Tile ID	
+	ld   [hl], a	; Attribute
+	
+	; For some reason the selection change code is right here,
+	; getting executed once before even making a choice.
+	; This means that, to have GAME START selected by default,
+	; the initial Y position from above actually points to PASS WORD.
+	
+.changeSel:
+	; Switch between GAME START and PASS WORD
+	; by alternating between Y positions $60 and $68
+	ld   a, [wCursorObj+iObjY]
 	xor  $08
-	ld   [$DF00], a
-L002BD0:;R
-	rst  $08
+	ld   [wCursorObj+iObjY], a
+	
+.loop:
+	rst  $08 ; Wait Frame
+	
+	;--
+	; This is 100% identical to the respective code in FlashBGPalLong.
+	; 1/8 chance of flashing palette every 4 frames.
 	ldh  a, [hTimer]
 	and  $03
-	jr   nz, L002BE5
+	jr   nz, .wait
 	ld   b, $E4
 	call Rand
 	cp   $20
-	jr   nc, L002BE2
+	jr   nc, .setPal
 	ld   b, $C0
-L002BE2:;R
+.setPal:
 	ld   a, b
 	ldh  [hBGP], a
-L002BE5:;R
+.wait:
+	;--
+	
+	; Animate the cursor every 4 frames
+	; by cycling its tile ID from 0 to 7, then wrapping back.
 	ldh  a, [hTimer]
-	and  $1C
+	and  $1C			; iObjTileId = (hTimer / 4) % 8
 	srl  a
 	srl  a
-	ld   [$DF02], a
-	call JoyKeys_Sync
+	ld   [wCursorObj+iObjTileId], a
+	
+	; Check for player input
+	call JoyKeys_Refresh
 	ldh  a, [hJoyNewKeys]
-	and  $CD
-	jr   z, L002BD0
-	and  $C4
-	jr   z, L002C03
-	ld   a, $12
-	ldh  [$FF99], a
-	jr   L002BC8
-L002C03:;R
+	and  KEY_DOWN|KEY_UP|KEY_START|KEY_SELECT|KEY_A	; Pressed any of the keys that matter? 
+	jr   z, .loop									; If not, loop
+	and  KEY_DOWN|KEY_UP|KEY_SELECT					; Pressed any of the toggle keys?
+	jr   z, .sel									; If not, we've definitely pressed A or START
+	; Otherwise, toggle the selection
+	ld   a, SFX_CURSORMOVE
+	ldh  [hSFXSet], a
+	jr   .changeSel
+.sel:
+	; [POI] Disable the invulnerability cheat.
+	;       Curiously, this address wasn't reset at boot, it only gets written to here.
+	;       Presumably you could hold something to enable the cheat mode here?
 	xor  a
-	ldh  [$FFF9], a
-	ld   a, [$DF00]
+	ldh  [hInvulnCheat], a
+	
+	; If GAME START is selected, the cursor's Y position will be $60.
+	; As $60 & 8 is 0, it will return the Z flag.
+	ld   a, [wCursorObj+iObjY]
 	and  $08
 	ret
+	
+; =============== Module_StageSel ===============	
 L002C0C:;C
-	ld   a, $01
-	call L0003CC
+	ld   a, GFXSET_STAGESEL
+	call GFXSet_Load
 	push af
 	ld   a, $04
-	ldh  [hRomBank2], a
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   de, $5000
-	call Scr_ApplyPkg
+	call LoadTilemapDef
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
+	ldh  a, [hRomBankLast]
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	rra  
 	ld   c, a
 	ld   b, $04
@@ -7199,7 +7441,7 @@ L002C30:;R
 	dec  a
 	call L002F80
 	ld   de, wScrEvRows
-	call Scr_ApplyPkg
+	call LoadTilemapDef
 L002C40:;R
 	pop  bc
 	srl  c
@@ -7210,15 +7452,15 @@ L002C40:;R
 	ld   a, $48
 	ldh  [hWinY], a
 	ld   a, $01
-	call L0006D2
+	call StartLCDOperation
 	ld   a, $02
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	xor  a
 	ld   [$CF66], a
 L002C5B:;R
-	rst  $08
+	rst  $08 ; Wait Frame
 	call L002CAA
-	call JoyKeys_Sync
+	call JoyKeys_Refresh
 	ldh  a, [hJoyNewKeys]
 	ld   c, a
 	or   a
@@ -7230,13 +7472,13 @@ L002C5B:;R
 	jr   z, L002C88
 	ld   a, b
 	xor  $04
-	ld   [$CF0A], a
+	ld   [wLvlId], a
 	ld   hl, $3C1A
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   b, [hl]
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  b
 	jr   nz, L002C5B
 	jp   L002D15
@@ -7248,7 +7490,7 @@ L002C88:;R
 	xor  $01
 	ld   [$CF66], a
 	ld   a, $12
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	jr   L002C5B
 L002C99:;R
 	ld   a, c
@@ -7258,7 +7500,7 @@ L002C99:;R
 	xor  $02
 	ld   [$CF66], a
 	ld   a, $12
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	jr   L002C5B
 L002CAA:;C
 	ld   a, [$CF66]
@@ -7268,9 +7510,9 @@ L002CAA:;C
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ld   de, $DF00
+	ld   de, wWorkOAM
 	ld   bc, $0010
-	call L0006B9
+	call CopyMemory
 	ldh  a, [hTimer]
 	sla  a
 	and  $10
@@ -7351,27 +7593,27 @@ L002D13: db $3F
 L002D14: db $00
 L002D15:;J
 	ld   hl, $3C12
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
 	call ActS_LoadGFXForRoom.loadBySetId
-	call L00065F
+	call OAM_ClearAll
 	ld   a, $03
-	ldh  [$FF98], a
-	call L000612
+	ldh  [hBGMSet], a
+	call FlashBGPal
 	rst  $20
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	call L002F80
 	rst  $10
 	call L001BD9
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	add  $68
 	ld   [$CF2D], a
 	xor  a
 	ld   [$CF2E], a
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	and  $03
 	add  a
 	ld   hl, $2F28
@@ -7445,7 +7687,7 @@ L002DB1:;R
 	call GfxCopy_Req
 	ld   a, $08
 	call L002DF7
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	add  a
 	ld   b, a
 	add  a
@@ -7466,11 +7708,11 @@ L002DB1:;R
 	ld   [de], a
 	inc  de
 	ld   bc, $000A
-	call L0006B9
+	call CopyMemory
 	xor  a
 	ld   [de], a
 	inc  a
-	ld   [wPkgEv], a
+	ld   [wTilemapEv], a
 	ld   a, $B4
 L002DF7:;CR
 	push af
@@ -7484,7 +7726,7 @@ L002E00:;C
 	push de
 	push bc
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   hl, $CD00
 	ld   de, $FFA0
 	ld   b, $10
@@ -7507,15 +7749,15 @@ L002E27:;R
 	inc  de
 	dec  b
 	jr   nz, L002E27
-	call L000667
-	rst  $08
+	call OAM_ClearRest
+	rst  $08 ; Wait Frame
 	pop  bc
 	pop  de
 	pop  hl
 	ret
 L002E35:;C
 	ldh  a, [$FFA1]
-	rst  $00
+	rst  $00 ; DynJump
 L002E38: db $46
 L002E39: db $2E
 L002E3A: db $70
@@ -7531,13 +7773,13 @@ L002E43: db $2E
 L002E44: db $C0
 L002E45: db $2E
 L002E46:;I
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	rrca 
 	and  $80
 	xor  $80
 	ldh  [$FFA2], a
 	ld   bc, $01A0
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	bit  1, a
 	jr   z, L002E5D
 	ld   bc, $03B0
@@ -7611,7 +7853,7 @@ L002EC9:;R
 	ret
 L002ED9:;C
 	ld   h, $DF
-	ldh  a, [$FF97]
+	ldh  a, [hWorkOAMPos]
 	ld   l, a
 	ld   de, $CF90
 	ld   b, $18
@@ -7650,7 +7892,7 @@ L002F07:;R
 	dec  b
 	jr   nz, L002EE3
 	ld   a, l
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ret
 L002F0F:;C
 	ld   hl, wScrEvRows
@@ -7664,7 +7906,7 @@ L002F0F:;C
 	xor  a
 	ld   [$DD04], a
 	inc  a
-	ld   [wPkgEv], a
+	ld   [wTilemapEv], a
 	ret
 L002F28: db $30
 L002F29: db $3B
@@ -7789,23 +8031,23 @@ L002FA7: db $9C
 L002FA8: db $6D
 L002FA9: db $9C
 L002FAA:;C
-	ld   a, $04
-	call L0003CC
+	ld   a, GFXSET_GETWPN
+	call GFXSet_Load
 	push af
 	ld   a, $04
-	ldh  [hRomBank2], a
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   de, $5180
-	call Scr_ApplyPkg
+	call LoadTilemapDef
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
+	ldh  a, [hRomBankLast]
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
-	call L0006D2
+	call StartLCDOperation
 	ld   a, $07
-	ldh  [$FF98], a
+	ldh  [hBGMSet], a
 	ld   b, $60
 	ld   hl, hScrollX
 L002FD3:;R
@@ -7819,7 +8061,7 @@ L002FD3:;R
 	ld   hl, $305A
 	ld   de, $98CC
 	call L00300A
-	ld   a, [$CF0A]
+	ld   a, [wLvlId]
 	add  a
 	ld   hl, $3063
 	ld   b, $00
@@ -7872,9 +8114,9 @@ L003033:;R
 	xor  a
 	ld   [$DD04], a
 	inc  a
-	ld   [wPkgEv], a
+	ld   [wTilemapEv], a
 	ld   a, $0B
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 L003052:;R
 	ld   a, $06
 	call WaitFrames
@@ -8133,26 +8375,26 @@ L003153: db $4E
 L003154: db $45
 L003155: db $2E
 L003156:;C
-	ld   a, $05
-	call L0003CC
+	ld   a, GFXSET_CASTLE
+	call GFXSet_Load
 	push af
 	ld   a, $04
-	ldh  [hRomBank2], a
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   de, $53C0
-	call Scr_ApplyPkg
+	call LoadTilemapDef
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
+	ldh  a, [hRomBankLast]
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
 L003174:;C
 	ld   hl, $3180
-	ld   de, $DF00
+	ld   de, wWorkOAM
 	ld   bc, $0020
-	jp   L0006B9
+	jp   CopyMemory
 L003180: db $70
 L003181: db $80
 L003182: db $30
@@ -8186,18 +8428,18 @@ L00319D: db $88
 L00319E: db $7C
 L00319F: db $00
 L0031A0:;C
-	ld   a, $06
-	call L0003CC
+	ld   a, GFXSET_STATION
+	call GFXSet_Load
 	push af
 	ld   a, $04
-	ldh  [hRomBank2], a
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   de, $5540
-	call Scr_ApplyPkg
+	call LoadTilemapDef
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
+	ldh  a, [hRomBankLast]
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ret
@@ -8300,9 +8542,9 @@ L003231:;R
 	ld   hl, $32B7
 	ld   de, wScrEvRows
 	ld   bc, $000F
-	call L0006B9
+	call CopyMemory
 	ld   a, $01
-	ld   [wPkgEv], a
+	ld   [wTilemapEv], a
 	xor  a
 	ld   [$CF1D], a
 	ld   b, $08
@@ -8341,19 +8583,19 @@ L0032C4: db $29
 L0032C5: db $00
 L0032C6:;C
 	ld   b, $00
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $40
 	call nz, L0032EF
 	ld   b, $01
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $01
 	call nz, L0032EF
 	ld   b, $02
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $80
 	call nz, L0032EF
 	ld   b, $03
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	and  $20
 	call nz, L0032EF
 	ret
@@ -8386,7 +8628,7 @@ L003300:;R
 	xor  a
 	ld   [hl], a
 	ld   de, wScrEvRows
-	call Scr_ApplyPkg
+	call LoadTilemapDef
 	pop  bc
 	pop  de
 	inc  de
@@ -8493,7 +8735,7 @@ L0033AD:;R
 	ld   b, a
 	ldi  a, [hl]
 	add  c
-	cp   a, b
+	cp   b
 	jr   c, L0033CF
 	ld   a, [$CFED]
 	ld   c, a
@@ -8513,7 +8755,7 @@ L0033C8:;R
 	ld   b, a
 	ldi  a, [hl]
 	add  c
-	cp   a, b
+	cp   b
 	call nc, L0033D7
 L0033CF:;R
 	ld   a, [$CF2F]
@@ -8534,7 +8776,7 @@ L0033D7:;C
 	add  b
 	ld   b, a
 	ldh  a, [$FFA7]
-	cp   a, b
+	cp   b
 	jp   nc, L003508
 L0033F1:;R
 	inc  l
@@ -8543,7 +8785,7 @@ L0033F1:;R
 	or   a
 	ret  nz
 	push hl
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	cp   $0C
 	jr   nz, L003406
 	ld   a, [$CF6C]
@@ -8572,14 +8814,14 @@ L00340B:;R
 	add  hl, bc
 	push af
 	ld   a, $03
-	ldh  [hRomBank2], a
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   a, [hl]
 	ld   [$CFEE], a
 	push af
-	ldh  a, [hRomBank]
-	ldh  [hRomBank2], a
+	ldh  a, [hRomBankLast]
+	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	pop  hl
@@ -8610,13 +8852,13 @@ L003455:;R
 	xor  a
 	ldh  [$FFA0], a
 L00346A:;R
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	cp   $04
 	call z, L003A0B
 	pop  hl
 	ld   [hl], $0C
 	ld   a, $03
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ld   a, [$CF45]
 	or   a
 	ret  z
@@ -8646,7 +8888,7 @@ L00349F:;R
 	xor  a
 	ldh  [$FFA0], a
 L0034A9:;R
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	cp   $04
 	call z, L003A0B
 	ld   h, $CD
@@ -8700,11 +8942,11 @@ L0034FE:;X
 	set  2, [hl]
 	ret
 L003508:;J
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	cp   $04
 	jr   nz, L003514
 	ld   a, $05
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ret
 L003514:;R
 	cp   $08
@@ -8726,7 +8968,7 @@ L003522:;R
 	ld   a, $02
 	ld   [$CF1D], a
 	ld   a, $05
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ret
 L00353C:;R
 	xor  a
@@ -8735,7 +8977,7 @@ L00353C:;R
 	or   $80
 	ldh  [$FFA3], a
 	ld   a, $05
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ret
 L00354A:;C
 	ld   a, [$CF6B]
@@ -8781,7 +9023,7 @@ L003592:;R
 	ld   b, a
 	ldi  a, [hl]
 	add  $07
-	cp   a, b
+	cp   b
 	jr   c, L0035B3
 	inc  e
 	inc  e
@@ -8800,7 +9042,7 @@ L0035AC:;R
 	ld   b, a
 	ldi  a, [hl]
 	add  c
-	cp   a, b
+	cp   b
 	call nc, L0035BB
 L0035B3:;R
 	ld   a, [$CF2F]
@@ -8816,7 +9058,7 @@ L0035BB:;C
 	cp   $04
 	jr   nc, L003624
 L0035C6:;R
-	ldh  a, [$FFF9]
+	ldh  a, [hInvulnCheat]
 	or   a
 	ret  nz
 	ld   a, [$CF43]
@@ -8825,7 +9067,7 @@ L0035C6:;R
 	ld   a, [$CF2F]
 	ld   [$CF5D], a
 	ld   a, $13
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ld   a, $20
 	ld   [$CF42], a
 	ld   a, $3C
@@ -8842,13 +9084,13 @@ L0035F2:;R
 	ld   a, [$CF2F]
 	add  $03
 	ld   l, a
-	ld   a, [$CFD0]
+	ld   a, [wPlHealth]
 	sub  [hl]
 	jr   nc, L003601
 	xor  a
 L003601:;R
 	push af
-	ld   [$CFD0], a
+	ld   [wPlHealth], a
 	ld   [$CF71], a
 	ld   hl, $CF70
 	set  0, [hl]
@@ -8927,7 +9169,7 @@ L003689:;JC
 	sub  b
 	ld   b, a
 	ld   a, [wPlRelY]
-	cp   a, b
+	cp   b
 	ret  nc
 	ld   a, [$CF1D]
 	cp   $04
@@ -8987,7 +9229,7 @@ L0036E5:;R
 	ld   [hl], $80
 L003700:;R
 	pop  af
-	rst  $00
+	rst  $00 ; DynJump
 L003702: db $5B;X
 L003703: db $37;X
 L003704: db $12
@@ -9005,16 +9247,16 @@ L00370F: db $37
 L003710: db $5B;X
 L003711: db $37;X
 L003712:;I
-	ld   a, [$CFE8]
+	ld   a, [wLives]
 	cp   $09
 	ret  nc
 	inc  a
-	ld   [$CFE8], a
+	ld   [wLives], a
 	ld   [$CF74], a
 	ld   hl, $CF70
 	set  3, [hl]
 	ld   a, $09
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ret
 L003729:;I
 	ld   a, [$CFF2]
@@ -9037,24 +9279,24 @@ L003744:;I
 	ld   [$CFF3], a
 	ret
 L00374D:;I
-	ld   a, [$CFE9]
+	ld   a, [wETanks]
 	cp   $04
 	ret  nc
 	inc  a
-	ld   [$CFE9], a
+	ld   [wETanks], a
 	ld   a, $08
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ret
 L00375C:;C
 	call L0039EF
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	push af
-	ld   hl, $CFD0
+	ld   hl, wPlHealth
 	ld   de, wScrEvRows
 	ld   c, $00
 	ldi  a, [hl]
 	call L003AD9
-	ld   a, [$CFDD]
+	ld   a, [wWpnUnlock1]
 	ld   b, a
 	ld   a, $03
 L003775:;R
@@ -9068,7 +9310,7 @@ L003775:;R
 	jr   nz, L003775
 	rst  $10
 	ld   de, wScrEvRows
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 	or   a
 	jr   z, L00379B
 	ld   b, a
@@ -9085,20 +9327,20 @@ L00378E:;R
 	rst  $10
 L00379B:;R
 	ld   de, wScrEvRows
-	ld   a, [$CFDD]
+	ld   a, [wWpnUnlock1]
 	and  $08
 	jr   z, L0037AD
-	ld   a, [$CFDC]
+	ld   a, [wWpnAmmoSG]
 	ld   c, $0C
 	call L003AD9
 L0037AD:;R
 	ld   hl, $3B5F
-	call L003B9B
+	call CopyWord
 	ld   a, $07
 	ld   [de], a
 	inc  de
-	call L003B9B
-	ld   a, [$CFE9]
+	call CopyWord
+	ld   a, [wETanks]
 	ld   c, a
 	ld   a, $05
 	sub  c
@@ -9123,7 +9365,7 @@ L0037D4:;R
 	ld   [de], a
 	rst  $10
 	xor  a
-	ldh  [$FF97], a
+	ldh  [hWorkOAMPos], a
 	ld   a, [$CF1D]
 	cp   $11
 	jr   z, L0037EA
@@ -9132,20 +9374,20 @@ L0037D4:;R
 	jr   nz, L0037EA
 	call L001AE9
 L0037EA:;R
-	call L000667
+	call OAM_ClearRest
 	ld   bc, $0A20
 	ld   hl, $7800
 	ld   de, $8800
 	call GfxCopy_Req
 	ld   a, $0C
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ld   b, $10
 	ldh  a, [hLYC]
 L003801:;R
 	sub  $08
 	ldh  [hLYC], a
 	ldh  [hWinY], a
-	rst  $08
+	rst  $08 ; Wait Frame
 	dec  b
 	jr   nz, L003801
 L00380B:;JR
@@ -9154,20 +9396,20 @@ L00380B:;JR
 	and  $F9
 	jr   z, L00380B
 	and  $09
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	jr   nz, L00385D
 	ldh  a, [hJoyNewKeys]
 	rla  
 	jr   c, L00382F
 	rla  
 	jr   c, L003846
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	xor  $01
 	call L003BA2
 	jr   c, L00385D
 	jr   L003832
 L00382F:;R
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 L003832:;R
 	ld   b, $06
 L003834:;R
@@ -9182,7 +9424,7 @@ L00383C:;R
 	jr   nz, L003834
 	jr   L00380B
 L003846:;R
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	ld   b, $06
 L00384B:;R
 	sub  $02
@@ -9197,7 +9439,7 @@ L003853:;R
 	jr   L00380B
 L00385D:;R
 	push af
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	add  a
 	add  a
 	ld   hl, $3B2B
@@ -9205,33 +9447,33 @@ L00385D:;R
 	ld   c, a
 	add  hl, bc
 	ld   de, wScrEvRows
-	call L003B9B
+	call CopyWord
 	ld   a, $02
 	ld   [de], a
 	inc  de
-	call L003B9B
+	call CopyWord
 	xor  a
 	ld   [de], a
 	rst  $10
 	pop  af
-	ld   [$CFDF], a
+	ld   [wWpnSel], a
 	ldh  a, [hJoyNewKeys]
 	and  $09
 	jr   nz, L003886
 	jr   L00380B
 L003886:;R
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	cp   $0D
 	jr   c, L0038E0
-	ld   a, [$CFE9]
+	ld   a, [wETanks]
 	or   a
 	jp   z, L00380B
-	ld   a, [$CFD0]
+	ld   a, [wPlHealth]
 	cp   $98
 	jp   nc, L00380B
-	ld   a, [$CFE9]
+	ld   a, [wETanks]
 	dec  a
-	ld   [$CFE9], a
+	ld   [wETanks], a
 	ld   b, a
 	ld   hl, wScrEvRows
 	ld   a, $9D
@@ -9246,14 +9488,14 @@ L003886:;R
 	xor  a
 	ld   [hl], a
 	rst  $10
-	ld   a, [$CFD0]
+	ld   a, [wPlHealth]
 L0038BA:;R
 	add  $08
 	cp   $98
 	jr   c, L0038C2
 	ld   a, $98
 L0038C2:;R
-	ld   [$CFD0], a
+	ld   [wPlHealth], a
 	ld   c, $00
 	call L003A25
 	rst  $18
@@ -9261,13 +9503,13 @@ L0038C2:;R
 	call L003AD9
 	rst  $10
 	ld   a, $07
-	ldh  [$FF99], a
-	ld   a, [$CFD0]
+	ldh  [hSFXSet], a
+	ld   a, [wPlHealth]
 	cp   $98
 	jr   c, L0038BA
 	jp   L00380B
 L0038E0:;R
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	add  a
 	add  a
 	ld   hl, $3B2D
@@ -9280,21 +9522,21 @@ L0038E0:;R
 	ld   a, [hl]
 	ld   de, $9610
 	call L00397C
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	or   a
 	jr   z, L00390B
-	ld   hl, $CFD0
+	ld   hl, wPlHealth
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ld   [$CFE0], a
+	ld   [wWpnAmmoCur], a
 L00390B:;R
 	xor  a
 	ld   [wBarDrawQueued], a
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	or   a
-	ld   a, [$CFE0]
+	ld   a, [wWpnAmmoCur]
 	jr   nz, L00391A
 	ld   a, $FF
 L00391A:;R
@@ -9303,15 +9545,15 @@ L00391A:;R
 	rst  $18
 	ld   hl, $CF70
 	res  1, [hl]
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	ld   b, a
 	pop  af
-	cp   a, b
+	cp   b
 	jr   z, L003933
 	call L0039A0
 	call L0039C2
 L003933:;R
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	ld   b, a
 	ld   a, [$CF6C]
 	add  b
@@ -9325,18 +9567,18 @@ L003933:;R
 	ld   bc, $0B10
 	call GfxCopy_Req
 	ld   a, $0D
-	ldh  [$FF99], a
+	ldh  [hSFXSet], a
 	ld   b, $10
 	ldh  a, [hLYC]
 L003956:;R
 	add  $08
 	ldh  [hLYC], a
 	ldh  [hWinY], a
-	rst  $08
+	rst  $08 ; Wait Frame
 	dec  b
 	jr   nz, L003956
 	ld   a, [wActGfxId]
-	ld   hl, ActS_GFXReqTbl
+	ld   hl, ActS_GFXSetTbl
 	sla  a
 	ld   b, $00
 	ld   c, a
@@ -9427,22 +9669,22 @@ L0039ED:;R
 	xor  a
 	ret
 L0039EF:;C
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	or   a
 	ret  z
-	ld   hl, $CFD0
+	ld   hl, wPlHealth
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ld   a, [$CFE0]
+	ld   a, [wWpnAmmoCur]
 	ld   [hl], a
 	ret
 L003A00:;C
 	push bc
 	ld   a, [$CFF0]
 	ld   b, a
-	ld   a, [$CFE0]
-	cp   a, b
+	ld   a, [wWpnAmmoCur]
+	cp   b
 	pop  bc
 	ret
 L003A0B:;JC
@@ -9450,10 +9692,10 @@ L003A0B:;JC
 	push bc
 	ld   a, [$CFF0]
 	ld   b, a
-	ld   a, [$CFE0]
+	ld   a, [wWpnAmmoCur]
 	sub  b
 	jr   c, L003A22
-	ld   [$CFE0], a
+	ld   [wWpnAmmoCur], a
 	ld   [$CF72], a
 	ld   hl, $CF70
 	set  1, [hl]
@@ -9466,7 +9708,7 @@ L003A25:;C
 	push bc
 	push de
 	push hl
-	ld   [$CFE2], a
+	ld   [wWpnAmmoCurCopy], a
 	ld   b, $00
 	sla  c
 	ld   hl, $3A94
@@ -9499,7 +9741,7 @@ L003A52:;C
 	ld   a, $05
 	ldi  [hl], a
 	ld   c, $05
-	ld   a, [$CFE2]
+	ld   a, [wWpnAmmoCurCopy]
 	cp   $99
 	jr   c, L003A68
 	ld   a, $5D
@@ -9608,11 +9850,11 @@ L003AD9:;C
 	sla  c
 	ld   hl, $3B2B
 	add  hl, bc
-	call L003B9B
+	call CopyWord
 	ld   a, $07
 	ld   [de], a
 	inc  de
-	call L003B9B
+	call CopyWord
 	ld   c, $05
 	pop  af
 	cp   $99
@@ -9720,7 +9962,7 @@ L003B63:;C
 	ldh  a, [hTimer]
 	and  $07
 	jr   nz, L003B97
-	ld   a, [$CFDF]
+	ld   a, [wWpnSel]
 	add  a
 	add  a
 	ld   hl, $3B2B
@@ -9728,7 +9970,7 @@ L003B63:;C
 	ld   c, a
 	add  hl, bc
 	ld   de, wScrEvRows
-	call L003B9B
+	call CopyWord
 	ld   a, $02
 	ld   [de], a
 	inc  de
@@ -9750,18 +9992,25 @@ L003B8F:;R
 	xor  a
 	ld   [de], a
 	rst  $10
-	jp   JoyKeys_Sync
+	jp   JoyKeys_Refresh
 L003B97:;R
-	rst  $08
-	jp   JoyKeys_Sync
-L003B9B:;C
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
+	rst  $08 ; Wait Frame
+	jp   JoyKeys_Refresh
+	
+; =============== CopyWord ===============
+; Copies two bytes from the source to the destination,
+; advancing both appropriately.
+; IN
+; - HL: Ptr to source
+; - DE: Ptr to destination
+CopyWord:
+REPT 2
+	ldi  a, [hl]	; Read src, Src++
+	ld   [de], a	; Write to dest
+	inc  de			; Dest++
+ENDR
 	ret
+	
 L003BA2:;C
 	or   a
 	jr   nz, L003BA7
@@ -9777,7 +10026,7 @@ L003BAD:;R
 	ld   c, a
 	cp   $0C
 	jr   nz, L003BBB
-	ld   a, [$CFDD]
+	ld   a, [wWpnUnlock1]
 	swap a
 	rla  
 	jr   L003BCF
@@ -9785,12 +10034,12 @@ L003BBB:;R
 	cp   $04
 	jr   nc, L003BC5
 	ld   b, a
-	ld   a, [$CFDD]
+	ld   a, [wWpnUnlock1]
 	jr   L003BCB
 L003BC5:;R
 	sub  $03
 	ld   b, a
-	ld   a, [$CFDE]
+	ld   a, [wWpnUnlock0]
 L003BCB:;R
 	rra  
 	dec  b
@@ -9799,45 +10048,51 @@ L003BCF:;R
 	ld   a, c
 	pop  bc
 	ret
-; =============== ActS_GFXReqTbl ===============
-; Defines the sets of actor graphics usable during levels.
-MACRO mActGfxDef
+	
+MACRO mGfxDef2
 	db BANK(\1), HIGH(\1)
 ENDM
-ActS_GFXReqTbl:
-	mActGfxDef L0B4000 ; $00 
-	mActGfxDef L0B4800 ; $01 ;X Not loaded this way
-	mActGfxDef L084000 ; $02 
-	mActGfxDef L084800 ; $03 
-	mActGfxDef L085000 ; $04 
-	mActGfxDef L085800 ; $05 
-	mActGfxDef L086000 ; $06 
-	mActGfxDef L086800 ; $07 
-	mActGfxDef L087000 ; $08 
-	mActGfxDef L087800 ; $09 
-	mActGfxDef L094000 ; $0A 
-	mActGfxDef L094800 ; $0B 
-	mActGfxDef L095000 ; $0C 
-	mActGfxDef L095800 ; $0D 
-	mActGfxDef L096000 ; $0E 
-	mActGfxDef L096800 ; $0F 
-	mActGfxDef L097000 ; $10 
-	mActGfxDef L0B6800 ; $11 
-	mActGfxDef L0B6800 ; $12 
-	mActGfxDef L0B5000 ; $13 
-	mActGfxDef L0C7000 ; $14 
-	mActGfxDef L0C7800 ; $15 
-	mActGfxDef L097B00 ; $16 
-	mActGfxDef L0A4000 ; $17 
-	mActGfxDef L0A4500 ; $18 
-	mActGfxDef L0A4A00 ; $19 
-	mActGfxDef L0A4F00 ; $1A 
-	mActGfxDef L0A5400 ; $1B 
-	mActGfxDef L0A5900 ; $1C 
-	mActGfxDef L0A5E00 ; $1D 
-	mActGfxDef L0B6000 ; $1E 
-	mActGfxDef L0A6300 ; $1F 
-
+; =============== ActS_GFXSetTbl ===============
+; Sets of actor graphics usable during levels.
+; These each set has a fixed size of $800 bytes.
+ActS_GFXSetTbl:
+	mGfxDef2 GFX_Player ; $00
+	mGfxDef2 GFX_Space1OBJ ; $01 ; [POI] Only loaded manually, not through here
+	mGfxDef2 L084000 ; $02 
+	mGfxDef2 L084800 ; $03 
+	mGfxDef2 L085000 ; $04 
+	mGfxDef2 L085800 ; $05 
+	mGfxDef2 L086000 ; $06 
+	mGfxDef2 L086800 ; $07 
+	mGfxDef2 L087000 ; $08 
+	mGfxDef2 L087800 ; $09 
+	mGfxDef2 L094000 ; $0A 
+	mGfxDef2 L094800 ; $0B 
+	mGfxDef2 L095000 ; $0C 
+	mGfxDef2 L095800 ; $0D 
+	mGfxDef2 L096000 ; $0E 
+	mGfxDef2 L096800 ; $0F 
+	mGfxDef2 L097000 ; $10 
+	mGfxDef2 L0B6800 ; $11 
+	mGfxDef2 L0B6800 ; $12 
+	mGfxDef2 L0B5000 ; $13 
+	mGfxDef2 L0C7000 ; $14 
+	mGfxDef2 L0C7800 ; $15 
+	
+; =============== Lvl_GFXSetTbl ===============
+; Maps each stage to their graphics.
+; These have a fixed size of $500 bytes, as the remaining $300 are taken up by GFX_LvlShared.
+Lvl_GFXSetTbl:
+	mGfxDef2 GFX_LvlHard    ; $00 ; LVL_HARD
+	mGfxDef2 GFX_LvlTop     ; $01 ; LVL_TOP
+	mGfxDef2 GFX_LvlMagnet  ; $02 ; LVL_MAGNET
+	mGfxDef2 GFX_LvlNeedle  ; $03 ; LVL_NEEDLE
+	mGfxDef2 GFX_LvlCrash   ; $04 ; LVL_CRASH
+	mGfxDef2 GFX_LvlMetal   ; $05 ; LVL_METAL
+	mGfxDef2 GFX_LvlWood    ; $06 ; LVL_WOOD
+	mGfxDef2 GFX_LvlAir     ; $07 ; LVL_AIR
+	mGfxDef2 GFX_LvlCastle  ; $08 ; LVL_CASTLE
+	mGfxDef2 GFX_LvlStation ; $09 ; LVL_STATION
 
 L003C12: db $14;X
 L003C13: db $15;X
