@@ -78,5 +78,40 @@ NEWCHARMAP ascii
 	CHARMAP "x", $78
 	CHARMAP "y", $79
 	CHARMAP "z", $7A
+
+; Character select, boss intro screen (GFX_GameOverFont)
+NEWCHARMAP bossname
+	CHARMAP " ", $40
+	CHARMAP "A", $41
+	CHARMAP "B", $42
+	CHARMAP "C", $43
+	CHARMAP "D", $44
+	CHARMAP "E", $45
+	CHARMAP "F", $46
+	CHARMAP "G", $47
+	CHARMAP "H", $48
+	CHARMAP "I", $49
+	CHARMAP "J", $4A
+	CHARMAP "K", $4B
+	CHARMAP "L", $4C
+	CHARMAP "M", $4D
+	CHARMAP "N", $4E
+	CHARMAP "O", $4F
+	CHARMAP "P", $50
+	CHARMAP "Q", $51
+	CHARMAP "R", $52
+	CHARMAP "S", $53
+	CHARMAP "T", $54
+	CHARMAP "U", $55
+	CHARMAP "V", $56
+	CHARMAP "W", $57
+	CHARMAP "X", $58
+	CHARMAP "Y", $59
+	CHARMAP "Z", $5A
+	CHARMAP "!", $5B
+	CHARMAP "→", $5C
+	CHARMAP "←", $5D
+	CHARMAP "↑", $5E
+	CHARMAP "↓", $5F
 	
 SETCHARMAP ascii

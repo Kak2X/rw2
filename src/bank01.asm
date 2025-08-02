@@ -114,28 +114,28 @@ L0140A8:;I
 	xor  a
 	ld   [$CFEB], a
 	ld   a, $60
-	ld   [$CF2D], a
+	ld   [wActSpawnId], a
 	call L014112
 	jp   L014060
 L0140B7:;I
 	xor  a
 	ld   [$CFEB], a
 	ld   a, $61
-	ld   [$CF2D], a
+	ld   [wActSpawnId], a
 	call L014112
 	jp   L014060
 L0140C6:;I
 	xor  a
 	ld   [$CFEB], a
 	ld   a, $62
-	ld   [$CF2D], a
+	ld   [wActSpawnId], a
 	call L014112
 	jp   L014060
 L0140D5:;I
 	xor  a
 	ld   [$CFEB], a
 	ld   a, $63
-	ld   [$CF2D], a
+	ld   [wActSpawnId], a
 	call L014112
 	ld   a, [$CF6C]
 	or   a
@@ -180,9 +180,9 @@ L014112:;C
 	or   a
 	ret  nz
 	xor  a
-	ld   [$CF2E], a
+	ld   [wActSpawnByte3], a
 	ld   a, $0F
-	ld   [$CF2C], a
+	ld   [wActSpawnY], a
 	ld   b, $18
 	ld   a, [wPlDirH]
 	and  $01
@@ -191,8 +191,8 @@ L014112:;C
 L014134:;R
 	ld   a, [wPlRelX]
 	add  b
-	ld   [$CF2B], a
-	call L001D48
+	ld   [wActSpawnX], a
+	call ActS_Spawn
 	ret  c
 	ld   a, $01
 	ld   [$CFF1], a
@@ -395,7 +395,7 @@ L014296:;R
 	add  c
 	ld   e, a
 	ld   a, $4B
-	adc  a, $00
+	adc  $00
 	ld   d, a
 	ld   a, [de]
 	ld   b, a
@@ -408,7 +408,7 @@ L014296:;R
 	add  c
 	ld   e, a
 	ld   a, $4B
-	adc  a, $00
+	adc  $00
 	ld   d, a
 	ld   a, [de]
 	ld   b, a
@@ -580,7 +580,7 @@ L0143C3:;R
 	ret
 L0143E4:;C
 	push hl
-	ld   de, $FFA0
+	ld   de, hActCur+iActId
 	ld   b, $0C
 L0143EA:;R
 	ldi  a, [hl]
@@ -589,11 +589,11 @@ L0143EA:;R
 	dec  b
 	jr   nz, L0143EA
 	call L014407
-	ldh  a, [$FFA3]
+	ldh  a, [hActCur+iAct_Unk_UnkTblPtr]
 	bit  7, a
 	call z, L003384
 	pop  de
-	ld   hl, $FFA0
+	ld   hl, hActCur+iActId
 	ld   b, $0C
 L014400:;R
 	ldi  a, [hl]
@@ -603,10 +603,10 @@ L014400:;R
 	jr   nz, L014400
 	ret
 L014407:;C
-	ldh  a, [$FFA3]
+	ldh  a, [hActCur+iAct_Unk_UnkTblPtr]
 	bit  7, a
 	jr   nz, L01442C
-	ldh  a, [$FFA0]
+	ldh  a, [hActCur+iActId]
 	and  $7F
 	rst  $00 ; DynJump
 L014412: db $65
@@ -636,40 +636,40 @@ L014429: db $47
 L01442A: db $65
 L01442B: db $44
 L01442C:;R
-	ldh  a, [$FFA6]
+	ldh  a, [hActCur+iActYSub]
 	sub  $1C
-	ldh  [$FFA6], a
-	ldh  a, [$FFA7]
-	sbc  a, $02
-	ldh  [$FFA7], a
+	ldh  [hActCur+iActYSub], a
+	ldh  a, [hActCur+iActY]
+	sbc  $02
+	ldh  [hActCur+iActY], a
 	and  $F0
 	cp   $00
 	jr   nz, L014442
 	xor  a
-	ldh  [$FFA0], a
+	ldh  [hActCur+iActId], a
 	ret
 L014442:;R
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	or   a
 	jr   z, L014456
-	ldh  a, [$FFA4]
+	ldh  a, [hActCur+iActXSub]
 	sub  $1C
-	ldh  [$FFA4], a
-	ldh  a, [$FFA5]
-	sbc  a, $02
-	ldh  [$FFA5], a
+	ldh  [hActCur+iActXSub], a
+	ldh  a, [hActCur+iActX]
+	sbc  $02
+	ldh  [hActCur+iActX], a
 	jp   L0147B2
 L014456:;R
-	ldh  a, [$FFA4]
+	ldh  a, [hActCur+iActXSub]
 	add  $1C
-	ldh  [$FFA4], a
-	ldh  a, [$FFA5]
-	adc  a, $02
-	ldh  [$FFA5], a
+	ldh  [hActCur+iActXSub], a
+	ldh  a, [hActCur+iActX]
+	adc  $02
+	ldh  [hActCur+iActX], a
 	jp   L0147B2
 L014465:;I
-	ld   hl, $FFA5
-	ldh  a, [$FFA2]
+	ld   hl, hActCur+iActX
+	ldh  a, [hActCur+iActSprMap]
 	or   a
 	jr   nz, L014472
 	dec  [hl]
@@ -684,28 +684,28 @@ L014477:;I
 	or   a
 	jr   z, L014484
 	xor  a
-	ldh  [$FFA0], a
+	ldh  [hActCur+iActId], a
 	ld   [$CFEA], a
 	ret
 L014484:;R
 	ld   a, [wPlDirH]
 	and  $01
-	ldh  [$FFA2], a
+	ldh  [hActCur+iActSprMap], a
 	ld   a, [wPlRelX]
-	ldh  [$FFA5], a
+	ldh  [hActCur+iActX], a
 	ld   a, [wPlRelY]
 	sub  $08
-	ldh  [$FFA7], a
-	ldh  a, [$FFA1]
+	ldh  [hActCur+iActY], a
+	ldh  a, [hActCur+iActRtnId]
 	inc  a
 	and  $07
-	ldh  [$FFA1], a
+	ldh  [hActCur+iActRtnId], a
 	srl  a
 	add  $18
-	ldh  [$FFA8], a
+	ldh  [hActCur+iActSpdXSub], a
 	jp   L0147B2
 L0144A7:;I
-	ldh  a, [$FFA1]
+	ldh  a, [hActCur+iActRtnId]
 	ld   bc, $0100
 	dec  a
 	jr   z, L0144B7
@@ -714,22 +714,22 @@ L0144A7:;I
 	jr   z, L0144B7
 	ld   bc, $0200
 L0144B7:;R
-	ld   hl, $FFA4
-	ldh  a, [$FFA2]
+	ld   hl, hActCur+iActXSub
+	ldh  a, [hActCur+iActSprMap]
 	or   a
 	ld   a, [hl]
 	jr   nz, L0144C7
 	sub  c
 	ldi  [hl], a
 	ld   a, [hl]
-	sbc  a, b
+	sbc  b
 	ldi  [hl], a
 	jr   L0144CC
 L0144C7:;R
 	add  c
 	ldi  [hl], a
 	ld   a, [hl]
-	adc  a, b
+	adc  b
 	ldi  [hl], a
 L0144CC:;R
 	inc  hl
@@ -745,7 +745,7 @@ L0144D8:;R
 	ld   [hl], a
 	jp   L0147B2
 L0144DC:;I
-	ldh  a, [$FFA1]
+	ldh  a, [hActCur+iActRtnId]
 	bit  7, a
 	jr   nz, L014551
 	ld   c, a
@@ -772,7 +772,7 @@ L0144FB: db $45
 L0144FC: db $2E
 L0144FD: db $45
 L0144FE:;I
-	ld   hl, $FFA5
+	ld   hl, hActCur+iActX
 	ld   a, [wPlRelX]
 	add  b
 	ldi  [hl], a
@@ -782,7 +782,7 @@ L0144FE:;I
 	ld   [hl], a
 	jr   L01453C
 L01450E:;I
-	ld   hl, $FFA5
+	ld   hl, hActCur+iActX
 	ld   a, [wPlRelX]
 	add  b
 	ldi  [hl], a
@@ -792,7 +792,7 @@ L01450E:;I
 	ld   [hl], a
 	jr   L01453C
 L01451E:;I
-	ld   hl, $FFA5
+	ld   hl, hActCur+iActX
 	ld   a, [wPlRelX]
 	sub  b
 	ldi  [hl], a
@@ -802,7 +802,7 @@ L01451E:;I
 	ld   [hl], a
 	jr   L01453C
 L01452E:;I
-	ld   hl, $FFA5
+	ld   hl, hActCur+iActX
 	ld   a, [wPlRelX]
 	sub  b
 	ldi  [hl], a
@@ -811,7 +811,7 @@ L01452E:;I
 	sub  b
 	ld   [hl], a
 L01453C:;R
-	ldh  a, [$FFA1]
+	ldh  a, [hActCur+iActRtnId]
 	add  $04
 	cp   $10
 	jr   c, L01454C
@@ -820,7 +820,7 @@ L01453C:;R
 	add  $08
 	or   $80
 L01454C:;R
-	ldh  [$FFA1], a
+	ldh  [hActCur+iActRtnId], a
 	jp   L0147B2
 L014551:;R
 	ld   d, a
@@ -833,25 +833,25 @@ L014551:;R
 	add  hl, bc
 	ld   a, [wPlRelX]
 	add  [hl]
-	ldh  [$FFA5], a
+	ldh  [hActCur+iActX], a
 	ld   hl, $4BFC
 	add  hl, bc
 	ld   a, [wPlRelY]
 	add  [hl]
 	sub  $0C
-	ldh  [$FFA7], a
+	ldh  [hActCur+iActY], a
 	jr   L014585
 L014573:;R
 	ld   hl, $4C5C
 	add  hl, bc
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	add  [hl]
-	ldh  [$FFA5], a
+	ldh  [hActCur+iActX], a
 	ld   hl, $4C4C
 	add  hl, bc
-	ldh  a, [$FFA7]
+	ldh  a, [hActCur+iActY]
 	add  [hl]
-	ldh  [$FFA7], a
+	ldh  [hActCur+iActY], a
 L014585:;R
 	ld   a, c
 	inc  a
@@ -860,7 +860,7 @@ L014585:;R
 	ld   a, d
 	and  $C0
 	or   c
-	ldh  [$FFA1], a
+	ldh  [hActCur+iActRtnId], a
 	bit  6, a
 	jr   nz, L0145B9
 	ldh  a, [hJoyKeys]
@@ -878,15 +878,15 @@ L014585:;R
 	dec  b
 L0145A9:;R
 	ld   a, b
-	ldh  [$FFA2], a
-	ldh  a, [$FFA1]
+	ldh  [hActCur+iActSprMap], a
+	ldh  a, [hActCur+iActRtnId]
 	or   $40
-	ldh  [$FFA1], a
+	ldh  [hActCur+iActRtnId], a
 	ld   hl, $CFE5
 	dec  [hl]
 	call z, L003A0B
 L0145B9:;R
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	rst  $00 ; DynJump
 L0145BC: db $C4
 L0145BD: db $45
@@ -897,32 +897,32 @@ L0145C1: db $45
 L0145C2: db $DC
 L0145C3: db $45
 L0145C4:;I
-	ld   hl, $FFA5
+	ld   hl, hActCur+iActX
 	dec  [hl]
 	dec  [hl]
 	jp   L0147B2
 L0145CC:;I
-	ld   hl, $FFA5
+	ld   hl, hActCur+iActX
 	inc  [hl]
 	inc  [hl]
 	jp   L0147B2
 L0145D4:;I
-	ld   hl, $FFA7
+	ld   hl, hActCur+iActY
 	dec  [hl]
 	dec  [hl]
 	jp   L0147B2
 L0145DC:;I
-	ld   hl, $FFA7
+	ld   hl, hActCur+iActY
 	inc  [hl]
 	inc  [hl]
 	jp   L0147B2
 L0145E4:;I
-	ldh  a, [$FFA1]
+	ldh  a, [hActCur+iActRtnId]
 	xor  $01
-	ldh  [$FFA1], a
+	ldh  [hActCur+iActRtnId], a
 	add  $05
-	ldh  [$FFA8], a
-	ldh  a, [$FFA2]
+	ldh  [hActCur+iActSpdXSub], a
+	ldh  a, [hActCur+iActSprMap]
 	rst  $00 ; DynJump
 L0145F1: db $01
 L0145F2: db $46
@@ -941,27 +941,27 @@ L0145FE: db $46;X
 L0145FF: db $45
 L014600: db $46
 L014601:;I
-	ld   hl, $FFA5
+	ld   hl, hActCur+iActX
 	dec  [hl]
 	dec  [hl]
 	jp   L0147B2
 L014609:;I
-	ld   hl, $FFA5
+	ld   hl, hActCur+iActX
 	inc  [hl]
 	inc  [hl]
 	jp   L0147B2
 L014611:;I
-	ld   hl, $FFA7
+	ld   hl, hActCur+iActY
 	dec  [hl]
 	dec  [hl]
 	jp   L0147B2
 L014619:;I
-	ld   hl, $FFA7
+	ld   hl, hActCur+iActY
 	inc  [hl]
 	inc  [hl]
 	jp   L0147B2
 L014621:;I
-	ld   hl, $FFA5
+	ld   hl, hActCur+iActX
 	dec  [hl]
 	dec  [hl]
 	inc  hl
@@ -970,7 +970,7 @@ L014621:;I
 	dec  [hl]
 	jp   L0147B2
 L01462D:;I
-	ld   hl, $FFA5
+	ld   hl, hActCur+iActX
 	inc  [hl]
 	inc  [hl]
 	inc  hl
@@ -991,7 +991,7 @@ L014642: db $C3;X
 L014643: db $B2;X
 L014644: db $47;X
 L014645:;I
-	ld   hl, $FFA5
+	ld   hl, hActCur+iActX
 	inc  [hl]
 	inc  [hl]
 	inc  hl
@@ -1000,13 +1000,13 @@ L014645:;I
 	inc  [hl]
 	jp   L0147B2
 L014651:;I
-	ldh  a, [$FFA1]
+	ldh  a, [hActCur+iActRtnId]
 	or   a
 	jr   nz, L014670
-	ldh  a, [$FFA7]
+	ldh  a, [hActCur+iActY]
 	ld   [wPl_Unk_Alt_Y], a
-	ld   hl, $FFA5
-	ldh  a, [$FFA2]
+	ld   hl, hActCur+iActX
+	ldh  a, [hActCur+iActSprMap]
 	or   a
 	ld   b, $FF
 	jr   z, L014667
@@ -1016,13 +1016,13 @@ L014667:;R
 	call c, L0146BF
 	jp   c, L0147B2
 L014670:;R
-	ld   hl, $FFA1
+	ld   hl, hActCur+iActRtnId
 	inc  [hl]
 	ld   a, [hl]
 	cp   $BC
 	jr   c, L01467D
 	xor  a
-	ldh  [$FFA0], a
+	ldh  [hActCur+iActId], a
 	ret
 L01467D:;R
 	cp   $80
@@ -1032,7 +1032,7 @@ L01467D:;R
 	srl  a
 	and  $01
 	add  $08
-	ldh  [$FFA8], a
+	ldh  [hActCur+iActSpdXSub], a
 	jp   L0147B2
 L014690:;R
 	and  $7F
@@ -1042,7 +1042,7 @@ L014690:;R
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ldh  [$FFA8], a
+	ldh  [hActCur+iActSpdXSub], a
 	jp   L0147B2
 L0146A1: db $0C
 L0146A2: db $0B
@@ -1086,10 +1086,10 @@ L0146BF:;C
 	pop  bc
 	ret
 L0146CD:;I
-	ld   hl, $FFA1
+	ld   hl, hActCur+iActRtnId
 	inc  [hl]
 	ld   l, $A5
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	or   a
 	jr   nz, L0146DD
 L0146D8: db $35;X
@@ -1107,30 +1107,30 @@ L0146E2:;I
 	jr   c, L0146F7
 	rla  
 	jr   nc, L014702
-	ld   hl, $FFA6
+	ld   hl, hActCur+iActYSub
 	ld   a, [hl]
 	sub  $20
 	ldi  [hl], a
 	ld   a, [hl]
-	sbc  a, $00
+	sbc  $00
 	ld   [hl], a
 	jr   L014702
 L0146F7:;R
-	ld   hl, $FFA6
+	ld   hl, hActCur+iActYSub
 	ld   a, [hl]
 	add  $20
 	ldi  [hl], a
 	ld   a, [hl]
-	adc  a, $00
+	adc  $00
 	ld   [hl], a
 L014702:;R
-	ld   hl, $FFA1
+	ld   hl, hActCur+iActRtnId
 	ld   a, [hl]
 	cp   $10
 	jr   nc, L01471B
 	inc  [hl]
-	ld   hl, $FFA5
-	ldh  a, [$FFA2]
+	ld   hl, hActCur+iActX
+	ldh  a, [hActCur+iActSprMap]
 	or   a
 	jr   nz, L014717
 	dec  [hl]
@@ -1139,15 +1139,15 @@ L014717:;R
 	inc  [hl]
 	jp   L0147B2
 L01471B:;R
-	ld   hl, $FFA4
-	ldh  a, [$FFA2]
+	ld   hl, hActCur+iActXSub
+	ldh  a, [hActCur+iActSprMap]
 	or   a
 	jr   nz, L01472E
 	ld   a, [hl]
 	sub  $80
 	ldi  [hl], a
 	ld   a, [hl]
-	sbc  a, $01
+	sbc  $01
 	ld   [hl], a
 	jp   L0147B2
 L01472E:;R
@@ -1155,16 +1155,16 @@ L01472E:;R
 	add  $80
 	ldi  [hl], a
 	ld   a, [hl]
-	adc  a, $01
+	adc  $01
 	ld   [hl], a
 	jp   L0147B2
 L014739:;I
-	ldh  a, [$FFA1]
+	ldh  a, [hActCur+iActRtnId]
 	or   a
 	jr   nz, L014798
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	ld   b, a
-	ld   hl, $CD00
+	ld   hl, wAct
 L014744:;R
 	ldi  a, [hl]
 	or   a
@@ -1201,20 +1201,20 @@ L014767:;R
 	jr   nz, L014744
 	jr   L014782
 L014771:;R
-	ldh  a, [$FFA7]
+	ldh  a, [hActCur+iActY]
 	inc  l
 	cp   [hl]
 	ld   a, $02
 	jr   nc, L01477A
 	inc  a
 L01477A:;R
-	ldh  [$FFA2], a
-	ld   hl, $FFA1
+	ldh  [hActCur+iActSprMap], a
+	ld   hl, hActCur+iActRtnId
 	inc  [hl]
 	jr   L014798
 L014782:;R
-	ld   hl, $FFA5
-	ldh  a, [$FFA2]
+	ld   hl, hActCur+iActX
+	ldh  a, [hActCur+iActSprMap]
 	or   a
 	jr   nz, L014791
 	ld   a, [hl]
@@ -1227,33 +1227,33 @@ L014791:;R
 	ld   [hl], a
 	jp   L0147B2
 L014798:;R
-	ld   hl, $FFA7
-	ldh  a, [$FFA2]
+	ld   hl, hActCur+iActY
+	ldh  a, [hActCur+iActSprMap]
 	rra  
 	jr   c, L0147A9
 	dec  [hl]
 	dec  [hl]
 	ld   a, $16
-	ldh  [$FFA8], a
+	ldh  [hActCur+iActSpdXSub], a
 	jp   L0147B2
 L0147A9:;R
 	inc  [hl]
 	inc  [hl]
 	ld   a, $17
-	ldh  [$FFA8], a
+	ldh  [hActCur+iActSpdXSub], a
 	jp   L0147B2
 L0147B2:;J
 	ld   a, [$CF31]
 	ld   b, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	add  b
-	ldh  [$FFA5], a
+	ldh  [hActCur+iActX], a
 	cp   $A8
 	jr   c, L0147C3
 	cp   $F8
 	jr   c, L014812
 L0147C3:;R
-	ldh  a, [$FFA7]
+	ldh  a, [hActCur+iActY]
 	cp   $98
 	jr   c, L0147CD
 	cp   $F8
@@ -1262,7 +1262,7 @@ L0147CD:;R
 	ld   d, $DF
 	ldh  a, [hWorkOAMPos]
 	ld   e, a
-	ldh  a, [$FFA8]
+	ldh  a, [hActCur+iActSpdXSub]
 	add  a
 	ld   hl, $4816
 	ld   b, $00
@@ -1276,12 +1276,12 @@ L0147CD:;R
 	ret  z
 	ld   b, a
 L0147E3:;R
-	ldh  a, [$FFA7]
+	ldh  a, [hActCur+iActY]
 	add  [hl]
 	inc  hl
 	ld   [de], a
 	inc  de
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	dec  a
 	ldi  a, [hl]
 	jr   nz, L0147F3
@@ -1290,21 +1290,21 @@ L0147E3:;R
 	sub  $08
 L0147F3:;R
 	ld   c, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	add  c
 	ld   [de], a
 	inc  de
 	ldi  a, [hl]
 	ld   [de], a
 	inc  de
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	dec  a
 	ldi  a, [hl]
 	jr   nz, L014804
 	xor  $20
 L014804:;R
 	ld   c, a
-	ld   a, [$CF67]
+	ld   a, [wActCurSprFlags]
 	or   c
 	ld   [de], a
 	inc  de
@@ -1315,7 +1315,7 @@ L014804:;R
 	ret
 L014812:;R
 	xor  a
-	ldh  [$FFA0], a
+	ldh  [hActCur+iActId], a
 	ret
 L014816: db $50
 L014817: db $48
@@ -3012,7 +3012,7 @@ Password_AccumSel:
 		add  [hl]
 		ld   l, a
 		ld   a, HIGH(wPassSelTbl)
-		adc  a, $00
+		adc  $00
 		ld   h, a
 		ld   a, [hl]
 		
@@ -3365,7 +3365,7 @@ L014FCB:;R
 	ld   bc, $0029
 	call CopyMemory
 	ld   de, wPassSelTbl
-	ld   hl, $DD03
+	ld   hl, wTilemapBuf+iTilemapDefPayload
 	ld   c, $04
 L015014:;R
 	ld   b, $04
@@ -3401,7 +3401,7 @@ L015036:;C
 	add  [hl]
 	ld   l, a
 	ld   a, $CF
-	adc  a, $00
+	adc  $00
 	ld   h, a
 	ld   [hl], $FF
 L015046:;R
@@ -4202,7 +4202,7 @@ L015483:;R
 	rst  $08 ; Wait Frame
 	ld   a, [$CCF0]
 	cp   $A0
-	adc  a, $00
+	adc  $00
 	ld   [$CCF0], a
 	ld   a, [$CCEF]
 	inc  a
@@ -4318,7 +4318,7 @@ L01551D:;C
 	ld   a, $00
 	ld   [$CCFB], a
 	ld   a, $02
-	ld   [$CD00], a
+	ld   [wAct], a
 	ld   a, $70
 	ld   [$CCFF], a
 	call L01576E
@@ -4333,7 +4333,7 @@ L01551D:;C
 	ld   a, $FE
 	ld   [$CCFE], a
 	ld   a, $04
-	ld   [$CD00], a
+	ld   [wAct], a
 	ld   a, $10
 	ld   [$CCFF], a
 	call L01576E
@@ -4391,7 +4391,7 @@ L01551D:;C
 	ld   a, $01
 	ld   [$CCF5], a
 	ld   a, $02
-	ld   [$CD00], a
+	ld   [wAct], a
 	ld   a, $80
 	ld   [$CCFF], a
 	call L01576E
@@ -4588,7 +4588,7 @@ L01578D:;C
 	rrca 
 	and  $01
 	ld   b, a
-	ld   a, [$CD00]
+	ld   a, [wAct]
 	add  b
 	call L015A39
 	ld   a, [$CCF7]
@@ -4726,7 +4726,7 @@ L0158A1:;R
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	call ActS_LoadGFXForRoom.tryLoadBySetId
+	call ActS_ReqLoadGFXForRoom.tryLoadBySetId
 	ld   b, $20
 	call L0159B9
 L0158B4:;R
@@ -4966,7 +4966,7 @@ L015A39:;C
 	add  e
 	ld   e, a
 	ld   a, d
-	adc  a, $00
+	adc  $00
 	ld   d, a
 	ld   b, [hl]
 	inc  hl
@@ -5021,7 +5021,7 @@ L015A6F:;C
 	add  e
 	ld   e, a
 	ld   a, d
-	adc  a, $00
+	adc  $00
 	ld   d, a
 L015A9C:;R
 	ld   a, [$CD06]
@@ -5068,7 +5068,7 @@ L015ACF:;C
 	inc  hl
 	inc  de
 	ld   a, [de]
-	adc  a, [hl]
+	adc  [hl]
 	ld   [de], a
 	inc  hl
 	inc  de
@@ -5078,7 +5078,7 @@ L015ACF:;C
 	inc  hl
 	inc  de
 	ld   a, [de]
-	adc  a, [hl]
+	adc  [hl]
 	ld   [de], a
 	inc  hl
 	inc  de

@@ -4094,7 +4094,7 @@ L044FFC: db $FF;X
 L044FFD: db $FF;X
 L044FFE: db $FF;X
 L044FFF: db $FF;X
-L045000: db $98
+TilemapDef_StageSel: db $98
 L045001: db $00
 L045002: db $54
 L045003: db $01

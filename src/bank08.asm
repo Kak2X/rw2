@@ -8190,7 +8190,7 @@ L085FFC: db $00
 L085FFD: db $00
 L085FFE: db $00
 L085FFF: db $00
-L086000: db $03
+GFX_MagnetMan: db $03
 L086001: db $00
 L086002: db $03
 L086003: db $01
@@ -12286,7 +12286,7 @@ L086FFC: db $00
 L086FFD: db $00
 L086FFE: db $00
 L086FFF: db $00
-L087000: db $00
+GFX_NeedleMan: db $00
 L087001: db $00
 L087002: db $00
 L087003: db $00

@@ -1,4 +1,20 @@
-L034000: db $00;X
+; =============== ActS_ColiTbl ===============
+; Collision table for each actor, indexed by ID.
+; Each entry is $10 bytes long.
+;
+; These mostly follow the order they are stored in RAM, but not exactly:
+; FORMAT
+; - 0: Box width
+; - 1: Box height
+; - 2: Type
+; - 3: Damage dealt
+; - 4: Starting health (low nybble)
+; - 5: Starting health (high nybble)
+;
+;
+;
+;
+ActS_ColiTbl: db $00;X
 L034001: db $00;X
 L034002: db $00;X
 L034003: db $FF;X
@@ -2046,7 +2062,7 @@ L0347FC: db $00;X
 L0347FD: db $00;X
 L0347FE: db $00;X
 L0347FF: db $00;X
-L034800: db $6E
+ActS_SprMapPtrTbl: db $6E
 L034801: db $49
 L034802: db $74
 L034803: db $49

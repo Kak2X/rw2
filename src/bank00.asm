@@ -459,7 +459,7 @@ VBlankHandler:
 	sub  BG_TILECOUNT_H
 	ld   [wShutterBGPtr_Low], a
 	ld   a, [wShutterBGPtr_High]
-	sbc  a, $00
+	sbc  $00
 	ld   [wShutterBGPtr_High], a
 	
 	; Effect done
@@ -484,7 +484,7 @@ VBlankHandler:
 	ld   [wShutterBGPtr_Low], a
 	ld   l, a
 	ld   a, [wShutterBGPtr_High]
-	adc  a, $00
+	adc  $00
 	ld   [wShutterBGPtr_High], a
 	ld   h, a
 	
@@ -1301,7 +1301,7 @@ ClearTilemaps:
 	add  TILESIZE
 	ld   e, a
 	ld   a, d
-	adc  a, $00
+	adc  $00
 	ld   d, a
 	
 	; If we haven't found any blank tile between $9000-$9800,
@@ -1801,7 +1801,7 @@ L0008B6:;C
 	ld   b, $80
 L0008D4:;R
 	ld   a, b
-	ld   [$CF67], a
+	ld   [wActCurSprFlags], a
 	ld   a, [wLvlId]
 	ld   hl, $3C6A
 	ld   b, $00
@@ -2168,8 +2168,8 @@ Game_Unk_StartRoomTrs:
 	xor  a
 	ldh  [hTrsRowsProc], a
 	
-	; Immediately load any new actor graphics, if any
-	call ActS_LoadGFXForRoom
+	; Immediately start a request to load any new actor graphics, if any
+	call ActS_ReqLoadGFXForRoom
 	
 	; Fall-through
 
@@ -2673,8 +2673,8 @@ L000C9C:;C
 	ld   a, [wLives]
 	call L003A9A
 	rst  $18
-	call ActS_LoadGFXForRoom
-	rst  $20
+	call ActS_ReqLoadGFXForRoom
+	rst  $20 ; Wait GFX load
 	ret
 L000CB0:;C
 	xor  a
@@ -2699,7 +2699,7 @@ L000CCC: db $0D
 L000CCD:;I
 	ld   a, [$CF3A]
 	or   a
-	call nz, ActS_LoadGFXForRoom
+	call nz, ActS_ReqLoadGFXForRoom
 	ld   a, [wPlRelY]
 	sub  $10
 	ld   b, a
@@ -2870,14 +2870,14 @@ L000E03:;R
 	jr   nz, L000E34
 L000E1C:;R
 	ld   a, $64
-	ld   [$CF2D], a
+	ld   [wActSpawnId], a
 	xor  a
-	ld   [$CF2E], a
+	ld   [wActSpawnByte3], a
 	ld   a, [$CF0D]
-	ld   [$CF2B], a
+	ld   [wActSpawnX], a
 	ld   a, [wPl_Unk_Alt_Y]
-	ld   [$CF2C], a
-	call L001D48
+	ld   [wActSpawnY], a
+	call ActS_Spawn
 L000E34:;R
 	ld   a, [$CF42]
 	or   a
@@ -3258,7 +3258,7 @@ L001120:;R
 	sub  c
 	ld   [$CF1B], a
 	ld   a, [$CF1A]
-	sbc  a, b
+	sbc  b
 	ld   [$CF1A], a
 	or   a
 	jr   z, L00115D
@@ -3269,7 +3269,7 @@ L001137:;R
 	sub  c
 	ld   [$CF1B], a
 	ld   a, [$CF1A]
-	sbc  a, b
+	sbc  b
 	ld   [$CF1A], a
 	or   a
 	jr   z, L00115D
@@ -3387,7 +3387,7 @@ L001243:;R
 	add  c
 	ld   [$CF1B], a
 	ld   a, [$CF1A]
-	adc  a, b
+	adc  b
 	ld   [$CF1A], a
 	cp   $04
 	jp   c, L001AE9
@@ -3402,7 +3402,7 @@ L001265:;R
 	add  c
 	ld   [$CF1B], a
 	ld   a, [$CF1A]
-	adc  a, b
+	adc  b
 	ld   [$CF1A], a
 	cp   $01
 	jp   c, L001AE9
@@ -3494,7 +3494,7 @@ L001334:;R
 	sub  $C0
 	ld   [$CF1F], a
 	ld   a, [wPlRelY]
-	sbc  a, $00
+	sbc  $00
 	ld   [wPlRelY], a
 	jp   L001AD6
 L001347:;R
@@ -3527,7 +3527,7 @@ L001377:;J
 	add  $C0
 	ld   [$CF1F], a
 	ld   a, [wPlRelY]
-	adc  a, $00
+	adc  $00
 	ld   [wPlRelY], a
 	jp   L001AD6
 L00138A:;I
@@ -3587,7 +3587,7 @@ L001400:;I
 	add  $40
 	ld   [$CF1F], a
 	ld   a, [wPlRelY]
-	adc  a, $00
+	adc  $00
 	sub  $02
 	ld   [wPlRelY], a
 	call Game_Unk_DoRoomTrs
@@ -3611,7 +3611,7 @@ L001439:;I
 	sub  $40
 	ld   [$CF1F], a
 	ld   a, [wPlRelY]
-	sbc  a, $00
+	sbc  $00
 	add  $02
 	ld   [wPlRelY], a
 	call Game_Unk_DoRoomTrs
@@ -3635,7 +3635,7 @@ L001473:;I
 	add  $40
 	ld   [$CF1B], a
 	ld   a, [wPlRelY]
-	adc  a, $00
+	adc  $00
 	sub  $02
 	ld   [wPlRelY], a
 	call Game_Unk_DoRoomTrs
@@ -3832,7 +3832,7 @@ L0015E6:;R
 	sub  b
 	ld   [$CF68], a
 	ld   a, [$CF69]
-	sbc  a, $00
+	sbc  $00
 	ld   [$CF69], a
 L0015F9:;R
 	ld   hl, $CF78
@@ -3870,7 +3870,7 @@ L001628:;R
 	add  b
 	ld   [$CF68], a
 	ld   a, [$CF69]
-	adc  a, $00
+	adc  $00
 	ld   [$CF69], a
 L00163B:;R
 	call L0018DB
@@ -3951,7 +3951,7 @@ L0016CF:;R
 	add  c
 	ld   [$CF1B], a
 	ld   a, [$CF1A]
-	adc  a, b
+	adc  b
 	ld   [$CF1A], a
 	cp   $04
 	jp   c, L001AE9
@@ -4202,7 +4202,7 @@ L0018BD:;JCR
 	sub  c
 	ld   [$CF18], a
 	ld   a, [$CF19]
-	sbc  a, b
+	sbc  b
 	ld   [$CF19], a
 	ret
 L0018CC:;JCR
@@ -4210,7 +4210,7 @@ L0018CC:;JCR
 	add  c
 	ld   [$CF18], a
 	ld   a, [$CF19]
-	adc  a, b
+	adc  b
 	ld   [$CF19], a
 	ret
 L0018DB:;C
@@ -4575,7 +4575,7 @@ L001B4A:;R
 	ld   a, [de]
 	inc  de
 	ld   c, a
-	ld   a, [$CF67]
+	ld   a, [wActCurSprFlags]
 	or   c
 	ldi  [hl], a
 	dec  b
@@ -4604,7 +4604,7 @@ L001B6D:;R
 	ld   a, [de]
 	inc  de
 	ld   c, a
-	ld   a, [$CF67]
+	ld   a, [wActCurSprFlags]
 	or   c
 	xor  $20
 	ldi  [hl], a
@@ -4647,7 +4647,7 @@ L001B9D:;J
 	ldi  [hl], a
 	ld   a, b
 	ldi  [hl], a
-	ld   a, [$CF67]
+	ld   a, [wActCurSprFlags]
 	ldi  [hl], a
 	ld   a, l
 	ldh  [hWorkOAMPos], a
@@ -4655,17 +4655,27 @@ L001B9D:;J
 L001BD6: db $62
 L001BD7: db $61
 L001BD8: db $60
-L001BD9:;C
+; =============== ActS_ClearAll ===============
+; Prepares actors
+; Deletes all currently processed actors.
+ActS_ClearAll:
+	; As well as deleting the last loaded GFX marker
 	ld   a, $FF
 	ld   [wActGfxId], a
+	
+	; and disables the lock
+	; ??? This might be a lock to disable actor processing when they aren't wanted
 	xor  a
-	ld   [$CF37], a
-	ld   hl, $CD00
-	ld   bc, $0200
+	ld   [wActNoProc], a
+	
+	; Delete everything from the actor area
+	ld   hl, wAct
+	ld   bc, wAct_End-wAct
 	jp   ZeroMemory
+	
 L001BEB:;C
 	ld   d, $C8
-	ld   hl, $CD00
+	ld   hl, wAct
 L001BF0:;R
 	ld   a, [hl]
 	or   a
@@ -4759,27 +4769,27 @@ L001C6C:;CR
 	swap a
 	add  $10
 	or   $0F
-	ld   [$CF2C], a
+	ld   [wActSpawnY], a
 	ld   a, b
 	add  $08
-	ld   [$CF2B], a
+	ld   [wActSpawnX], a
 	ld   h, $C9
 	ld   a, [hl]
-	ld   [$CF2D], a
+	ld   [wActSpawnId], a
 	ld   a, l
-	ld   [$CF2E], a
-	jp   L001D48
+	ld   [wActSpawnByte3], a
+	jp   ActS_Spawn
 L001C8D:;C
 	ld   a, $07
-	ld   [$CF2D], a
+	ld   [wActSpawnId], a
 	xor  a
-	ld   [$CF2E], a
+	ld   [wActSpawnByte3], a
 	ld   b, $08
 	ld   hl, $1CFD
 L001C9B:;R
 	push hl
 	push bc
-	call L001D48
+	call ActS_Spawn
 	ld   e, l
 	ld   d, h
 	pop  bc
@@ -4815,15 +4825,15 @@ L001C9B:;R
 	ret
 L001CC2:;C
 	ld   a, $07
-	ld   [$CF2D], a
+	ld   [wActSpawnId], a
 	xor  a
-	ld   [$CF2E], a
+	ld   [wActSpawnByte3], a
 	ld   b, $08
 	ld   hl, $1CFD
 L001CD0:;R
 	push hl
 	push bc
-	call L001D48
+	call ActS_Spawn
 	ld   e, l
 	ld   d, h
 	pop  bc
@@ -4918,92 +4928,173 @@ L001D31: db $D0
 L001D32: db $21
 L001D33: db $B4
 L001D34: db $B4
-L001D35:;C
-	ld   [$CF2D], a
+
+; =============== ActS_SpawnRel ===============
+; Spawns the specified actor, positioned relative to the currently processed one.
+;
+; Useful to spawn projectiles relative to the actor's origin.
+; Obviously requires an actor being processed.
+;
+; IN
+; - A: Actor ID
+; - B: Relative X pos
+; - C: Relative Y pos
+; OUT
+; - C Flag: If set, the actor couldn't be spawned (no free slot found)
+ActS_SpawnRel:
+	ld   [wActSpawnId], a
+	; ???
 	xor  a
-	ld   [$CF2E], a
-	ldh  a, [$FFA5]
-	add  b
-	ld   [$CF2B], a
-	ldh  a, [$FFA7]
+	ld   [wActSpawnByte3], a
+	
+	; Set spawn pos relative to current
+	ldh  a, [hActCur+iActX]	; Read base pos
+	add  b					; add ours
+	ld   [wActSpawnX], a	; Set as X spawn
+	ldh  a, [hActCur+iActY]	; Same for Y pos
 	add  c
-	ld   [$CF2C], a
-L001D48:;JC
-	ld   hl, $CD00
-L001D4B:;R
-	ld   a, [hl]
-	or   a
-	jr   z, L001D57
-	ld   a, l
-	add  $10
+	ld   [wActSpawnY], a
+	
+	; Fall-through
+	
+; =============== ActS_Spawn ===============
+; Spawns an actor.
+; IN
+; - wActSpawnId
+; - wActSpawnByte3
+; - wActSpawnX
+; - wActSpawnY
+; OUT
+; - C Flag: If set, the actor couldn't be spawned (no free slot found)
+ActS_Spawn:
+
+	;
+	; Find the first empty slot.
+	; There's enough space to store $10 actors at most.
+	;
+	ld   hl, wAct		; HL = Ptr to first slot
+.loop:
+	ld   a, [hl]		; A = iActId
+	or   a				; iActId == 0?
+	jr   z, .found		; If so, the slot is free 
+	ld   a, l			; Otherwise, seek to the next one
+	add  iActEnd		; HL += $10
 	ld   l, a
-	jr   nz, L001D4B
-	scf  
+	jr   nz, .loop		; Reached the end of the actor area? ($00) If not, loop
+	scf  				; Otherwise, C Flag = Set
 	ret
-L001D57:;R
+	
+.found:
+	;
+	; Initialize the actor's properties
+	;
 	push hl
-	push hl
-	ld   a, [$CF2D]
-	or   $80
-	ldi  [hl], a
-	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   a, [$CF2E]
-	ldi  [hl], a
-	xor  a
-	ldi  [hl], a
-	ld   a, [$CF2B]
-	ldi  [hl], a
-	xor  a
-	ldi  [hl], a
-	ld   a, [$CF2C]
-	ld   [hl], a
-	push af
-	ld   a, $03
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
-	pop  af
-	ld   a, [$CF2D]
-	ld   c, a
-	swap a
-	and  $0F
-	ld   b, a
-	ld   a, c
-	swap a
-	and  $F0
-	ld   c, a
-	ld   hl, $4000
-	add  hl, bc
-	pop  de
-	ld   d, $CE
-	ld   b, $04
-L001D93:;R
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	dec  b
-	jr   nz, L001D93
-	ld   b, [hl]
-	inc  hl
-	ld   a, [hl]
-	swap a
-	add  b
-	ld   [de], a
-	inc  de
-	xor  a
-	ld   [de], a
+		push hl ; Save base slot ptr
+			
+			; Actor ID
+			; ??? Enforce visibility flag, also preventing the slot from being marked as free
+			ld   a, [wActSpawnId]	
+			or   ACT_UNK_PROCFLAG
+			ldi  [hl], a ; iActId
+			
+			; Start from the first routine
+			xor  a
+			ldi  [hl], a ; iActRtnId
+
+			; And from the first sprite mapping, with no flags
+			ldi  [hl], a ; iActSprMap
+			
+			; iAct_Unk_UnkTblPtr
+			ld   a, [wActSpawnByte3]
+			ldi  [hl], a
+			
+			; Set spawn coords
+			xor  a
+			ldi  [hl], a	; iActXSub
+			ld   a, [wActSpawnX]
+			ldi  [hl], a	; iActX
+			xor  a
+			ldi  [hl], a	; iActYSub
+			ld   a, [wActSpawnY]
+			ld   [hl], a	; iActY
+			
+			;
+			; Copy the collision data with this actor over.
+			; To give actors more free space in the main struct wAct, this is written to the separate table wActColi.
+			;
+			; The entries here are in the same exact order as those in wAct, so to switch between the two
+			; all that's needed is to inc/dec the high byte of the slot pointer.
+			; ie: $CD10 has its collision data at $CE10
+			;
+			push af
+				ld   a, BANK(ActS_ColiTbl) ; BANK $03
+				ldh  [hRomBank], a
+				ld   [MBC1RomBank], a
+			pop  af
+			
+			; BC = wActSpawnId * 10
+			; Typical way of doing it, by separating the two nybbles in two separate registers
+			; and swapping their order.
+			ld   a, [wActSpawnId]
+			ld   c, a
+			swap a			; B = wActSpawnId >> 4
+			and  $0F
+			ld   b, a
+			ld   a, c		; C = wActSpawnId << 4
+			swap a
+			and  $F0
+			ld   c, a
+			
+			; HL = Ptr to collision table entry
+			ld   hl, ActS_ColiTbl
+			add  hl, bc
+			
+		; DE = Ptr to wActColi slot
+		pop  de					; DE = Ptr to wAct slot
+		ld   d, HIGH(wActColi)	; And seek to the respective wActColi one
+		
+		; Copy the next four bytes as-is
+		; iActColiBoxH, iActColiBoxV, iActColiType, iActColiDamage
+		ld   b, $04					; B = Bytes to copy
+	.cpLoop:
+		ldi  a, [hl]
+		ld   [de], a
+		inc  de
+		dec  b
+		jr   nz, .cpLoop
+		
+		; ???
+		; For reasons unknown to man, the two digits of the actor's health
+		; are stored separately in the ROM.
+		ld   b, [hl]	; Read low nybble (byte4)
+		inc  hl
+		ld   a, [hl]	; Read high nybble (byte5)
+		swap a			; Swap it where it belongs
+		add  b			; Merge them
+		ld   [de], a	; Save to iActColiHealth
+		inc  de
+		
+		; No initial invuln timer
+		xor  a
+		ld   [de], a ; iActColiInvulnTimer
+		
 	pop  hl
+	
 	push af
-	ldh  a, [hRomBankLast]
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
 	
-; =============== ActS_LoadGFXForRoom ===============
+; =============== ActS_ReqLoadGFXForRoom ===============
 ; Loads the actor graphics for the current room.
-ActS_LoadGFXForRoom:
+; Specifically, it triggers requests to load the graphics during VBlank,
+; so they may take a couple of frames to fully load.
+;
+; TODO: This and the related table ActS_GFXSetTbl might be better called Lvl_ReqLoadRoomObjGFX / Lvl_ObjGFXSetTbl or Obj_GFXSetTbl
+;       ACTGFX_HARDMAN -> OBJGFX_HARDMAN
+ActS_ReqLoadGFXForRoom:
 
 	;
 	; Each column in a level can be associated to a potential set of actor graphics,
@@ -5084,7 +5175,7 @@ L001DE4:;C
 	call L001E11
 	call L001E25
 	ld   h, $CD
-	ldh  a, [$FFAD]
+	ldh  a, [hActCur+iAct0D]
 	ld   l, a
 	xor  a
 	ldi  [hl], a
@@ -5108,12 +5199,12 @@ L001E03:;C
 	ret
 L001E11:;JC
 	ld   a, $80
-	ldh  [$FFA0], a
+	ldh  [hActCur+iActId], a
 	xor  a
-	ldh  [$FFA1], a
-	ldh  [$FFA2], a
+	ldh  [hActCur+iActRtnId], a
+	ldh  [hActCur+iActSprMap], a
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	inc  l
 	inc  l
@@ -5139,19 +5230,19 @@ L001E25:;JC
 	dec  b
 L001E41:;R
 	ld   a, b
-	ld   [$CF2D], a
+	ld   [wActSpawnId], a
 	xor  a
-	ld   [$CF2E], a
+	ld   [wActSpawnByte3], a
 	ld   h, $CD
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	add  $05
 	ld   l, a
 	ldi  a, [hl]
-	ld   [$CF2B], a
+	ld   [wActSpawnX], a
 	inc  l
 	ld   a, [hl]
-	ld   [$CF2C], a
-	call L001D48
+	ld   [wActSpawnY], a
+	call ActS_Spawn
 	ret  c
 	inc  l
 	ld   a, $01
@@ -5161,7 +5252,7 @@ L001E63:;C
 	or   $80
 	ld   e, a
 	ld   bc, $0000
-	ld   hl, $CD00
+	ld   hl, wAct
 L001E6C:;R
 	ld   a, [hl]
 	or   a
@@ -5176,99 +5267,156 @@ L001E75:;R
 	ld   l, a
 	jr   nc, L001E6C
 	ret
+	
+; =============== ActS_Unk_ResetSprMap ===============
+; IN
+; - HL: Ptr to ???
 L001E7C:;C
 	inc  l
 	inc  l
-	ldh  a, [$FFA2]
-	and  $80
+	ldh  a, [hActCur+iActSprMap]
+	and  ACTDIR_R
 	ld   [hl], a
 	ret
+	
+; =============== ActS_Unk_ResetSprMapFlip ===============
+; IN
+; - HL: Ptr to ???
 L001E84:;C
 	inc  l
 	inc  l
-	ldh  a, [$FFA2]
-	and  $80
-	xor  $80
+	ldh  a, [hActCur+iActSprMap]
+	and  ACTDIR_R
+	xor  ACTDIR_R
 	ld   [hl], a
 	ret
-L001E8E:;C
+; =============== ActS_SetSpeedX ===============
+; Sets the current actor's horizontal speed.
+; IN
+; - BC: Speed (pixels + subpixels)
+ActS_SetSpeedX:
 	ld   a, c
-	ldh  [$FFA8], a
+	ldh  [hActCur+iActSpdXSub], a
 	ld   a, b
-	ldh  [$FFA9], a
+	ldh  [hActCur+iActSpdX], a
 	ret
-L001E95:;C
+; =============== ActS_SetSpeedY ===============
+; Sets the current actor's vertical speed.
+; IN
+; - BC: Speed (pixels + subpixels)
+ActS_SetSpeedY:
 	ld   a, c
-	ldh  [$FFAA], a
+	ldh  [hActCur+iActSpdYSub], a
 	ld   a, b
-	ldh  [$FFAB], a
+	ldh  [hActCur+iActSpdY], a
 	ret
-L001E9C:;JC
-	ldh  a, [$FFA2]
-	xor  $80
-	ldh  [$FFA2], a
+; =============== ActS_FlipH ===============
+; Flips the current actor's horizontal direction.
+ActS_FlipH:
+	ldh  a, [hActCur+iActSprMap]
+	xor  ACTDIR_R
+	ldh  [hActCur+iActSprMap], a
 	ret
-L001EA3:;C
-	ldh  a, [$FFA2]
-	xor  $40
-	ldh  [$FFA2], a
+; =============== ActS_Unk_FlipV ===============
+; ??? Flips the current actor's vertical direction.
+ActS_Unk_FlipV:
+	ldh  a, [hActCur+iActSprMap]
+	xor  ACTDIR_UNK_UPGRAVEND
+	ldh  [hActCur+iActSprMap], a
 	ret
-L001EAA:;C
-	ldh  a, [$FFA2]
-	and  $C0
-	ldh  [$FFA2], a
+; =============== ActS_ClrSprMapId ===============
+; Resets the current actor's sprite mapping to return to the first frame.
+ActS_ClrSprMapId:
+	ldh  a, [hActCur+iActSprMap]
+	and  ACTDIR_R|ACTDIR_UNK_UPGRAVEND	; Keep flags only
+	ldh  [hActCur+iActSprMap], a
 	ret
-L001EB1:;J
-	ld   hl, $FFA1
+; =============== ActS_IncRtnId ===============
+; Increments the current actor's routine ID.
+ActS_IncRtnId:
+	ld   hl, hActCur+iActRtnId
 	inc  [hl]
 	ret
-L001EB6:;J
-	ld   hl, $FFA1
+; =============== ActS_DecRtnId ===============
+; Decrements the current actor's routine ID.
+ActS_DecRtnId:
+	ld   hl, hActCur+iActRtnId
 	dec  [hl]
 	ret
-L001EBB:;C
-	ld   a, [wPlRelX]
+; =============== ActS_GetPlDistanceX ===============
+; Gets the horizontal distance between the current actor and the player.
+; OUT
+; - A: Horizontal distance (always positive)
+; - C Flag: If set, the player is to the right of the actor.
+ActS_GetPlDistanceX:
+	ld   a, [wPlRelX]		; B = wPlRelX
 	ld   b, a
-	ldh  a, [$FFA5]
-	sub  b
-	jr   nc, L001EC8
-	xor  $FF
+	ldh  a, [hActCur+iActX]	; A = iActX
+	sub  b					; A = iActX - wPlRelX
+	jr   nc, .ret			; Did we underflow? (Player is to the right) If not, return
+	xor  $FF				; Otherwise, flip the result's sign
 	inc  a
-	scf  
-L001EC8:;R
+	scf  					; and set the C flag since that xor cleared it
+.ret:
 	ret
-L001EC9:;C
+; =============== ActS_GetPlDistanceY ===============
+; Gets the vertical distance between the current actor and the player.
+; OUT
+; - A: Vertical distance (always positive)
+; - C Flag: If set, the player is below the actor.
+ActS_GetPlDistanceY:
+	; See above, but for Y positions
 	ld   a, [wPlRelY]
 	ld   b, a
-	ldh  a, [$FFA7]
+	ldh  a, [hActCur+iActY]
 	sub  b
-	jr   nc, L001ED6
+	jr   nc, .ret
 	xor  $FF
 	inc  a
 	scf  
-L001ED6:;R
+.ret:
 	ret
-L001ED7:;C
-	ldh  a, [$FFA5]
-	cp   $D0
-	jr   c, L001EE4
-	ldh  a, [$FFA2]
-	set  7, a
-	ldh  [$FFA2], a
+	
+; =============== ActS_FacePl ===============
+; Makes the current actor face towards the player.
+ActS_FacePl:
+	
+	; If the player is within $30px behind the left edge of the screen,
+	; force it to face right, potentially preventing a despawn.
+	; $D0-$DF is the offscreen range, so there's no inconsistency when
+	; the actor is after the right edge of the screen.
+	ldh  a, [hActCur+iActX]
+	cp   -$30						; iActX < $D0?
+	jr   c, .calcDir				; If so, jump
+	
+	ldh  a, [hActCur+iActSprMap]	; Otherwise, force right direcion
+	set  ACTDIRB_R, a
+	ldh  [hActCur+iActSprMap], a
 	ret
-L001EE4:;R
-	ld   a, [wPlRelX]
+	
+.calcDir:
+	;
+	; Set the direction flag depending on the player being to the left or the right of the actor.
+	;
+	
+	ld   a, [wPlRelX]				; B = wPlRelX
 	ld   b, a
-	ldh  a, [$FFA5]
-	cp   b
-	rra  
-	and  $80
-	ld   b, a
-	ldh  a, [$FFA2]
-	res  7, a
-	or   b
-	ldh  [$FFA2], a
+	ldh  a, [hActCur+iActX]			; A = iActX
+
+	; Calculate the result flags of iActX < wPlRelX (player on the right of the actor?)
+	; If it is, the C flag will be set, so we can push it out to the MSB
+	; to turn it into the appropriate ACTDIR_* value.
+	cp   b							; iActX < wPlRelX? if so, C flag = set
+	rra  							; Shift C flag to MSB
+	and  ACTDIR_R					; Filter other bits out		
+	ld   b, a						; Set to B
+	
+	ldh  a, [hActCur+iActSprMap]
+	res  ACTDIRB_R, a				; Clear old flag
+	or   b							; Replace it with new value
+	ldh  [hActCur+iActSprMap], a	; Save back
 	ret
+	
 L001EF7: db $FA;X
 L001EF8: db $16;X
 L001EF9: db $CF;X
@@ -5292,7 +5440,7 @@ L001F0A: db $A2;X
 L001F0B: db $C9;X
 L001F0C:;C
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ld   [hl], b
 	inc  hl
@@ -5300,63 +5448,72 @@ L001F0C:;C
 	ret
 L001F16:;C
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	add  $02
 	ld   l, a
 	ld   [hl], b
 	ret
 L001F20:;C
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	add  $04
 	ld   l, a
 	ld   [hl], b
 	ret
 L001F2A:;C
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	add  $04
 	ld   l, a
 	ld   a, [hl]
 	ret
-L001F34:;C
-	sla  a
+; =============== ActS_SetSprMapId ===============
+; Sets the current actor's base sprite mapping ID.
+; IN
+; - A: Sprite mapping ID ($00-$07)
+ActS_SetSprMapId:
+	; This is stored into bits3-5 of iActSprMap
+	; B = A << 3
+	sla  a		
 	sla  a
 	sla  a
 	ld   b, a
-	ldh  a, [$FFA2]
-	and  $C0
-	or   b
-	ldh  [$FFA2], a
+	
+	; Update iActSprMap
+	ldh  a, [hActCur+iActSprMap]
+	and  ACTDIR_R|ACTDIR_UNK_UPGRAVEND	; Keep flags only
+	or   b								; Merge with new ID
+	ldh  [hActCur+iActSprMap], a
 	ret
+	
 L001F43:;C
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	and  $C0
 	ld   b, a
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	add  c
 	and  $0F
 	or   b
-	ldh  [$FFA2], a
+	ldh  [hActCur+iActSprMap], a
 	ret
 L001F51:;C
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	and  $C0
 	ld   b, a
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	add  c
 	and  $1F
 	or   b
-	ldh  [$FFA2], a
+	ldh  [hActCur+iActSprMap], a
 	ret
 L001F5F:;C
 	sla  b
 	sla  b
 	sla  b
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	and  $C0
 	ld   e, a
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	add  c
 	ld   c, a
 	and  $07
@@ -5369,53 +5526,98 @@ L001F5F:;C
 L001F78:;R
 	or   d
 	or   e
-	ldh  [$FFA2], a
+	ldh  [hActCur+iActSprMap], a
 	ret
-L001F7D:;C
+	
+; =============== Act_Boss_InitIntro ===============
+; Sets up the necessary data to play a boss intro.
+;
+; Intros all use two different sprite mappings, each lasting the same amount of frames.
+; This applies to both the gameplay and in the stage select screen.
+;
+; Note that the sprite mappings specified are all relative to the current one (wActCurSprMapRelId).
+;
+; IN
+; - D: 1st sprite mapping
+; - E: 2nd sprite mapping
+; - C: Frame length
+Act_Boss_InitIntro:
 	ld   a, $00
-	ldh  [$FFAC], a
+	ldh  [hActCur+iBossIntroTimer], a
+	; With the exception of the timer above, these fields will not be written back to during playback.
 	ld   a, d
-	ldh  [$FFAD], a
+	ldh  [hActCur+iBossIntroSprMap0], a
 	ld   a, e
-	ldh  [$FFAE], a
+	ldh  [hActCur+iBossIntroSprMap1], a
 	ld   a, c
-	ldh  [$FFAF], a
+	ldh  [hActCur+iBossIntroFrameLen], a
 	ret
-L001F8B:;C
-	ldh  a, [$FFAC]
+
+; =============== Act_Boss_PlayIntro ===============
+; Handles the boss intro's timing, updating the sprite mapping frame.
+;
+; OUT
+; - Z Flag: If set, the intro hasn't finished playing
+Act_Boss_PlayIntro:
+
+	; Advance its timer
+	ldh  a, [hActCur+iBossIntroTimer]
 	add  $01
-	ldh  [$FFAC], a
-	ldh  a, [$FFAD]
-	ld   d, a
-	ldh  a, [$FFAE]
+	ldh  [hActCur+iBossIntroTimer], a
+	
+	; Get its fields out
+	ldh  a, [hActCur+iBossIntroSprMap0]		; D = 1st sprite mapping ID / current
+	ld   d, a								;     
+	ldh  a, [hActCur+iBossIntroSprMap1]		; E = 2nd ""
 	ld   e, a
-	ldh  a, [$FFAF]
+	ldh  a, [hActCur+iBossIntroFrameLen]	; C = Target frame length / (*2)
 	ld   c, a
-	ld   b, a
-L001F9B:;R
-	ldh  a, [$FFAC]
-	cp   c
-	jr   nc, L001FA7
-	ld   a, d
-	ld   [$CF38], a
-	xor  a
+
+	ld   b, a								; Separate copy to use as offset
+.loop:
+
+	; If the timer has gone past the target, check if we're done.
+	; During playback of the second frame, this will *always* trigger the first time.
+	ldh  a, [hActCur+iBossIntroTimer]
+	cp   c									; Timer >= Target?
+	jr   nc, .timerGtC						; If so, jump
+	
+.notDone:
+	ld   a, d								; Set to wActCurSprMapRelId the current frame
+	ld   [wActCurSprMapRelId], a
+	xor  a									; Z Flag = set
 	or   a
 	ret
-L001FA7:;R
-	inc  d
+	
+.timerGtC:
+	;
+	; Note how there's nothing keeping track of the current frame ID in a sensible way.
+	; Instead, when a frame ends, we hack around the checks above to make them work
+	; for the next frame, in a loop.
+	; During playback of the second frame, we'll always have to get here at least once.
+	;
+
+	; Switch to the next frame
+	inc  d							
+	
+	; If we've went past the 2nd frame, we're done
 	ld   a, e
-	cp   d
-	jr   c, L001FB1
-	ld   a, c
+	cp   d							; 2ndFrame < CurFrame? 
+	jr   c, .done					; If so, we're done
+	
+	; Otherwise, multiply the target frame by 2, then recheck
+	ld   a, c						; Target += Target
 	add  b
 	ld   c, a
-	jr   L001F9B
-L001FB1:;R
-	ld   a, e
-	ld   [$CF38], a
-	ld   a, $01
+	jr   .loop
+	
+.done:
+	ld   a, e						; Set to wActCurSprMapRelId the 2nd frame for consistency
+	ld   [wActCurSprMapRelId], a
+	ld   a, $01						; Z Flag = clear
 	or   a
 	ret
+	
 L001FB9:;C
 	ld   b, $0C
 L001FBB:;C
@@ -5424,24 +5626,24 @@ L001FBB:;C
 	ld   b, a
 	xor  a
 	ld   [$CF26], a
-	ldh  [$FFA9], a
-	ldh  [$FFAB], a
-	ldh  a, [$FFA7]
+	ldh  [hActCur+iActSpdX], a
+	ldh  [hActCur+iActSpdY], a
+	ldh  a, [hActCur+iActY]
 	sub  b
 	jr   c, L001FD2
-	ld   [$CF52], a
+	ld   [wActCurSprFlagsRes], a
 	jr   L001FE0
 L001FD2:;R
 	xor  $FF
 	inc  a
-	ld   [$CF52], a
+	ld   [wActCurSprFlagsRes], a
 	ld   a, [$CF26]
 	set  6, a
 	ld   [$CF26], a
 L001FE0:;R
 	ld   a, [wPlRelX]
 	ld   b, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	sub  b
 	jr   c, L001FEE
 	ld   [$CF53], a
@@ -5458,7 +5660,7 @@ L001FFC:;R
 	ld   a, [$CF53]
 	and  $F0
 	ld   b, a
-	ld   a, [$CF52]
+	ld   a, [wActCurSprFlagsRes]
 	and  $F0
 	swap a
 	or   b
@@ -5466,9 +5668,9 @@ L001FFC:;R
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ldh  [$FFA8], a
+	ldh  [hActCur+iActSpdXSub], a
 	ld   hl, $2512
-	ld   a, [$CF52]
+	ld   a, [wActCurSprFlagsRes]
 	and  $F0
 	ld   b, a
 	ld   a, [$CF53]
@@ -5479,141 +5681,141 @@ L001FFC:;R
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ldh  [$FFAA], a
-	ldh  a, [$FFA2]
+	ldh  [hActCur+iActSpdYSub], a
+	ldh  a, [hActCur+iActSprMap]
 	and  $3F
 	ld   b, a
 	ld   a, [$CF26]
 	or   b
-	ldh  [$FFA2], a
+	ldh  [hActCur+iActSprMap], a
 	ret
 L002038:;C
 	xor  a
-	ldh  [$FFAC], a
+	ldh  [hActCur+iActTimer0C], a
 	ld   a, $01
-	ldh  [$FFAD], a
+	ldh  [hActCur+iAct0D], a
 	xor  a
-	ldh  [$FFAE], a
+	ldh  [hActCur+iAct0E], a
 	ld   a, $58
-	ldh  [$FFAF], a
+	ldh  [hActCur+iAct0F], a
 	ret
 L002047:;C
-	ld   [$CF52], a
+	ld   [wActCurSprFlagsRes], a
 	xor  a
-	ldh  [$FFA9], a
-	ldh  [$FFAB], a
-	ldh  a, [$FFAE]
+	ldh  [hActCur+iActSpdX], a
+	ldh  [hActCur+iActSpdY], a
+	ldh  a, [hActCur+iAct0E]
 	ld   hl, $2612
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ldh  [$FFA8], a
-	ldh  a, [$FFAF]
+	ldh  [hActCur+iActSpdXSub], a
+	ldh  a, [hActCur+iAct0F]
 	ld   hl, $2612
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ldh  [$FFAA], a
-	ldh  a, [$FFAD]
+	ldh  [hActCur+iActSpdYSub], a
+	ldh  a, [hActCur+iAct0D]
 	bit  1, a
 	jr   nz, L002088
-	ld   a, [$CF52]
+	ld   a, [wActCurSprFlagsRes]
 	ld   b, a
-	ldh  a, [$FFAE]
+	ldh  a, [hActCur+iAct0E]
 	add  b
-	ldh  [$FFAE], a
+	ldh  [hActCur+iAct0E], a
 	cp   $58
 	jr   nz, L00209A
-	ldh  a, [$FFAD]
+	ldh  a, [hActCur+iAct0D]
 	xor  $02
-	ldh  [$FFAD], a
-	ldh  a, [$FFA2]
+	ldh  [hActCur+iAct0D], a
+	ldh  a, [hActCur+iActSprMap]
 	xor  $80
-	ldh  [$FFA2], a
+	ldh  [hActCur+iActSprMap], a
 	jr   L00209A
 L002088:;R
-	ld   a, [$CF52]
+	ld   a, [wActCurSprFlagsRes]
 	ld   b, a
-	ldh  a, [$FFAE]
+	ldh  a, [hActCur+iAct0E]
 	sub  b
-	ldh  [$FFAE], a
+	ldh  [hActCur+iAct0E], a
 	or   a
 	jr   nz, L00209A
-	ldh  a, [$FFAD]
+	ldh  a, [hActCur+iAct0D]
 	xor  $02
-	ldh  [$FFAD], a
+	ldh  [hActCur+iAct0D], a
 L00209A:;R
-	ldh  a, [$FFAD]
+	ldh  a, [hActCur+iAct0D]
 	bit  0, a
 	jr   nz, L0020B9
-	ld   a, [$CF52]
+	ld   a, [wActCurSprFlagsRes]
 	ld   b, a
-	ldh  a, [$FFAF]
+	ldh  a, [hActCur+iAct0F]
 	add  b
-	ldh  [$FFAF], a
+	ldh  [hActCur+iAct0F], a
 	cp   $58
 	ret  nz
-	ldh  a, [$FFAD]
+	ldh  a, [hActCur+iAct0D]
 	xor  $01
-	ldh  [$FFAD], a
-	ldh  a, [$FFA2]
+	ldh  [hActCur+iAct0D], a
+	ldh  a, [hActCur+iActSprMap]
 	xor  $40
-	ldh  [$FFA2], a
+	ldh  [hActCur+iActSprMap], a
 	ret
 L0020B9:;R
-	ld   a, [$CF52]
+	ld   a, [wActCurSprFlagsRes]
 	ld   b, a
-	ldh  a, [$FFAF]
+	ldh  a, [hActCur+iAct0F]
 	sub  b
-	ldh  [$FFAF], a
+	ldh  [hActCur+iAct0F], a
 	or   a
 	ret  nz
-	ldh  a, [$FFAD]
+	ldh  a, [hActCur+iAct0D]
 	xor  $01
-	ldh  [$FFAD], a
+	ldh  [hActCur+iAct0D], a
 	ret
 L0020CB:;C
-	ldh  a, [$FFA8]
+	ldh  a, [hActCur+iActSpdXSub]
 	srl  a
-	ldh  [$FFA8], a
-	ldh  a, [$FFAA]
+	ldh  [hActCur+iActSpdXSub], a
+	ldh  a, [hActCur+iActSpdYSub]
 	srl  a
-	ldh  [$FFAA], a
+	ldh  [hActCur+iActSpdYSub], a
 	ret
 L0020D8:;C
-	ldh  a, [$FFA8]
+	ldh  a, [hActCur+iActSpdXSub]
 	sla  a
-	ldh  [$FFA8], a
-	ldh  a, [$FFA9]
+	ldh  [hActCur+iActSpdXSub], a
+	ldh  a, [hActCur+iActSpdX]
 	rl   a
-	ldh  [$FFA9], a
-	ldh  a, [$FFAA]
+	ldh  [hActCur+iActSpdX], a
+	ldh  a, [hActCur+iActSpdYSub]
 	sla  a
-	ldh  [$FFAA], a
-	ldh  a, [$FFAB]
+	ldh  [hActCur+iActSpdYSub], a
+	ldh  a, [hActCur+iActSpdY]
 	rl   a
-	ldh  [$FFAB], a
+	ldh  [hActCur+iActSpdY], a
 	ret
 L0020F1:;C
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
 	ld   b, a
-	ldh  a, [$FFA7]
+	ldh  a, [hActCur+iActY]
 	inc  a
 	ld   [wPl_Unk_Alt_Y], a
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	bit  7, a
 	jr   nz, L00210E
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	sub  b
 	ld   [$CF0D], a
 	jp   L00332F
 L00210E:;R
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	add  b
 	ld   [$CF0D], a
 	jp   L00332F
@@ -5621,83 +5823,107 @@ L002117:;C
 	xor  a
 	ld   [$CF26], a
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
-	ld   [$CF52], a
-	ldh  a, [$FFA7]
+	ld   [wActCurSprFlagsRes], a
+	ldh  a, [hActCur+iActY]
 	inc  a
 	ld   [wPl_Unk_Alt_Y], a
-	ld   a, [$CF52]
+	ld   a, [wActCurSprFlagsRes]
 	ld   b, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	sub  b
 	ld   [$CF0D], a
 	call L00332F
 	ld   hl, $CF26
 	rl   [hl]
-	ld   a, [$CF52]
+	ld   a, [wActCurSprFlagsRes]
 	ld   b, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	add  b
 	ld   [$CF0D], a
 	call L00332F
 	ld   hl, $CF26
 	rl   [hl]
 	ret
-L002150:;JC
-	ldh  a, [$FFA8]
+	
+; =============== ActS_ApplySpeedFwd ===============
+; Moves the actor forward by the current horizontal speed.
+ActS_ApplySpeedFwd:
+	; BC = SpeedX
+	ldh  a, [hActCur+iActSpdXSub]
 	ld   c, a
-	ldh  a, [$FFA9]
+	ldh  a, [hActCur+iActSpdX]
 	ld   b, a
-	ldh  a, [$FFA2]
-	bit  7, a
-	jr   nz, L00216E
-	ldh  a, [$FFA4]
+	
+	; "Forward" has different meanings depending on the direction we're facing
+	ldh  a, [hActCur+iActSprMap]
+	bit  ACTDIRB_R, a			; Facing right?
+	jr   nz, .moveR				; If so, jump
+.moveL:
+	; XPos -= SpeedX
+	ldh  a, [hActCur+iActXSub]
 	sub  c
-	ldh  [$FFA4], a
-	ldh  a, [$FFA5]
-	sbc  a, b
-	ldh  [$FFA5], a
+	ldh  [hActCur+iActXSub], a
+	ldh  a, [hActCur+iActX]
+	sbc  b
+	ldh  [hActCur+iActX], a
+	
+	;
+	; Offscreen despawn check.
+	; When actors are within range $D0-$DF, they are despawned for being offscreen.
+	;
+	; This leaves a window of:
+	; - $30px to right of the screen
+	; - $20px to the left of the screen
+	;
+	; Meaning it's easier to offscreen actors when moving right.
+	;
 	and  $F0
-	cp   $D0
-	jp   z, L00242F
+	cp   $D0					; (iActX % $F0) == $D0?
+	jp   z, ActS_Despawn		; If so, despawn it
 	ret
-L00216E:;R
-	ldh  a, [$FFA4]
+	
+.moveR:
+	; XPos += SpeedX
+	ldh  a, [hActCur+iActXSub]
 	add  c
-	ldh  [$FFA4], a
-	ldh  a, [$FFA5]
-	adc  a, b
-	ldh  [$FFA5], a
+	ldh  [hActCur+iActXSub], a
+	ldh  a, [hActCur+iActX]
+	adc  b
+	ldh  [hActCur+iActX], a
+	
+	; See above
 	and  $F0
 	cp   $D0
-	jp   z, L00242F
+	jp   z, ActS_Despawn
 	ret
+	
 L002180:;C
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
 	ld   [$CF54], a
 	ld   a, [hl]
 	ld   [$CF55], a
-	ldh  a, [$FFA8]
+	ldh  a, [hActCur+iActSpdXSub]
 	ld   c, a
-	ldh  a, [$FFA9]
+	ldh  a, [hActCur+iActSpdX]
 	ld   b, a
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	bit  7, a
 	jr   nz, L0021BA
-	ldh  a, [$FFA4]
+	ldh  a, [hActCur+iActXSub]
 	sub  c
-	ld   [$CF52], a
-	ldh  a, [$FFA5]
-	sbc  a, b
+	ld   [wActCurSprFlagsRes], a
+	ldh  a, [hActCur+iActX]
+	sbc  b
 	ld   [$CF53], a
 	and  $F0
 	cp   $D0
-	jp   z, L00242F
+	jp   z, ActS_Despawn
 	ld   a, [$CF54]
 	ld   b, a
 	ld   a, [$CF53]
@@ -5705,22 +5931,22 @@ L002180:;C
 	ld   [$CF0D], a
 	jr   L0021D8
 L0021BA:;R
-	ldh  a, [$FFA4]
+	ldh  a, [hActCur+iActXSub]
 	add  c
-	ld   [$CF52], a
-	ldh  a, [$FFA5]
-	adc  a, b
+	ld   [wActCurSprFlagsRes], a
+	ldh  a, [hActCur+iActX]
+	adc  b
 	ld   [$CF53], a
 	and  $F0
 	cp   $D0
-	jp   z, L00242F
+	jp   z, ActS_Despawn
 	ld   a, [$CF54]
 	ld   b, a
 	ld   a, [$CF53]
 	add  b
 	ld   [$CF0D], a
 L0021D8:;R
-	ldh  a, [$FFA7]
+	ldh  a, [hActCur+iActY]
 	ld   [wPl_Unk_Alt_Y], a
 	call L00332F
 	ret  nc
@@ -5738,64 +5964,64 @@ L0021D8:;R
 	ld   [wPl_Unk_Alt_Y], a
 	call L00332F
 	ret  nc
-	ld   a, [$CF52]
-	ldh  [$FFA4], a
+	ld   a, [wActCurSprFlagsRes]
+	ldh  [hActCur+iActXSub], a
 	ld   a, [$CF53]
-	ldh  [$FFA5], a
+	ldh  [hActCur+iActX], a
 	ret
 L00220A:;C
-	ldh  a, [$FFAA]
+	ldh  a, [hActCur+iActSpdYSub]
 	ld   c, a
-	ldh  a, [$FFAB]
+	ldh  a, [hActCur+iActSpdY]
 	ld   b, a
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	bit  6, a
 	jr   nz, L002228
-	ldh  a, [$FFA6]
+	ldh  a, [hActCur+iActYSub]
 	sub  c
-	ldh  [$FFA6], a
-	ldh  a, [$FFA7]
-	sbc  a, b
-	ldh  [$FFA7], a
+	ldh  [hActCur+iActYSub], a
+	ldh  a, [hActCur+iActY]
+	sbc  b
+	ldh  [hActCur+iActY], a
 	and  $F0
 	cp   $00
-	jp   z, L00242F
+	jp   z, ActS_Despawn
 	ret
 L002228:;R
-	ldh  a, [$FFA6]
+	ldh  a, [hActCur+iActYSub]
 	add  c
-	ldh  [$FFA6], a
-	ldh  a, [$FFA7]
-	adc  a, b
-	ldh  [$FFA7], a
+	ldh  [hActCur+iActYSub], a
+	ldh  a, [hActCur+iActY]
+	adc  b
+	ldh  [hActCur+iActY], a
 	and  $F0
 	cp   $A0
-	jp   z, L00242F
+	jp   z, ActS_Despawn
 	ret
 L00223A:;C
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
 	ld   [$CF54], a
 	ld   a, [hl]
 	ld   [$CF55], a
-	ldh  a, [$FFAA]
+	ldh  a, [hActCur+iActSpdYSub]
 	ld   c, a
-	ldh  a, [$FFAB]
+	ldh  a, [hActCur+iActSpdY]
 	ld   b, a
-	ldh  a, [$FFA2]
+	ldh  a, [hActCur+iActSprMap]
 	bit  6, a
 	jr   nz, L002276
-	ldh  a, [$FFA6]
+	ldh  a, [hActCur+iActYSub]
 	sub  c
-	ld   [$CF52], a
-	ldh  a, [$FFA7]
-	sbc  a, b
+	ld   [wActCurSprFlagsRes], a
+	ldh  a, [hActCur+iActY]
+	sbc  b
 	ld   [$CF53], a
 	and  $F0
 	cp   $00
-	jp   z, L00242F
+	jp   z, ActS_Despawn
 	ld   a, [$CF55]
 	sla  a
 	ld   b, a
@@ -5804,41 +6030,41 @@ L00223A:;C
 	ld   [wPl_Unk_Alt_Y], a
 	jr   L002290
 L002276:;R
-	ldh  a, [$FFA6]
+	ldh  a, [hActCur+iActYSub]
 	add  c
-	ld   [$CF52], a
-	ldh  a, [$FFA7]
-	adc  a, b
+	ld   [wActCurSprFlagsRes], a
+	ldh  a, [hActCur+iActY]
+	adc  b
 	ld   [$CF53], a
 	and  $F0
 	cp   $A0
-	jp   z, L00242F
+	jp   z, ActS_Despawn
 	ld   a, [$CF53]
 	inc  a
 	ld   [wPl_Unk_Alt_Y], a
 L002290:;R
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	ld   [$CF0D], a
 	call L00332F
 	ret  nc
 	ld   a, [$CF54]
 	ld   b, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	sub  b
 	ld   [$CF0D], a
 	call L00332F
 	ret  nc
 	ld   a, [$CF54]
 	ld   b, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	add  b
 	ld   [$CF0D], a
 	call L00332F
 	ret  nc
-	ld   a, [$CF52]
-	ldh  [$FFA6], a
+	ld   a, [wActCurSprFlagsRes]
+	ldh  [hActCur+iActYSub], a
 	ld   a, [$CF53]
-	ldh  [$FFA7], a
+	ldh  [hActCur+iActY], a
 	ret
 L0022C0: db $F0;X
 L0022C1: db $A2;X
@@ -5846,63 +6072,115 @@ L0022C2: db $CB;X
 L0022C3: db $77;X
 L0022C4: db $20;X
 L0022C5: db $31;X
-L0022C6:;C
-	ldh  a, [$FFAA]
+
+; =============== ActS_ApplySpeedUpY ===============
+; Moves the current actor *upwards* by the current vertical speed.
+; Applies downwards gravity at 0.125px/frame.
+;
+; "Upwards" highly emphasized, this is the other way around
+; compared to the more normal ActS_ApplySpeedY, where the speed gets
+; added to the vertical position, moving you down instead.
+;
+; OUT
+; - C flag: If set, the actor could move.
+;           If clear, it couldn't (its vertical speed has been reduced to 0)
+;           Typically the calling code should check for this 
+;           and switch to somewhere else.
+ActS_ApplySpeedUpY:
+
+	; Decrease updwards speed at 0.125px/frame
+	; BC = YSpeed - $00.20
+	ldh  a, [hActCur+iActSpdYSub]
 	sub  $20
 	ld   c, a
-	ldh  a, [$FFAB]
-	sbc  a, $00
+	ldh  a, [hActCur+iActSpdY]
+	sbc  $00
 	ld   b, a
-	jr   nc, L0022DE
-	ldh  a, [$FFA2]
-	xor  $40
-	ldh  [$FFA2], a
+	
+	; If we didn't underflow the speed, apply it
+	jr   nc, .moveUp
+	
+.end:
+	
+	; Otherwise, flag that movement is stalled
+	ldh  a, [hActCur+iActSprMap]
+	xor  ACTDIR_UNK_UPGRAVEND
+	ldh  [hActCur+iActSprMap], a
+	
+	; And clear out the speed
 	xor  a
-	ldh  [$FFAA], a
-	ldh  [$FFAB], a
+	ldh  [hActCur+iActSpdYSub], a
+	ldh  [hActCur+iActSpdY], a
+	
+	; C Flag = Clear (can't move)
 	ret
-L0022DE:;R
+	
+.moveUp:
+	; Update the speed value
 	ld   a, c
-	ldh  [$FFAA], a
+	ldh  [hActCur+iActSpdYSub], a
 	ld   a, b
-	ldh  [$FFAB], a
-	ldh  a, [$FFA6]
+	ldh  [hActCur+iActSpdY], a
+	
+	; YPos -= SpeedY
+	ldh  a, [hActCur+iActYSub]
 	sub  c
-	ldh  [$FFA6], a
-	ldh  a, [$FFA7]
-	sbc  a, b
-	ldh  [$FFA7], a
+	ldh  [hActCur+iActYSub], a
+	ldh  a, [hActCur+iActY]
+	sbc  b
+	ldh  [hActCur+iActY], a
+	
+	; If the actor in within vertical range $00-$0F, despawn it.
+	; This is the very top of the room.
 	and  $F0
 	cp   $00
-	jp   z, L00242F
-	scf  
+	jp   z, ActS_Despawn
+	
+	scf  ; C Flag = Set (can move)
 	ret
-L0022F7:;C
-	ldh  a, [$FFAA]
+	
+; =============== ActS_ApplySpeedY ===============
+; Moves the current actor *downwards* by the current vertical speed.
+; Applies downwards gravity at 0.125px/frame.
+ActS_ApplySpeedY:
+
+	; Increase downwards speed at 0.125px/frame
+	; BC = YSpeed + $00.20
+	ldh  a, [hActCur+iActSpdYSub]
 	add  $20
 	ld   c, a
-	ldh  a, [$FFAB]
-	adc  a, $00
+	ldh  a, [hActCur+iActSpdY]
+	adc  $00
 	ld   b, a
-	cp   $04
-	jr   c, L002308
-	ld   bc, $0400
-L002308:;R
+	
+	; Cap the movement to 4px/frame
+	cp   $04			; YSpeed < 4?
+	jr   c, .moveDown	; If so, jump
+	ld   bc, $0400		; Otherwise, cap
+.moveDown:
+	
+	; Update the speed value
 	ld   a, c
-	ldh  [$FFAA], a
+	ldh  [hActCur+iActSpdYSub], a
 	ld   a, b
-	ldh  [$FFAB], a
-	ldh  a, [$FFA6]
+	ldh  [hActCur+iActSpdY], a
+	
+	; YPos += SpeedY
+	ldh  a, [hActCur+iActYSub]
 	add  c
-	ldh  [$FFA6], a
-	ldh  a, [$FFA7]
-	adc  a, b
-	ldh  [$FFA7], a
+	ldh  [hActCur+iActYSub], a
+	ldh  a, [hActCur+iActY]
+	adc  b
+	ldh  [hActCur+iActY], a
+	
+	; If the actor in within vertical range $A0-$AF, despawn it.
+	; This is 32px below the bottom of the gameplay screen.
 	and  $F0
 	cp   $A0
-	jp   z, L00242F
+	jp   z, ActS_Despawn
 	scf  
 	ret
+	
 L002321: db $F0;X
 L002322: db $A2;X
 L002323: db $CB;X
@@ -5912,28 +6190,28 @@ L002326: db $A8;X
 L002327: db $23;X
 L002328:;C
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
 	ld   [$CF54], a
 	ld   a, [hl]
 	ld   [$CF55], a
-	ldh  a, [$FFAA]
+	ldh  a, [hActCur+iActSpdYSub]
 	sub  $20
 	ld   c, a
-	ldh  a, [$FFAB]
-	sbc  a, $00
+	ldh  a, [hActCur+iActSpdY]
+	sbc  $00
 	ld   b, a
 	jr   c, L00239D
 	ld   a, c
-	ldh  [$FFAA], a
+	ldh  [hActCur+iActSpdYSub], a
 	ld   a, b
-	ldh  [$FFAB], a
-	ldh  a, [$FFA6]
+	ldh  [hActCur+iActSpdY], a
+	ldh  a, [hActCur+iActYSub]
 	sub  c
-	ld   [$CF52], a
-	ldh  a, [$FFA7]
-	sbc  a, b
+	ld   [wActCurSprFlagsRes], a
+	ldh  a, [hActCur+iActY]
+	sbc  b
 	ld   [$CF53], a
 	ld   a, [$CF55]
 	sla  a
@@ -5942,31 +6220,31 @@ L002328:;C
 	ld   a, [$CF53]
 	sub  b
 	ld   [wPl_Unk_Alt_Y], a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	ld   [$CF0D], a
 	call L00332F
 	jr   nc, L00239E
 	ld   a, [$CF54]
 	ld   b, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	sub  b
 	ld   [$CF0D], a
 	call L00332F
 	jr   nc, L00239E
 	ld   a, [$CF54]
 	ld   b, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	add  b
 	ld   [$CF0D], a
 	call L00332F
 	jr   nc, L00239E
-	ld   a, [$CF52]
-	ldh  [$FFA6], a
+	ld   a, [wActCurSprFlagsRes]
+	ldh  [hActCur+iActYSub], a
 	ld   a, [$CF53]
-	ldh  [$FFA7], a
+	ldh  [hActCur+iActY], a
 	and  $F0
 	cp   $00
-	jp   z, L00242F
+	jp   z, ActS_Despawn
 	scf  
 	ret
 L00239D:;R
@@ -5974,147 +6252,207 @@ L00239D:;R
 L00239E:;R
 	push af
 	xor  a
-	ldh  [$FFA6], a
-	ldh  [$FFAA], a
-	ldh  [$FFAB], a
+	ldh  [hActCur+iActYSub], a
+	ldh  [hActCur+iActSpdYSub], a
+	ldh  [hActCur+iActSpdY], a
 	pop  af
 	ret
 L0023A8:;C
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
 	ld   [$CF54], a
-	ldh  a, [$FFAA]
+	ldh  a, [hActCur+iActSpdYSub]
 	add  $20
 	ld   c, a
-	ldh  a, [$FFAB]
-	adc  a, $00
+	ldh  a, [hActCur+iActSpdY]
+	adc  $00
 	ld   b, a
 	cp   $04
 	jr   c, L0023C3
 	ld   bc, $0400
 L0023C3:;R
 	ld   a, c
-	ldh  [$FFAA], a
+	ldh  [hActCur+iActSpdYSub], a
 	ld   a, b
-	ldh  [$FFAB], a
-	ldh  a, [$FFA6]
+	ldh  [hActCur+iActSpdY], a
+	ldh  a, [hActCur+iActYSub]
 	add  c
-	ld   [$CF52], a
-	ldh  a, [$FFA7]
-	adc  a, b
+	ld   [wActCurSprFlagsRes], a
+	ldh  a, [hActCur+iActY]
+	adc  b
 	ld   [$CF53], a
 	inc  a
 	ld   [wPl_Unk_Alt_Y], a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	ld   [$CF0D], a
 	call L00332F
 	jr   nc, L002413
 	ld   a, [$CF54]
 	ld   b, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	sub  b
 	ld   [$CF0D], a
 	call L00332F
 	jr   nc, L002413
 	ld   a, [$CF54]
 	ld   b, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	add  b
 	ld   [$CF0D], a
 	call L00332F
 	jr   nc, L002413
-	ld   a, [$CF52]
-	ldh  [$FFA6], a
+	ld   a, [wActCurSprFlagsRes]
+	ldh  [hActCur+iActYSub], a
 	ld   a, [$CF53]
-	ldh  [$FFA7], a
+	ldh  [hActCur+iActY], a
 	and  $F0
 	cp   $A0
-	jp   z, L00242F
+	jp   z, ActS_Despawn
 	ret
 L002413:;R
 	xor  a
-	ldh  [$FFA6], a
-	ldh  [$FFAA], a
-	ldh  [$FFAB], a
-	ldh  a, [$FFA7]
+	ldh  [hActCur+iActYSub], a
+	ldh  [hActCur+iActSpdYSub], a
+	ldh  [hActCur+iActSpdY], a
+	ldh  a, [hActCur+iActY]
 	or   $0F
-	ldh  [$FFA7], a
+	ldh  [hActCur+iActY], a
 	ret
 L002421:;C
 	ld   a, [$CF31]
 	ld   b, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	add  b
-	ldh  [$FFA5], a
+	ldh  [hActCur+iActX], a
 	and  $F0
 	cp   $D0
 	ret  nz
-L00242F:;J
-	ldh  a, [$FFA0]
-	cp   $E0
-	jr   c, L00243D
-	cp   $E4
-	jr   nc, L00243D
+	
+; =============== ActS_Despawn ===============
+; Despawns the current actor.
+ActS_Despawn:
+
+	; ???
+	ldh  a, [hActCur+iActId]
+	cp   ACT_E0			; iActId < $E0?
+	jr   c, .despawn	; If so, skip
+	cp   ACT_E4			; iActId >= $E4?
+	jr   nc, .despawn	; If so, skip
 	xor  a
 	ld   [$CFF1], a
-L00243D:;R
+	
+.despawn:
+	; Mark the slot as free
 	xor  a
-	ldh  [$FFA0], a
-	ld   h, $C8
-	ldh  a, [$FFA3]
-	or   a
-	ret  z
-	ld   l, a
-	ld   a, [hl]
+	ldh  [hActCur+iActId], a
+	
+	; ???
+	; If this actor has a respawn table pointer associated to it, flag it.
+	ld   h, HIGH(wLvlUnkTblC800)			; High byte is fixed
+	ldh  a, [hActCur+iAct_Unk_UnkTblPtr]
+	or   a				; Is there a pointer associated?
+	ret  z				; If not, return
+	ld   l, a			; Otherwise, seek HL to the entry
+	ld   a, [hl]		; and flag it as defeated ???
 	res  7, a
 	ld   [hl], a
 	ret
-L00244C:;C
+	
+; =============== ActS_DrawSprMap ===============
+; :(
+ActS_DrawSprMap:
 	push af
-	ld   a, $03
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(ActS_SprMapPtrTbl) ; BANK $03
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   a, [$CF2F]
-	add  $05
+	
+	;
+	; Actors with an invulnerability timer set should flash every 2 frames.
+	; This will be used to calculate the effective OBJ flags value.
+	; While we're here, also decrement that timer.
+	;
+	
+	ld   a, [wActCurSlotPtr]	; HL = Ptr to current slot's iActColiInvulnTimer
+	add  iActColiInvulnTimer	
 	ld   l, a
-	ld   h, $CE
+	ld   h, HIGH(wActColi)
+	
 	ld   a, [hl]
-	or   a
-	jr   z, L00246A
-	dec  [hl]
-	and  $02
-	sla  a
-	sla  a
-	sla  a
-L00246A:;R
-	ld   b, a
-	ld   a, [$CF67]
-	or   b
-	ld   [$CF52], a
-	ldh  a, [$FFA0]
-	and  $7F
-	sla  a
-	ld   hl, $4800
+	or   a						; iActColiInvulnTimer == 0?
+	jr   z, .calcFlags			; If so, skip
+	dec  [hl]					; iActColiInvulnTimer--
+	
+	; Shift the 2nd bit of the invuln timer (every 2 frames) into SPRB_OBP1
+	and  $02					; Every 2 frames...
+	sla  a						; ...bit2
+	sla  a						; ...bit3
+	sla  a						; ...bit4 (SPRB_OBP1)
+	
+	; And merge it with the base flags into the final value
+.calcFlags:
+	; A will be 0 if we jumped to here (SPRB_OBP1 clear)
+	; Note this isn't using xor b, so if the object is already using OBP1, the flash won't be visible.
+	ld   b, a					
+	ld   a, [wActCurSprFlags]
+	or   b						
+	ld   [wActCurSprFlagsRes], a
+	
+	;--
+	
+	;
+	; Find the sprite mapping associated with the current frame.
+	; We have to go through two layers of pointer tables to get there.
+	;
+	
+	;
+	; FIRST ONE
+	;
+	; Indexed by actor IDs, each entry is a pointer to a table of other pointers.
+	;
+	
+	; First, seek HL to the sprite mapping table associated to the current actor.
+	ldh  a, [hActCur+iActId]
+	and  $FF^ACT_UNK_PROCFLAG	; Filter out ??? visibility flag
+	sla  a						; * 2
+	ld   hl, ActS_SprMapPtrTbl
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ldi  a, [hl]
+	add  hl, bc					; Seek to the entry
+	ldi  a, [hl]				; Read its pointer out to DE
 	ld   e, a
 	ld   a, [hl]
 	ld   d, a
-	ld   l, e
+	ld   l, e					; and to HL
 	ld   h, d
-	ld   a, [$CF38]
-	sla  a
+	
+	;
+	; SECOND ONE
+	;
+	; Indexed by sprite mapping ID, each entry is a pointer to the actual sprite mapping data.
+	;
+	; The index itself is not straightforward, two separate values are added together to make
+	; it easier using relative offsets.
+	; One of the values ("base ID") is stored directly into the slot, the other ("relative ID")
+	; is a one-off that needs to be manually set each time the actor is processed.
+	; On top of that, the base ID is packed into just three bits of iActSprMap.
+	;
+	
+	; B = Relative ID * 2
+	ld   a, [wActCurSprMapRelId]		; Read relative ID
+	sla  a							; Pointer table requirement
 	ld   b, a
-	ldh  a, [$FFA2]
-	srl  a
-	srl  a
-	and  $0E
+	; The base ID is packed into just three bits of iActSprMap. (bits3-5)
+	; This implies a big limit on the number of mappings actors can normally have.
+	; A = (iActSprMap >> 2) & $0E
+	ldh  a, [hActCur+iActSprMap]	
+	srl  a							; Shift them down twice to bits1-5
+	srl  a							; (not 3 times, due to pointer table reqs)
+	and  $0E						; Filter out other bits
 	add  b
+	; Index the entry and read its pointer out to DE
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
@@ -6122,91 +6460,158 @@ L00246A:;R
 	ld   e, a
 	ld   a, [hl]
 	ld   d, a
-	ldh  a, [hWorkOAMPos]
+	
+	;--
+	
+	;
+	; Write the sprite mapping to the OAM mirror.
+	;
+	
+	ldh  a, [hWorkOAMPos]	; HL = Ptr to current OAM slot
 	ld   l, a
-	ld   h, $DF
-	ld   a, [de]
-	or   a
-	jp   z, L002508
-	inc  de
-	ld   b, a
-	ldh  a, [$FFA2]
-	bit  7, a
-	jr   nz, L0024D4
-L0024AE:;R
-	ldh  a, [$FFA7]
+	ld   h, HIGH(wWorkOAM)
+	
+	;
+	; The first byte of a mapping marks the number of individual OBJ they use.
+	; Invisible frames point to a dummy mapping with an OBJ count of 0, so
+	; return early in that case.
+	;
+	ld   a, [de]			; A = OBJCount
+	or   a					; OBJCount == 0?
+	jp   z, .end			; If so, we're done
+	inc  de					; Otherwise, seek to the OBJ table
+	ld   b, a				; B = OBJCount
+	
+	;
+	; What follows are <OBJCount> tables with 4 entries each, that directly follow the same structure the OAM OBJ:
+	; - Rel. Y pos
+	; - Rel. X pos
+	; - Tile ID
+	; - OBJ Flags
+	;
+	
+	; Two completely separate loops are used to handle horizontal flipping.
+	; This is due to the relative positions between individual OBJ being inverted,
+	; and it's also faster to perform the check only once.
+	ldh  a, [hActCur+iActSprMap]
+	bit  ACTDIRB_R, a		; Actor facing right?
+	jr   nz, .loopR			; If so, jump
+.loopL:
+
+	;
+	; NO FLIPPING
+	; Nothing special here.
+	;
+	
+	; YPos = iActY + byte0
+	ldh  a, [hActCur+iActY]	; C = Absolute Y
+	ld   c, a
+	ld   a, [de]			; A = Relative Y
+	inc  de					; Seek to byte1 for later
+	add  c					; Get final pos
+	ldi  [hl], a			; Write to OAM mirror
+	
+	; XPos = iActX + byte1
+	ldh  a, [hActCur+iActX]
 	ld   c, a
 	ld   a, [de]
 	inc  de
 	add  c
 	ldi  [hl], a
-	ldh  a, [$FFA5]
-	ld   c, a
-	ld   a, [de]
-	inc  de
-	add  c
-	ldi  [hl], a
+	
+	; TileID = byte2
 	ld   a, [de]
 	inc  de
 	ldi  [hl], a
+	
+	; Flags = byte3 | wActCurSprFlagsRes
+	; Curiously, the base flags are OR'd with ours, compared to the usual way of XOR'ing them.
+	; This prevents you from overriding all options.
 	ld   a, [de]
 	inc  de
 	ld   c, a
-	ld   a, [$CF52]
+	ld   a, [wActCurSprFlagsRes]
 	or   c
 	ldi  [hl], a
+	
+	; If we reached the end of the OAM mirror, stop drawing any further OBJ.
+	; [POI] While this could have also been checked at the start of the subroutine,
+	;       in practice it's not an issue.
+	;       Of the two places that call this subroutine, one of them performs this check
+	;       before calling it, while the other is called while the OAM mirror is empty.
 	ld   a, l
-	cp   $A0
-	jr   z, L002500
-	dec  b
-	jr   nz, L0024AE
-	ld   a, l
+	cp   OAM_SIZE			; HL == $DFA0?
+	jr   z, .full			; If so, abort (we're full)
+	dec  b					; Finished copying all OBJ?
+	jr   nz, .loopL			; If not, loop
+	
+	ld   a, l				; Save back current OAM ptr
 	ldh  [hWorkOAMPos], a
-	jr   L002508
-L0024D4:;R
-	ldh  a, [$FFA7]
+	jr   .end
+	
+.loopR:
+
+	;
+	; HORIZONTAL FLIPPING
+	; This needs to flip the individual OBJ alongside the sprite mapping itself.
+	;
+	
+	; YPos = iActY + byte0
+	ldh  a, [hActCur+iActY]
 	ld   c, a
 	ld   a, [de]
 	inc  de
 	add  c
 	ldi  [hl], a
-	ldh  a, [$FFA5]
+	
+	; XPos = -(iActX + byte1) - TILE_H
+	; For flipping the sprite mapping
+	ldh  a, [hActCur+iActX]	; C = Absolute X
 	ld   c, a
+	ld   a, [de]			; A = Relative X
+	inc  de					; Seek to byte2 for later
+	xor  $FF				; Invert the rel. X position (offset by -1)
+	sub  TILE_H-1			; Account for tile width
+	add  c					; Get final pos
+	ldi  [hl], a			; Write to OAM mirror
+	
+	; TileID = byte2
 	ld   a, [de]
 	inc  de
-	xor  $FF
-	sub  $07
-	add  c
 	ldi  [hl], a
-	ld   a, [de]
-	inc  de
-	ldi  [hl], a
+	
+	; Flags = (byte3 | wActCurSprFlagsRes) ^ SPR_XFLIP
 	ld   a, [de]
 	inc  de
 	ld   c, a
-	ld   a, [$CF52]
+	ld   a, [wActCurSprFlagsRes]
 	or   c
-	xor  $20
+	xor  SPR_XFLIP			; Flip the individual OBJ graphic
 	ldi  [hl], a
+	
+	; If we reached the end of the OAM mirror, stop drawing any further OBJ.
 	ld   a, l
-	cp   $A0
-	jr   z, L002500
-	dec  b
-	jr   nz, L0024D4
-	ld   a, l
+	cp   OAM_SIZE			; HL == $DFA0?
+	jr   z, .full			; If so, abort (we're full)
+	dec  b					; Finished copying all OBJ?
+	jr   nz, .loopR			; If not, loop
+	
+	ld   a, l				; Save back current OAM ptr
 	ldh  [hWorkOAMPos], a
-	jr   L002508
-L002500:;R
-	ldh  [hWorkOAMPos], a
-	ld   a, [$CF2F]
-	ld   [$CF30], a
-L002508:;JR
+	jr   .end
+	
+.full:
+	ldh  [hWorkOAMPos], a	; Save back current OAM ptr
+	ld   a, [wActCurSlotPtr]
+	ld   [wActOAMFull], a	; Mark end of OAM reached
+.end:
 	push af
-	ldh  a, [hRomBankLast]
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
+	
 L002512: db $B4
 L002513: db $3E
 L002514: db $25
@@ -6592,10 +6997,15 @@ Game_Main:
 	jr   z, Game_Main_ToWilyCastle
 	
 .toStageSel:
+	call Module_StageSel
 	
-	call L002C0C
+	; Prepare for gameplay.
+	
+	; Start from the actual first room.
+	; Room ID $00, by convention, is kept completely empty.
 	ld   a, $01
 	ld   [wLvlRoomId], a
+	
 	call L002AC7
 	call L002ADE
 L0026AC:;R
@@ -6808,7 +7218,7 @@ L0027F8:;R
 	call L0017D2
 	call L0039EF
 	xor  a
-	ld   [$CF67], a
+	ld   [wActCurSprFlags], a
 	ld   [$CF6F], a
 	ld   [$CF31], a
 	pop  af
@@ -6846,9 +7256,9 @@ L00287F:;R
 	ldh  [hSFXSet], a
 L002887:;R
 	ld   a, [$CF63]
-	ld   [$CF2B], a
+	ld   [wActSpawnX], a
 	ld   a, [$CF64]
-	ld   [$CF2C], a
+	ld   [wActSpawnY], a
 	call L001C8D
 L002896:;R
 	rst  $08 ; Wait Frame
@@ -7055,9 +7465,9 @@ L0029C5:;R
 	ld   a, $06
 	ldh  [hSFXSet], a
 	ld   a, [$CF63]
-	ld   [$CF2B], a
+	ld   [wActSpawnX], a
 	ld   a, [$CF64]
-	ld   [$CF2C], a
+	ld   [wActSpawnY], a
 	call L001C8D
 L0029DE:;R
 	call L002A97
@@ -7150,7 +7560,7 @@ L002A6F:;C
 L002A81:;C
 	ld   bc, $1000
 	ld   de, $0010
-	ld   hl, $CD00
+	ld   hl, wAct
 L002A8A:;R
 	ld   [hl], c
 	add  hl, de
@@ -7197,7 +7607,7 @@ L002AC7:;C
 	call L0008B6
 	call L0008F4
 	call L000C08
-	call L001BD9
+	call ActS_ClearAll
 	jp   L001C25
 L002ADE:;C
 	call StartLCDOperation
@@ -7413,623 +7823,842 @@ Module_Title:
 	and  $08
 	ret
 	
-; =============== Module_StageSel ===============	
-L002C0C:;C
+; =============== Module_StageSel ===============
+; Stage Select screen.
+Module_StageSel:
+	;--
+	;
+	; Load VRAM
+	;
 	ld   a, GFXSET_STAGESEL
 	call GFXSet_Load
 	push af
-	ld   a, $04
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(TilemapDef_StageSel) ; BANK $04
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   de, $5000
+	ld   de, TilemapDef_StageSel
 	call LoadTilemapDef
 	push af
-	ldh  a, [hRomBankLast]
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
+	
+	;
+	; Clear portraits of defeated bosses
+	;
 	ld   a, [wWpnUnlock0]
-	rra  
-	ld   c, a
-	ld   b, $04
-L002C30:;R
-	push bc
-	srl  c
-	jr   nc, L002C40
-	ld   a, b
-	dec  a
-	call L002F80
-	ld   de, wScrEvRows
-	call LoadTilemapDef
-L002C40:;R
-	pop  bc
-	srl  c
-	dec  b
-	jr   nz, L002C30
-	ld   a, $07
+	
+	; We only want the completion status of the first set of bosses.
+	; For some reason Top Man takes up bit0, with the first set of bosses coming next.
+	rra						; Shift out Top Man
+	
+	; Shift the four bits one by one
+	ld   c, a				; C = First set completion in low nybble
+	ld   b, $04				; B = Remaining bits to check
+.bossClrLoop:
+	push bc					; Save count
+		srl  c					; >> boss bit out to carry
+		jr   nc, .bossNotDone	; Is the boss cleared? If not, skip
+		
+		; Otherwise, wipe the portrait
+		ld   a, b			; A = Pic index
+		dec  a
+		call StageSel_MkEmptyPicTilemap		; Build the tilemap
+		ld   de, wTilemapBuf
+		call LoadTilemapDef	; Execute it immediately
+.bossNotDone:
+	pop  bc					; Restore count
+	srl  c					; Redo this due to the pop
+	dec  b					; Are we done?
+	jr   nz, .bossClrLoop	; If not, loop
+	
+	; The lower half of the stage select is drawn on the WINDOW,
+	; to allow the screen split effect when selecting a stage.
+	ld   a, $07				; Left corner
 	ldh  [hWinX], a
-	ld   a, $48
+	ld   a, SCREEN_V/2		; Middle
 	ldh  [hWinY], a
-	ld   a, $01
+	
+	ld   a, $01				; [POI] Useless line
 	call StartLCDOperation
-	ld   a, $02
+	;--
+	
+	ld   a, BGM_STAGESELECT
 	ldh  [hBGMSet], a
+	
 	xor  a
-	ld   [$CF66], a
-L002C5B:;R
+	ld   [wStageSelCursor], a
+.loop:
+	;
+	; MAIN LOOP
+	;
+	
 	rst  $08 ; Wait Frame
-	call L002CAA
+	
+	call StageSel_DrawCursor
 	call JoyKeys_Refresh
+	
 	ldh  a, [hJoyNewKeys]
-	ld   c, a
-	or   a
-	jr   z, L002C5B
-	ld   a, [$CF66]
-	ld   b, a
+	ld   c, a				; C = hJoyNewKeys
+	or   a					; Pressed any keys?
+	jr   z, .loop			; If not, loop
+	
+	ld   a, [wStageSelCursor]
+	ld   b, a				; B = wStageSelCursor
+	
+.chkStageSel:
+	;
+	; START or A -> Select a stage
+	;
 	ld   a, c
-	and  $09
-	jr   z, L002C88
-	ld   a, b
-	xor  $04
+	and  KEY_START|KEY_A	; Pressing START or A?
+	jr   z, .chkMoveH		; If not, skip
+	
+	; For whatever reason, the first set of bosses takes up level IDs $04-$07,
+	; while the second set takes up $00-$03.
+	; That's the other way around from the cursor position, so toggle bit2.
+	; Other than that, this implies a requirement that the cursor positions
+	; and level IDs should be consistent.
+	ld   a, b				; wLvlId = wStageSelCursor ^ $04
+	xor  %100
 	ld   [wLvlId], a
-	ld   hl, $3C1A
+	
+	;
+	; Prevent revisiting completed stages
+	;
+	
+	; Find the completion bit to this stage
+	; B = StageSel_LvlBitTbl[wLvlId]
+	ld   hl, StageSel_LvlBitTbl
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
+	add  hl, bc	
 	ld   b, [hl]
+	; If it's set in our completion flags, disregard the selection and return
 	ld   a, [wWpnUnlock0]
-	and  b
-	jr   nz, L002C5B
-	jp   L002D15
-L002C88:;R
+	and  b					; wWpnUnlock0 & B != 0?
+	jr   nz, .loop			; If so, we've already beaten it
+	
+	jp   StageSel_BossIntro
+.chkMoveH:
+	;
+	; LEFT/RIGHT -> Move cursor horizontally
+	;
 	ld   a, c
-	and  $30
-	jr   z, L002C99
+	and  KEY_LEFT|KEY_RIGHT	; Pressing L o R?
+	jr   z, .chkMoveV		; If not, skip
+	
+	; The cursor is only able to move on a 2x2 grid.
+	; Therefore, all we need here is toggling bit 0.
 	ld   a, b
-	xor  $01
-	ld   [$CF66], a
-	ld   a, $12
+	xor  %01
+	ld   [wStageSelCursor], a
+	
+	ld   a, SFX_CURSORMOVE
 	ldh  [hSFXSet], a
-	jr   L002C5B
-L002C99:;R
+	jr   .loop
+	
+.chkMoveV:
+	;
+	; UP/DOWN -> Move cursor vertically
+	;
 	ld   a, c
-	and  $C0
-	jr   z, L002C5B
+	and  KEY_DOWN|KEY_UP	; Pressing U or D?
+	jr   z, .loop			; If not, nothing else to do
+	
+	; Like the one above, but with the other bit
 	ld   a, b
-	xor  $02
-	ld   [$CF66], a
-	ld   a, $12
+	xor  %10
+	ld   [wStageSelCursor], a
+	
+	ld   a, SFX_CURSORMOVE
 	ldh  [hSFXSet], a
-	jr   L002C5B
-L002CAA:;C
-	ld   a, [$CF66]
-	and  $03
-	swap a
-	ld   hl, $2CD5
+	jr   .loop
+	
+; =============== StageSel_DrawCursor ===============
+; Draws the cursor sprite for the stage select.
+StageSel_DrawCursor:
+	; The sprites for the cursor are hardcoded for each position.
+	; Since the cursor is made of 4 sprites, and each sprite takes up 4 bytes,
+	; that's $10 bytes for each position.
+	ld   a, [wStageSelCursor]
+	and  $03				; Force valid range 0-3
+	swap a					; * $10
+	ld   hl, StageSel_CursorSprTbl
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ld   de, wWorkOAM
+	add  hl, bc				; Seek to entry we want
+	
+	ld   de, wWorkOAM		; Copy those $10 bytes over
 	ld   bc, $0010
 	call CopyMemory
-	ldh  a, [hTimer]
+	
+	;
+	; Thankfully the palette animation isn't hardcoded.
+	; Every 8 frames, switch between OBP0 & OBP1.
+	;
+	
+	; Turn hTimer into iObjAttr
+	ldh  a, [hTimer]		
 	sla  a
-	and  $10
-	ld   b, $04
-	ld   hl, $DF03
-L002CCC:;R
-	ldi  [hl], a
-	inc  l
-	inc  l
-	inc  l
-	dec  b
-	jr   nz, L002CCC
-	xor  a
+	and  SPR_OBP1 ; $10			; A = iObjAttr
+	
+	; Overwrite all flags with this
+	ld   b, $04					; B = Sprites to edit
+	ld   hl, wWorkOAM+iObjAttr	; HL = First sprite
+.loop:
+	ldi  [hl], a				; Set flags, seek to iObjY
+	inc  l						; ...iObjX
+	inc  l						; ...iObjTileId
+	inc  l						; ...iObjAttr
+	dec  b						; Are we there yet?
+	jr   nz, .loop				; If not, loop
+	
+	xor  a	; Ok I guess
 	ret
-L002CD5: db $18
-L002CD6: db $18
-L002CD7: db $3F
-L002CD8: db $00
-L002CD9: db $40
-L002CDA: db $18
-L002CDB: db $3F
-L002CDC: db $00
-L002CDD: db $18
-L002CDE: db $40
-L002CDF: db $3F
-L002CE0: db $00
-L002CE1: db $40
-L002CE2: db $40
-L002CE3: db $3F
-L002CE4: db $00
-L002CE5: db $18
-L002CE6: db $68
-L002CE7: db $3F
-L002CE8: db $00
-L002CE9: db $40
-L002CEA: db $68
-L002CEB: db $3F
-L002CEC: db $00
-L002CED: db $18
-L002CEE: db $90
-L002CEF: db $3F
-L002CF0: db $00
-L002CF1: db $40
-L002CF2: db $90
-L002CF3: db $3F
-L002CF4: db $00
-L002CF5: db $68
-L002CF6: db $18
-L002CF7: db $3F
-L002CF8: db $00
-L002CF9: db $90
-L002CFA: db $18
-L002CFB: db $3F
-L002CFC: db $00
-L002CFD: db $68
-L002CFE: db $40
-L002CFF: db $3F
-L002D00: db $00
-L002D01: db $90
-L002D02: db $40
-L002D03: db $3F
-L002D04: db $00
-L002D05: db $68
-L002D06: db $68
-L002D07: db $3F
-L002D08: db $00
-L002D09: db $90
-L002D0A: db $68
-L002D0B: db $3F
-L002D0C: db $00
-L002D0D: db $68
-L002D0E: db $90
-L002D0F: db $3F
-L002D10: db $00
-L002D11: db $90
-L002D12: db $90
-L002D13: db $3F
-L002D14: db $00
-L002D15:;J
-	ld   hl, $3C12
-	ld   a, [wLvlId]
+	
+; =============== StageSel_CursorSprTbl ===============
+StageSel_CursorSprTbl:
+StageSel_CursorCrash:
+	db $18,$18,$3F,$00
+	db $40,$18,$3F,$00
+	db $18,$40,$3F,$00
+	db $40,$40,$3F,$00
+StageSel_CursorMetal:
+	db $18,$68,$3F,$00
+	db $40,$68,$3F,$00
+	db $18,$90,$3F,$00
+	db $40,$90,$3F,$00
+StageSel_CursorWood:
+	db $68,$18,$3F,$00
+	db $90,$18,$3F,$00
+	db $68,$40,$3F,$00
+	db $90,$40,$3F,$00
+StageSel_CursorAir:
+	db $68,$68,$3F,$00
+	db $90,$68,$3F,$00
+	db $68,$90,$3F,$00
+	db $90,$90,$3F,$00
+	
+; =============== StageSel_BossIntro ===============
+; Handles a stage getting selected.
+StageSel_BossIntro:
+	
+	; Start a request to load the graphics for this boss.
+	ld   hl, StageSel_BossGfxTbl	; HL = StageSel_BossGfxTbl
+	ld   a, [wLvlId]				; BC = wLvlId
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ld   a, [hl]
-	call ActS_LoadGFXForRoom.loadBySetId
+	ld   a, [hl]					; Read OBJ GFX set ID
+	call ActS_ReqLoadGFXForRoom.loadBySetId
+	
+	; Delete cursor sprites
 	call OAM_ClearAll
-	ld   a, $03
+	
+	; The stage intro sound plays immediately, there's no separate selection sound.
+	ld   a, BGM_STAGESTART
 	ldh  [hBGMSet], a
+	
+	; Flash the palette for 32 frames.
+	; This is enough time to let the boss graphics fully load.
 	call FlashBGPal
-	rst  $20
+	rst  $20 ; But just in case, ensure they are fully loaded
+	
+	; Blank out the selected portrait, as the boss sprite will spawn there.
+	; This makes the sprite stand out more, for the little time it stays there.
 	ld   a, [wLvlId]
-	call L002F80
-	rst  $10
-	call L001BD9
-	ld   a, [wLvlId]
-	add  $68
-	ld   [$CF2D], a
+	call StageSel_MkEmptyPicTilemap
+	rst  $10 ; Wait tilemap load
+	
+	;--
+	;
+	; Spawn the boss actor for the intro.
+	; This is actually the same exact one used during gameplay, but its normal code won't be executed.
+	;
+	
+	; Delete any old actors, enabling their processing
+	call ActS_ClearAll
+	
+	; Boss actors are indexed start at $68, indexed by level ID
+	ld   a, [wLvlId]				; wActSpawnId = wLvlId + $68
+	add  ACT_BOSS_START
+	ld   [wActSpawnId], a
+	
+	; ???
 	xor  a
-	ld   [$CF2E], a
-	ld   a, [wLvlId]
-	and  $03
-	add  a
-	ld   hl, $2F28
+	ld   [wActSpawnByte3], a		; wActSpawnByte3 = 0
+	
+	; Set the spawn position depending on the level id.
+	; HL = StageSel_BossActStartPosTbl[(wLvlId % 4) * 2]
+	ld   a, [wLvlId]	
+	and  $03			; Force valid range, with the effect of not breaking in case the second set of bosses is selected
+	add  a				; Coords are 2 bytes
+	ld   hl, StageSel_BossActStartPosTbl
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ldi  a, [hl]
-	ld   [$CF2B], a
-	ld   a, [hl]
-	ld   [$CF2C], a
-	call L001D48
-	call L002EC4
-	ld   b, $24
-L002D61:;R
+	add  hl, bc			; Seek to entry
+	ldi  a, [hl]		; wActSpawnX = byte0
+	ld   [wActSpawnX], a
+	ld   a, [hl]		; wActSpawnX = byte1
+	ld   [wActSpawnY], a
+	
+	call ActS_Spawn
+	;--
+	
+	; Prepare the starfield effect for later
+	call Starfield_InitPos
+	
+	;
+	; Open up the two halves of the selection screen at 2px/frame.
+	;
+	ld   b, $24			; For $24 frames...
+.openLoop:
+	; Scroll the BG viewport down.
+	; This will scroll the top half up.
 	ld   hl, hScrollY
 	inc  [hl]
 	inc  [hl]
+	
+	; Scroll the WINDOW layer down.
+	; This will scroll the bottom half down.
 	ld   hl, hWinY
 	inc  [hl]
 	inc  [hl]
-	call L002E00
-	dec  b
-	jr   nz, L002D61
-	ld   d, $98
-	ld   e, $E0
-	ld   b, $09
-L002D77:;R
-	call L002F0F
-	ld   a, e
-	sub  $20
+	
+	call StageSel_DoAct	; Handle boss actor
+	dec  b				; Are we done?
+	jr   nz, .openLoop	; If not, loop
+	
+	;
+	; With the two halves fully scrolled out, write the starfield background, one row at a time.
+	; This replaces everything above or below the horizontal bar.
+	;
+	
+	; TOP HALF
+	ld   d, HIGH($98E0)			; DE = Write address
+	ld   e, LOW($98E0)
+	ld   b, $09					; B = Number of columns
+.loopU:
+	call Starfield_ReqDrawBG	; Req tilemap update 
+	
+	ld   a, e					; Move up 1 row
+	sub  BG_TILECOUNT_H
 	ld   e, a
 	ld   a, d
-	sbc  a, $00
+	sbc  $00
 	ld   d, a
-	call L002E00
-	dec  b
-	jr   nz, L002D77
-	ld   d, $9C
-	ld   e, $20
+	
+	call StageSel_DoAct			; Handle boss actor
+	dec  b						; Written all rows?
+	jr   nz, .loopU				; If not, loop
+	;--
+	
+	; BOTTOM HALF
+	ld   d, HIGH($9C20)			; DE = Write address
+	ld   e, LOW($9C20)
 	ld   b, $09
-L002D8E:;R
-	call L002F0F
-	ld   a, e
-	add  $20
+.loopD:
+	call Starfield_ReqDrawBG
+	
+	ld   a, e					; Move down 1 row
+	add  BG_TILECOUNT_H
 	ld   e, a
 	ld   a, d
-	adc  a, $00
+	adc  $00
 	ld   d, a
-	call L002E00
-	dec  b
-	jr   nz, L002D8E
-	ld   b, $18
-L002DA1:;R
+	
+	call StageSel_DoAct			; Handle boss actor
+	dec  b						; Written all rows?
+	jr   nz, .loopD				; If not, loop
+	;--
+	
+	
+	;
+	; Close the two halves of the selection screen at 2px/frame.
+	; The opposite of what we did before, but for less frames, to
+	; make the white backdrop visible.
+	;
+	ld   b, $18			; For $18 frames...
+.closeLoop:
+	; Scroll the BG viewport up.
+	; This will scroll the top half down.
 	ld   hl, hScrollY
 	dec  [hl]
 	dec  [hl]
+	
+	; Scroll the WINDOW layer up.
+	; This will scroll the bottom half up.
 	ld   hl, hWinY
 	dec  [hl]
 	dec  [hl]
-	call L002E00
-	dec  b
-	jr   nz, L002DA1
-L002DB1:;R
-	call L002E00
-	ldh  a, [$FFA1]
-	cp   $06
-	jr   nz, L002DB1
-	ld   hl, $7C00
-	ld   de, $9400
-	ld   bc, $0B20
+	
+	call StageSel_DoAct	; Handle boss actor
+	dec  b				; Are we done?
+	jr   nz, .closeLoop	; If not, loop
+	
+	;
+	; Wait for the boss intro animation to finish before continuing
+	;
+.waitAnimEnd:
+	call StageSel_DoAct
+	ldh  a, [hActCur+iActRtnId]
+	cp   $06				; Reached the last actor routine?
+	jr   nz, .waitAnimEnd	; If not, wait
+	
+	;
+	; Display the boss' name.
+	; 
+	
+	; Load the font to VRAM
+	ld   hl, GFX_GameOverFont	; Source GFX ptr
+	ld   de, $9400				; VRAM Destination ptr
+	ld   bc, (BANK(GFX_GameOverFont) << 8) | $20 ; BANK $0B | Number of tiles to copy
 	call GfxCopy_Req
+	; Normally we would call GfxCopyEv_Wait, but that wouldn't animate the starfield.
+	; The 32 tiles should load within 8 frames, so wait that much.
 	ld   a, $08
-	call L002DF7
-	ld   a, [wLvlId]
-	add  a
-	ld   b, a
-	add  a
-	add  a
-	add  b
-	ld   hl, $2F30
+	call .waitFrames
+	
+	; Seek HL to the boss' name.
+	; Boss names are hardcoded to 10 characters, stored in a table indexed by level ID.
+	DEF BOSSNAME_LEN EQU 10
+	ld   a, [wLvlId]			
+	add  a		; * 2
+	ld   b, a				
+	add  a		; * 4
+	add  a		; * 8
+	add  b		; * 10
+	ld   hl, StageSel_BossNameTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ld   de, wScrEvRows
-	ld   a, $99
+	
+	; Write it out to the tilemap
+	ld   de, wTilemapBuf
+	ld   a, HIGH($99A5)		; byte0 - VRAM Address (high)
 	ld   [de], a
 	inc  de
-	ld   a, $A5
+	ld   a, LOW($99A5)		; byte1 - VRAM Address (low)
 	ld   [de], a
 	inc  de
-	ld   a, $0A
+	ld   a, BOSSNAME_LEN	; byte2 - Flags + Tile count
 	ld   [de], a
 	inc  de
-	ld   bc, $000A
+	ld   bc, BOSSNAME_LEN	; Boss name
 	call CopyMemory
-	xor  a
+	xor  a					; Write terminator
 	ld   [de], a
-	inc  a
+	
+	inc  a					; Trigger request
 	ld   [wTilemapEv], a
-	ld   a, $B4
-L002DF7:;CR
+	
+	; Wait for 3 seconds
+	ld   a, 3*60
+	
+; IN
+; - A: Number of frames
+.waitFrames:
 	push af
-	call L002E00
+		call StageSel_DoAct
 	pop  af
 	dec  a
-	jr   nz, L002DF7
+	jr   nz, .waitFrames
 	ret
-L002E00:;C
+	
+; =============== StageSel_DoAct ===============
+; Handles actor processing during the boss intro screen.
+; This will wait a frame before returning.
+StageSel_DoAct:
 	push hl
 	push de
 	push bc
-	xor  a
-	ldh  [hWorkOAMPos], a
-	ld   hl, $CD00
-	ld   de, $FFA0
-	ld   b, $10
-L002E0E:;R
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	dec  b
-	jr   nz, L002E0E
-	ld   a, $00
-	ld   [$CF38], a
-	call L002E35
-	call L00244C
-	ld   hl, $FFA0
-	ld   de, $CD00
-	ld   b, $10
-L002E27:;R
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	dec  b
-	jr   nz, L002E27
-	call OAM_ClearRest
-	rst  $08 ; Wait Frame
+		
+		; We're going to draw sprites
+		xor  a
+		ldh  [hWorkOAMPos], a
+		
+		;--
+		; This screen only has one actor at the first slot.
+		; Copy the first slot to the proc area.
+		ld   hl, wAct
+		ld   de, hActCur+iActId
+		ld   b, iActEnd
+	.cpInLoop:
+		ldi  a, [hl]
+		ld   [de], a
+		inc  de
+		dec  b
+		jr   nz, .cpInLoop
+		;--
+		
+		; Perform any changes in the proc area.
+		
+		ld   a, $00						; Act_StageSelBoss will set this as needed.
+		ld   [wActCurSprMapRelId], a
+		
+		; This call here is the main reason why this intro screen has a specific
+		; version of the actor processing subroutine.
+		; The normal (gameplay) code associated to the actor can't be executed here.
+		call Act_StageSelBoss
+		
+		; Draw the boss
+		call ActS_DrawSprMap
+		
+		;--
+		; Save back the changes from the proc area to the actor slot.
+		ld   hl, hActCur+iActId
+		ld   de, wAct
+		ld   b, iActEnd
+	.cpOutLoop:
+		ldi  a, [hl]
+		ld   [de], a
+		inc  de
+		dec  b
+		jr   nz, .cpOutLoop
+		;--
+		
+		; Frame done
+		call OAM_ClearRest
+		rst  $08 ; Wait Frame
+	
 	pop  bc
 	pop  de
 	pop  hl
 	ret
-L002E35:;C
-	ldh  a, [$FFA1]
+	
+; =============== Act_StageSelBoss ===============
+; ACTOR IDs: N/A
+; Special code for animating the bosses after selecting a stage.
+Act_StageSelBoss:
+	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L002E38: db $46
-L002E39: db $2E
-L002E3A: db $70
-L002E3B: db $2E
-L002E3C: db $80
-L002E3D: db $2E
-L002E3E: db $90
-L002E3F: db $2E
-L002E40: db $9A
-L002E41: db $2E
-L002E42: db $AC
-L002E43: db $2E
-L002E44: db $C0
-L002E45: db $2E
-L002E46:;I
+	dw Act_StageSelBoss_Init
+	dw Act_StageSelBoss_JumpUp
+	dw Act_StageSelBoss_JumpDown
+	dw Act_StageSelBoss_JumpLand
+	dw Act_StageSelBoss_WaitAnim
+	dw Act_StageSelBoss_IntroAnim
+	dw Act_StageSelBoss_Starfield
+
+; =============== Act_StageSelBoss ===============
+; RTN $00
+; Sets up the direction and initial movement speed.
+Act_StageSelBoss_Init:
+
+	;
+	; Make the boss face the proper direction.
+	; Bosses on the left (bit0 clear) will face right (ACTDIRB_R set).
+	; Bosses on the right (bit0 set) will face left (ACTDIRB_R clear).
+	;
 	ld   a, [wLvlId]
-	rrca 
-	and  $80
-	xor  $80
-	ldh  [$FFA2], a
-	ld   bc, $01A0
+	; bit0 determines odd/even values, bit7 determines the direction for iActSprMap
+	; rotate right bit0 to bit7
+	rrca		
+	; Filter out unwanted bits
+	and  ACTDIR_R
+	; Other way around
+	xor  ACTDIR_R
+	ldh  [hActCur+iActSprMap], a
+	
+	;
+	; BC = Jump speed.
+	; This will be reduced over time.
+	; Bosses on the top (bit1 clear) use a lower jump arc compared to those at the bottom.
+	;
+	ld   bc, $01A0		; BC = 1.6px/frame
 	ld   a, [wLvlId]
-	bit  1, a
-	jr   z, L002E5D
-	ld   bc, $03B0
-L002E5D:;R
+	bit  1, a			; Boss pic on top?
+	jr   z, .setSpeed	; If not, skip
+	ld   bc, $03B0		; BC = 2.7px/frame
+	
+.setSpeed:
+	; 1px/frame forward
 	xor  a
-	ldh  [$FFA8], a
+	ldh  [hActCur+iActSpdXSub], a
 	inc  a
-	ldh  [$FFA9], a
+	ldh  [hActCur+iActSpdX], a
+	; BC/frame speed upwards
 	ld   a, c
-	ldh  [$FFAA], a
+	ldh  [hActCur+iActSpdYSub], a
 	ld   a, b
-	ldh  [$FFAB], a
+	ldh  [hActCur+iActSpdY], a
+	; The total jump arc will take up $28 frames
 	ld   a, $28
-	ldh  [$FFAC], a
-	jp   L001EB1
-L002E70:;I
-	ldh  a, [$FFAC]
+	ldh  [hActCur+iActTimer0C], a
+	
+	; Next mode
+	jp   ActS_IncRtnId
+	
+; =============== Act_StageSelBoss_JumpUp ===============
+; RTN $01
+; Jump arc - upwards movement.
+Act_StageSelBoss_JumpUp:
+	; iActTimer0C--
+	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
-	ldh  [$FFAC], a
-	call L002150
-	call L0022C6
-	ret  c
-	jp   L001EB1
-L002E80:;I
-	call L002150
-	call L0022F7
-	ldh  a, [$FFAC]
+	ldh  [hActCur+iActTimer0C], a
+	
+	; Continue jump arc
+	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedUpY	; Reached the peak?
+	ret  c					; If not, return
+	
+	jp   ActS_IncRtnId
+	
+; =============== Act_StageSelBoss_JumpDown ===============
+; RTN $02
+; Jump arc - downwards movement.
+Act_StageSelBoss_JumpDown:
+	; Continue jump arc
+	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedY
+	
+	; Wait for the timer to tick down before continuing
+	; iActTimer0C--
+	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
-	ldh  [$FFAC], a
+	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	jp   L001EB1
-L002E90:;I
+	
+	jp   ActS_IncRtnId
+	
+; =============== Act_StageSelBoss_JumpLand ===============
+; RTN $03
+; Jump arc - landed from the jump.
+Act_StageSelBoss_JumpLand:
+	; Make boss face left
 	xor  a
-	ldh  [$FFA2], a
+	ldh  [hActCur+iActSprMap], a
+	
+	; Delay next mode for 32 frames
 	ld   a, $20
-	ldh  [$FFAC], a
-	jp   L001EB1
-L002E9A:;I
-	ldh  a, [$FFAC]
+	ldh  [hActCur+iActTimer0C], a
+	
+	jp   ActS_IncRtnId
+	
+; =============== Act_StageSelBoss_WaitAnim ===============
+; RTN $04
+; Delay while the two halves are closing back.
+Act_StageSelBoss_WaitAnim:
+
+	; Wait for those 32 frames
+	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
-	ldh  [$FFAC], a
+	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   de, $0002
+	
+	; Set up the intro animation.
+	; Every single intro uses the two same sprite mapping IDs.
+	ld   de, ($00 << 8)|$02
 	ld   c, $1E
-	call L001F7D
-	jp   L001EB1
-L002EAC:;I
-	call L002ED9
-	call L001F8B
-	ret  z
-	ld   a, $00
-	ld   [$CF38], a
+	call Act_Boss_InitIntro
+	
+	jp   ActS_IncRtnId
+	
+; =============== Act_StageSelBoss_IntroAnim ===============
+; RTN $05
+; Performs the boss' animation while the starfield scrolls.
+Act_StageSelBoss_IntroAnim:
+	call Starfield_Do
+	call Act_Boss_PlayIntro		; Is it done?
+	ret  z						; If not, return
+								
+	ld   a, $00					; Restore 1st frame
+	ld   [wActCurSprMapRelId], a
+	
 	ld   a, $01
-	call L001F34
-	jp   L001EB1
-L002EC0:;I
-	call L002ED9
+	call ActS_SetSprMapId
+	
+	jp   ActS_IncRtnId
+	
+; =============== Act_StageSelBoss_Starfield ===============
+; RTN $06
+; Just displays the starfield.
+; This will keep doing it while, elsewhere, the boss' name gets written.
+Act_StageSelBoss_Starfield:
+	call Starfield_Do
 	ret
-L002EC4:;C
-	ld   b, $18
-	ld   hl, $CF90
-L002EC9:;R
-	call Rand
-	and  $F8
-	ldi  [hl], a
-	call Rand
-	and  $F8
-	ldi  [hl], a
-	dec  b
-	jr   nz, L002EC9
+	
+; =============== Starfield_InitPos ===============	
+; Initializes the starfield position with random coordinates.
+Starfield_InitPos:
+	; Each star has two bytes assigned (X and Y coordinates, in that order).
+	ld   b, $18						; B = Number of stars
+	ld   hl, wStageSelStarfieldPos	; HL = Starting address
+.loop:
+	REPT 2
+		call Rand			
+		and  $F8		; Align to 8x8 grid
+		ldi  [hl], a
+	ENDR
+	dec  b				; Finished?
+	jr   nz, .loop		; If not, loop
 	ret
-L002ED9:;C
-	ld   h, $DF
-	ldh  a, [hWorkOAMPos]
+
+; =============== Starfield_Do ===============
+; Handles the scrolling starfield.
+; This generates the 18 individual star sprites, updating
+; their position as needed.
+Starfield_Do:
+	ld   h, HIGH(wWorkOAM)			; HL = Destination address
+	ldh  a, [hWorkOAMPos]			; (write from current OAM pos)
 	ld   l, a
-	ld   de, $CF90
-	ld   b, $18
-L002EE3:;R
+	ld   de, wStageSelStarfieldPos	; DE = Source address
+	ld   b, $18						; B = Number of stars
+.loop:
 	push bc
-	ld   c, $01
-	ld   a, b
-	cp   $0C
-	jr   c, L002EED
-	ld   c, $02
-L002EED:;R
-	ld   a, [de]
-	sub  c
-	ld   [de], a
-	inc  de
-	ld   b, a
-	ld   a, [de]
-	add  c
-	ld   [de], a
-	inc  de
-	cp   $38
-	jr   c, L002EFE
-	cp   $78
-	jr   c, L002F07
-L002EFE:;R
-	ldi  [hl], a
-	ld   a, b
-	ldi  [hl], a
-	ld   a, $25
-	add  c
-	ldi  [hl], a
-	xor  a
-	ldi  [hl], a
-L002F07:;R
-	pop  bc
-	dec  b
-	jr   nz, L002EE3
+	
+		;
+		; Update the star location, saving it back directly to wStageSelStarfieldPos
+		;
+	
+		; All of the stars move diagonally down/left.
+		; Half of them at 1px/frame, the other at 2px/frame.
+		; This also doubles as the tile ID offset for the sprite tile,
+		; since it fits well enough, with having larger stars move
+		; faster than the smaller ones.
+		ld   c, $01			; C = 1x Speed
+		ld   a, b
+		cp   $18/2			; StarsLeft < HalfPoint?
+		jr   c, .setPos		; If so, jump
+		ld   c, $02			; Otherwise, C = 2x Speed
+		
+	.setPos:
+		; Move star left
+		ld   a, [de]	; byte0 -= C
+		sub  c
+		ld   [de], a
+		inc  de
+		ld   b, a		; B = Updated X pos
+		
+		; Move star down
+		ld   a, [de]	; byte1 += C
+		add  c
+		ld   [de], a	; A = Updated Y pos
+		inc  de
+		
+		; Avoid drawing stars over the middle section.
+		cp   $38		; YPos < $38?
+		jr   c, .draw	; If so, draw (top section)
+		cp   $78		; YPos < $78?
+		jr   c, .chkEnd	; If so, skip (middle section)
+						; Otherwise, draw (bottom section)
+	.draw:
+		;
+		; Write the sprite data directly
+		;
+		ldi  [hl], a	; iObjY = A
+		ld   a, b		; iObjX = B
+		ldi  [hl], a
+		ld   a, $25		; iObjTileId = $25 + C
+		add  c
+		ldi  [hl], a	
+		xor  a			; iObjAttr = 0
+		ldi  [hl], a
+		
+.chkEnd:
+	pop  bc				; Restore count
+	dec  b				; Are we done?
+	jr   nz, .loop		; If not, loop
+	; Save back the updated sprite count
 	ld   a, l
 	ldh  [hWorkOAMPos], a
 	ret
-L002F0F:;C
-	ld   hl, wScrEvRows
-	ld   [hl], d
+	
+; =============== Starfield_ReqDrawBG ===============
+; Requests drawing a single row of black tiles.
+; After all rows are drawn, the starfield sprites will be shown over these.
+; IN
+; - Ptr to the tilemap
+Starfield_ReqDrawBG:
+	ld   hl, wTilemapBuf
+	ld   [hl], d			; byte0 - VRAM Address (high)
 	inc  l
-	ld   [hl], e
-	ld   a, $54
-	ld   [$DD02], a
-	ld   a, $14
-	ld   [$DD03], a
-	xor  a
-	ld   [$DD04], a
-	inc  a
+	ld   [hl], e			; byte1 - VRAM Address (low)
+	ld   a, $54				; byte2 - Flags + Tile count
+	ld   [wTilemapBuf+iTilemapDefOpt], a
+	ld   a, $14				; byte3 - Tile ID (black tile)
+	ld   [wTilemapBuf+iTilemapDefPayload], a
+	xor  a					; Write terminator
+	ld   [wTilemapBuf+iTilemapDefPayload+1], a
+	
+	inc  a					; Trigger event
 	ld   [wTilemapEv], a
 	ret
-L002F28: db $30
-L002F29: db $3B
-L002F2A: db $80
-L002F2B: db $3B
-L002F2C: db $30
-L002F2D: db $8C
-L002F2E: db $80
-L002F2F: db $8C
-L002F30: db $40;X
-L002F31: db $48;X
-L002F32: db $41;X
-L002F33: db $52;X
-L002F34: db $44;X
-L002F35: db $40;X
-L002F36: db $4D;X
-L002F37: db $41;X
-L002F38: db $4E;X
-L002F39: db $40;X
-L002F3A: db $40;X
-L002F3B: db $54;X
-L002F3C: db $4F;X
-L002F3D: db $50;X
-L002F3E: db $40;X
-L002F3F: db $40;X
-L002F40: db $4D;X
-L002F41: db $41;X
-L002F42: db $4E;X
-L002F43: db $40;X
-L002F44: db $4D;X
-L002F45: db $41;X
-L002F46: db $47;X
-L002F47: db $4E;X
-L002F48: db $45;X
-L002F49: db $54;X
-L002F4A: db $40;X
-L002F4B: db $4D;X
-L002F4C: db $41;X
-L002F4D: db $4E;X
-L002F4E: db $4E;X
-L002F4F: db $45;X
-L002F50: db $45;X
-L002F51: db $44;X
-L002F52: db $4C;X
-L002F53: db $45;X
-L002F54: db $40;X
-L002F55: db $4D;X
-L002F56: db $41;X
-L002F57: db $4E;X
-L002F58: db $43
-L002F59: db $4C
-L002F5A: db $41
-L002F5B: db $53
-L002F5C: db $48
-L002F5D: db $40
-L002F5E: db $40
-L002F5F: db $4D
-L002F60: db $41
-L002F61: db $4E
-L002F62: db $4D
-L002F63: db $45
-L002F64: db $54
-L002F65: db $41
-L002F66: db $4C
-L002F67: db $40
-L002F68: db $40
-L002F69: db $4D
-L002F6A: db $41
-L002F6B: db $4E
-L002F6C: db $40
-L002F6D: db $57
-L002F6E: db $4F
-L002F6F: db $4F
-L002F70: db $44
-L002F71: db $40
-L002F72: db $4D
-L002F73: db $41
-L002F74: db $4E
-L002F75: db $40
-L002F76: db $40
-L002F77: db $41
-L002F78: db $49
-L002F79: db $52
-L002F7A: db $40
-L002F7B: db $40
-L002F7C: db $4D
-L002F7D: db $41
-L002F7E: db $4E
-L002F7F: db $40
-L002F80:;C
-	and  $03
-	add  a
-	ld   hl, $2FA2
+	
+; =============== StageSel_BossActStartPosTbl ===============
+; Spawn positions for boss actors for each picture.
+StageSel_BossActStartPosTbl: 
+	;    X    Y
+	db $30, $3B ; Top-Left (LVL_CRASH, LVL_HARD)
+	db $80, $3B ; Top-Right (LVL_METAL, LVL_TOP)
+	db $30, $8C ; Bottom-Left (LVL_WOOD, LVL_MAGNET)
+	db $80, $8C ; Bottom-Right (LVL_AIR, LVL_NEEDLE)
+
+; =============== StageSel_BossNameTbl ===============
+; Boss names, indexed by level ID.
+; Each of these is hardcoded to be 10 characters long.
+; [TCRF] This explicitly accounts for the second set of bosses.
+StageSel_BossNameTbl:
+SETCHARMAP bossname
+	db " HARD MAN " ; LVL_HARD
+	db " TOP  MAN " ; LVL_TOP
+	db "MAGNET MAN" ; LVL_MAGNET
+	db "NEEDLE MAN" ; LVL_NEEDLE
+	db "CLASH  MAN" ; LVL_CRASH
+	db "METAL  MAN" ; LVL_METAL
+	db " WOOD MAN " ; LVL_WOOD
+	db " AIR  MAN " ; LVL_AIR
+
+; =============== StageSel_MkEmptyPicTilemap ===============
+; Builds the TilemapDef for clearing out the specified boss pic.
+; IN
+; - A: Boss picture ID ($00-$04)
+StageSel_MkEmptyPicTilemap:
+	;
+	; DE = Ptr to tilemap associated with the pic
+	;
+	and  $03			; Enforce valid range
+	add  a				; Pointer table index
+	ld   hl, StageSel_PicPosPtrTbl
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ld   e, [hl]
+	add  hl, bc			; Index it 
+	ld   e, [hl]		; Read out ptr to DE
 	inc  hl
 	ld   d, [hl]
-	ld   hl, wScrEvRows
+	
+	; Generate the tilemap.
+	; The tilemap system doesn't really play well with square tilemaps, 
+	; so to clear a block of 4x4 tiles, 4 separate TilemapDef need to 
+	; be generated, each clearing a single column of 4 tiles.
+	ld   hl, wTilemapBuf
 	ld   b, $04
-L002F92:;R
-	ld   [hl], d
+.loop:
+	ld   [hl], d		; byte0 - VRAM Address (high)
 	inc  hl
-	ld   [hl], e
+	ld   [hl], e		; byte1 - VRAM Address (low)
 	inc  hl
-	ld   a, $C4
+	ld   a, BG_REPEAT|BG_MVDOWN|$04		; byte2 - Flags + Tile count
 	ldi  [hl], a
-	ld   a, $1F
+	ld   a, $1F			; byte3 - Tile ID (gray blank tile)
 	ldi  [hl], a
-	inc  e
-	dec  b
-	jr   nz, L002F92
-	ld   [hl], a
+	inc  e				; Seek tile to the right
+	dec  b				; Generated all four?
+	jr   nz, .loop		; If not, loop
+	ld   [hl], a		; Write terminator
 	ret
-L002FA2: db $43
-L002FA3: db $98
-L002FA4: db $4D
-L002FA5: db $98
-L002FA6: db $63
-L002FA7: db $9C
-L002FA8: db $6D
-L002FA9: db $9C
+	
+; =============== StageSel_PicPosPtrTbl ===============
+StageSel_PicPosPtrTbl:
+	dw $9843 ; CRASH MAN / HARD MAN
+	dw $984D ; METAL MAN / TOP MAN
+	dw $9C63 ; WOOD MAN / MAGNET MAN
+	dw $9C6D ; AIR MAN / NEEDLE MAN
+	
 L002FAA:;C
 	ld   a, GFXSET_GETWPN
 	call GFXSet_Load
@@ -8097,7 +8726,7 @@ L003012:;R
 	ld   [$CF7B], a
 	ld   e, a
 	ld   a, [$CF7C]
-	adc  a, $00
+	adc  $00
 	ld   [$CF7C], a
 	ld   d, a
 	jr   L003012
@@ -8107,10 +8736,10 @@ L003033:;R
 	ld   a, e
 	ld   [$DD01], a
 	ld   a, $01
-	ld   [$DD02], a
+	ld   [wTilemapBuf+iTilemapDefOpt], a
 	ld   a, b
 	or   $80
-	ld   [$DD03], a
+	ld   [wTilemapBuf+iTilemapDefPayload], a
 	xor  a
 	ld   [$DD04], a
 	inc  a
@@ -8517,26 +9146,26 @@ L003231:;R
 	ld   de, $8500
 	ld   bc, $0B08
 	call GfxCopy_Req
-	rst  $20
+	rst  $20 ; Wait GFX load
 	ld   a, $7B
-	ld   [$CF2D], a
+	ld   [wActSpawnId], a
 	xor  a
-	ld   [$CF2E], a
+	ld   [wActSpawnByte3], a
 	ld   a, $88
-	ld   [$CF2C], a
+	ld   [wActSpawnY], a
 	ld   a, $50
-	ld   [$CF2B], a
-	call L001D48
+	ld   [wActSpawnX], a
+	call ActS_Spawn
 	ld   b, $0F
 	call L002A90
 	ld   a, $60
-	ld   [$CF2B], a
-	call L001D48
+	ld   [wActSpawnX], a
+	call ActS_Spawn
 	ld   b, $0F
 	call L002A90
 	ld   a, $58
-	ld   [$CF2B], a
-	call L001D48
+	ld   [wActSpawnX], a
+	call ActS_Spawn
 	ld   b, $3C
 	call L002A90
 	ld   hl, $32B7
@@ -8709,7 +9338,7 @@ L003384:;C
 L003385:;R
 	ld   d, $CD
 	ld   e, a
-	ld   [$CF2F], a
+	ld   [wActCurSlotPtr], a
 	ld   a, [de]
 	or   a
 	jr   z, L0033CF
@@ -8722,10 +9351,10 @@ L003385:;R
 	ld   e, a
 	ld   a, [$CFEC]
 	ld   c, a
-	ldh  a, [$FFA5]
+	ldh  a, [hActCur+iActX]
 	ld   b, a
 	ld   a, [de]
-	ld   [$CF2B], a
+	ld   [wActSpawnX], a
 	sub  b
 	jr   nc, L0033AD
 	xor  $FF
@@ -8739,13 +9368,13 @@ L0033AD:;R
 	jr   c, L0033CF
 	ld   a, [$CFED]
 	ld   c, a
-	ldh  a, [$FFA7]
+	ldh  a, [hActCur+iActY]
 	ld   b, a
 	inc  e
 	inc  e
 	ld   a, [de]
 	sub  [hl]
-	ld   [$CF2C], a
+	ld   [wActSpawnY], a
 	sub  b
 	jr   nc, L0033C8
 	xor  $FF
@@ -8758,7 +9387,7 @@ L0033C8:;R
 	cp   b
 	call nc, L0033D7
 L0033CF:;R
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	add  $10
 	jr   nz, L003385
 	ret
@@ -8772,10 +9401,10 @@ L0033D7:;C
 	cp   $08
 	ret  c
 	ld   b, a
-	ld   a, [$CF2C]
+	ld   a, [wActSpawnY]
 	add  b
 	ld   b, a
-	ldh  a, [$FFA7]
+	ldh  a, [hActCur+iActY]
 	cp   b
 	jp   nc, L003508
 L0033F1:;R
@@ -8850,7 +9479,7 @@ L003455:;R
 	cp   $02
 	jr   nc, L00346A
 	xor  a
-	ldh  [$FFA0], a
+	ldh  [hActCur+iActId], a
 L00346A:;R
 	ld   a, [wWpnSel]
 	cp   $04
@@ -8886,13 +9515,13 @@ L00349F:;R
 	cp   $01
 	jr   nc, L0034A9
 	xor  a
-	ldh  [$FFA0], a
+	ldh  [hActCur+iActId], a
 L0034A9:;R
 	ld   a, [wWpnSel]
 	cp   $04
 	call z, L003A0B
 	ld   h, $CD
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ld   a, $80
 	ldi  [hl], a
@@ -8900,7 +9529,7 @@ L0034A9:;R
 	ldi  [hl], a
 	ldi  [hl], a
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	inc  l
 	inc  l
@@ -8923,7 +9552,7 @@ L0034DE:;R
 	cp   $01
 	jr   z, L0034FE
 	ld   h, $CD
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	add  $05
 	ld   l, a
 	ld   a, [hl]
@@ -8951,11 +9580,11 @@ L003508:;J
 L003514:;R
 	cp   $08
 	jr   nz, L003522
-	ldh  a, [$FFA1]
+	ldh  a, [hActCur+iActRtnId]
 	bit  7, a
 	ret  nz
 	ld   a, $80
-	ldh  [$FFA1], a
+	ldh  [hActCur+iActRtnId], a
 	ret
 L003522:;R
 	ld   a, [$CF6C]
@@ -8972,10 +9601,10 @@ L003522:;R
 	ret
 L00353C:;R
 	xor  a
-	ldh  [$FFA1], a
-	ldh  a, [$FFA3]
+	ldh  [hActCur+iActRtnId], a
+	ldh  a, [hActCur+iAct_Unk_UnkTblPtr]
 	or   $80
-	ldh  [$FFA3], a
+	ldh  [hActCur+iAct_Unk_UnkTblPtr], a
 	ld   a, $05
 	ldh  [hSFXSet], a
 	ret
@@ -9002,7 +9631,7 @@ L003569:;R
 L003575:;R
 	ld   d, $CD
 	ld   e, a
-	ld   [$CF2F], a
+	ld   [wActCurSlotPtr], a
 	ld   a, [de]
 	or   a
 	jr   z, L0035B3
@@ -9045,7 +9674,7 @@ L0035AC:;R
 	cp   b
 	call nc, L0035BB
 L0035B3:;R
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	add  $10
 	jr   nz, L003575
 	ret
@@ -9064,7 +9693,7 @@ L0035C6:;R
 	ld   a, [$CF43]
 	or   a
 	ret  nz
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   [$CF5D], a
 	ld   a, $13
 	ldh  [hSFXSet], a
@@ -9081,7 +9710,7 @@ L0035C6:;R
 	ld   [$CF1D], a
 L0035F2:;R
 	ld   h, $CE
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	add  $03
 	ld   l, a
 	ld   a, [wPlHealth]
@@ -9140,7 +9769,7 @@ L003656:;R
 	jr   nz, L00367C
 	call L003689
 	jr   nc, L00367C
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   [$CF6B], a
 	ld   hl, wPlRelY
 	ldh  a, [hJoyKeys]
@@ -9156,13 +9785,13 @@ L00367C:;R
 	ld   a, [$CF1D]
 	cp   $03
 	ret  nz
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   [$CF6A], a
 	ret
 L003689:;JC
 	dec  l
 	ld   a, [hl]
-	ld   [$CF52], a
+	ld   [wActCurSprFlagsRes], a
 	ld   b, a
 	ld   a, [de]
 	ld   [$CF53], a
@@ -9189,7 +9818,7 @@ L003689:;JC
 	call L00332F
 	cp   $21
 	ret  nc
-	ld   a, [$CF52]
+	ld   a, [wActCurSprFlagsRes]
 	ld   b, a
 	ld   a, [$CF53]
 	sub  b
@@ -9197,7 +9826,7 @@ L003689:;JC
 	inc  a
 	inc  a
 	ld   [wPlRelY], a
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   [$CF4A], a
 	scf  
 	ret
@@ -9211,7 +9840,7 @@ L0036E5:;R
 	cp   $06
 	ret  nz
 	ld   h, $CD
-	ld   a, [$CF2F]
+	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ld   a, [hl]
 	and  $07
@@ -9308,7 +9937,7 @@ L003775:;R
 	pop  af
 	dec  a
 	jr   nz, L003775
-	rst  $10
+	rst  $10 ; Wait tilemap load
 	ld   de, wScrEvRows
 	ld   a, [wWpnUnlock0]
 	or   a
@@ -9324,7 +9953,7 @@ L00378E:;R
 	pop  af
 	dec  a
 	jr   nz, L00378E
-	rst  $10
+	rst  $10 ; Wait tilemap load
 L00379B:;R
 	ld   de, wScrEvRows
 	ld   a, [wWpnUnlock1]
@@ -9363,7 +9992,7 @@ L0037CF:;R
 L0037D4:;R
 	xor  a
 	ld   [de], a
-	rst  $10
+	rst  $10 ; Wait tilemap load
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, [$CF1D]
@@ -9454,7 +10083,7 @@ L00385D:;R
 	call CopyWord
 	xor  a
 	ld   [de], a
-	rst  $10
+	rst  $10 ; Wait tilemap load
 	pop  af
 	ld   [wWpnSel], a
 	ldh  a, [hJoyNewKeys]
@@ -9487,7 +10116,7 @@ L003886:;R
 	ldi  [hl], a
 	xor  a
 	ld   [hl], a
-	rst  $10
+	rst  $10 ; Wait tilemap load
 	ld   a, [wPlHealth]
 L0038BA:;R
 	add  $08
@@ -9501,7 +10130,7 @@ L0038C2:;R
 	rst  $18
 	ld   de, wScrEvRows
 	call L003AD9
-	rst  $10
+	rst  $10 ; Wait tilemap load
 	ld   a, $07
 	ldh  [hSFXSet], a
 	ld   a, [wPlHealth]
@@ -9591,7 +10220,7 @@ L003956:;R
 	ld   l, $00
 	ld   de, $8800
 	call GfxCopy_Req
-	rst  $20
+	rst  $20 ; Wait GFX load
 	ret
 L00397C:;C
 	push hl
@@ -9605,7 +10234,7 @@ L00397C:;C
 	ld   l, a
 	ld   bc, $0A01
 	call GfxCopy_Req
-	rst  $20
+	rst  $20 ; Wait GFX load
 	pop  hl
 	ret
 L003992: db $45
@@ -9639,7 +10268,7 @@ L0039AB:;R
 	ld   [$CF6C], a
 	ret
 L0039C2:;C
-	ld   hl, $CD00
+	ld   hl, wAct
 L0039C5:;R
 	ld   a, [hl]
 	cp   $E0
@@ -9991,7 +10620,7 @@ L003B8F:;R
 	inc  de
 	xor  a
 	ld   [de], a
-	rst  $10
+	rst  $10 ; Wait tilemap load
 	jp   JoyKeys_Refresh
 L003B97:;R
 	rst  $08 ; Wait Frame
@@ -10056,29 +10685,29 @@ ENDM
 ; Sets of actor graphics usable during levels.
 ; These each set has a fixed size of $800 bytes.
 ActS_GFXSetTbl:
-	mGfxDef2 GFX_Player ; $00
-	mGfxDef2 GFX_Space1OBJ ; $01 ; [POI] Only loaded manually, not through here
-	mGfxDef2 L084000 ; $02 
-	mGfxDef2 L084800 ; $03 
-	mGfxDef2 L085000 ; $04 
-	mGfxDef2 L085800 ; $05 
-	mGfxDef2 L086000 ; $06 
-	mGfxDef2 L086800 ; $07 
-	mGfxDef2 L087000 ; $08 
-	mGfxDef2 L087800 ; $09 
-	mGfxDef2 L094000 ; $0A 
-	mGfxDef2 L094800 ; $0B 
-	mGfxDef2 L095000 ; $0C 
-	mGfxDef2 L095800 ; $0D 
-	mGfxDef2 L096000 ; $0E 
-	mGfxDef2 L096800 ; $0F 
-	mGfxDef2 L097000 ; $10 
-	mGfxDef2 L0B6800 ; $11 
-	mGfxDef2 L0B6800 ; $12 
-	mGfxDef2 L0B5000 ; $13 
-	mGfxDef2 L0C7000 ; $14 
-	mGfxDef2 L0C7800 ; $15 
-	
+	mGfxDef2 GFX_Player    ; $00 ; ACTGFX_PLAYER    ; 
+	mGfxDef2 GFX_Space1OBJ ; $01 ; ACTGFX_SPACE1    ; [POI] Only loaded manually, not through here
+	mGfxDef2 L084000       ; $02 ; ACTGFX_02        ; 
+	mGfxDef2 L084800       ; $03 ; ACTGFX_03        ; 
+	mGfxDef2 L085000       ; $04 ; ACTGFX_04        ; 
+	mGfxDef2 L085800       ; $05 ; ACTGFX_05        ; 
+	mGfxDef2 GFX_MagnetMan ; $06 ; ACTGFX_MAGNETMAN ; 
+	mGfxDef2 L086800       ; $07 ; ACTGFX_07        ; 
+	mGfxDef2 GFX_NeedleMan ; $08 ; ACTGFX_NEEDLEMAN ; 
+	mGfxDef2 L087800       ; $09 ; ACTGFX_09        ; 
+	mGfxDef2 GFX_CrashMan  ; $0A ; ACTGFX_CRASHMAN  ; 
+	mGfxDef2 L094800       ; $0B ; ACTGFX_0B        ; 
+	mGfxDef2 GFX_MetalMan  ; $0C ; ACTGFX_METALMAN  ; 
+	mGfxDef2 L095800       ; $0D ; ACTGFX_0D        ; 
+	mGfxDef2 GFX_WoodMan   ; $0E ; ACTGFX_WOODMAN   ; 
+	mGfxDef2 L096800       ; $0F ; ACTGFX_0F        ; 
+	mGfxDef2 GFX_AirMan    ; $10 ; ACTGFX_AIRMAN    ; 
+	mGfxDef2 L0B6800       ; $11 ; ACTGFX_11        ; 
+	mGfxDef2 L0B6800       ; $12 ; ACTGFX_12        ; 
+	mGfxDef2 L0B5000       ; $13 ; ACTGFX_13        ; 
+	mGfxDef2 GFX_HardMan   ; $14 ; ACTGFX_HARDMAN   ; 
+	mGfxDef2 GFX_TopMan    ; $15 ; ACTGFX_TOPMAN    ; 
+													; 
 ; =============== Lvl_GFXSetTbl ===============
 ; Maps each stage to their graphics.
 ; These have a fixed size of $500 bytes, as the remaining $300 are taken up by GFX_LvlShared.
@@ -10094,24 +10723,33 @@ Lvl_GFXSetTbl:
 	mGfxDef2 GFX_LvlCastle  ; $08 ; LVL_CASTLE
 	mGfxDef2 GFX_LvlStation ; $09 ; LVL_STATION
 
-L003C12: db $14;X
-L003C13: db $15;X
-L003C14: db $06;X
-L003C15: db $08;X
-L003C16: db $0A
-L003C17: db $0C
-L003C18: db $0E
-L003C19: db $10
-L003C1A: db $40
-L003C1B: db $01
-L003C1C: db $80
-L003C1D: db $20
-L003C1E: db $10
-L003C1F: db $08
-L003C20: db $04
-L003C21: db $02
-L003C22: db $00;X
-L003C23: db $00;X
+; =============== StageSel_BossGfxTbl ===============
+; Maps each stage to its boss graphics (entries to ActS_GFXSetTbl)
+; [TCRF] This explicitly accounts for the second set of bosses being selected.
+StageSel_BossGfxTbl:
+	db ACTGFX_HARDMAN   ; LVL_HARD  
+	db ACTGFX_TOPMAN    ; LVL_TOP   
+	db ACTGFX_MAGNETMAN ; LVL_MAGNET
+	db ACTGFX_NEEDLEMAN ; LVL_NEEDLE
+	db ACTGFX_CRASHMAN  ; LVL_CRASH 
+	db ACTGFX_METALMAN  ; LVL_METAL 
+	db ACTGFX_WOODMAN   ; LVL_WOOD  
+	db ACTGFX_AIRMAN    ; LVL_AIR   
+
+; =============== StageSel_LvlBitTbl ===============
+; Maps each stage to its own completion bit in wWpnUnlock0.
+StageSel_LvlBitTbl: 
+	db WPN_HA ; LVL_HARD
+	db WPN_TP ; LVL_TOP
+	db WPN_MG ; LVL_MAGNET
+	db WPN_NE ; LVL_NEEDLE
+	db WPN_CR ; LVL_CRASH
+	db WPN_ME ; LVL_METAL
+	db WPN_WD ; LVL_WOOD
+	db WPN_AR ; LVL_AIR
+	db $00    ; LVL_CASTLE (unselectable)
+	db $00    ; LVL_STATION (unselectable)
+
 L003C24: db $E4
 L003C25: db $E4
 L003C26: db $E4

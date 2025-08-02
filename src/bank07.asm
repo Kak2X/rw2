@@ -166,7 +166,7 @@ L0740FE:;JR
 	add  e
 	ld   e, a
 	ldh  a, [$FFC9]
-	adc  a, $00
+	adc  $00
 	ld   d, a
 	ld   a, [de]
 	ldh  [$FFDD], a
@@ -276,7 +276,7 @@ L0741A9:;R
 	add  $DC
 	ld   e, a
 	ld   a, $00
-	adc  a, $44
+	adc  $44
 	ld   d, a
 	ld   a, [de]
 	ldh  [$FFC8], a
@@ -319,7 +319,7 @@ L0741E1:;JR
 	add  e
 	ld   e, a
 	ldh  a, [$FFCB]
-	adc  a, $00
+	adc  $00
 	ld   d, a
 	ld   a, [de]
 	ldh  [$FFE0], a
@@ -425,7 +425,7 @@ L074282:;R
 	add  $DC
 	ld   e, a
 	ld   a, $00
-	adc  a, $44
+	adc  $44
 	ld   d, a
 	ld   a, [de]
 	ldh  [$FFCA], a
@@ -510,7 +510,7 @@ L0742FB:;JR
 	add  e
 	ld   e, a
 	ldh  a, [$FFCD]
-	adc  a, $00
+	adc  $00
 	ld   d, a
 	ld   a, [de]
 	ldh  [$FFE4], a
@@ -616,7 +616,7 @@ L07439A:;R
 	add  $DC
 	ld   e, a
 	ld   a, $00
-	adc  a, $44
+	adc  $44
 	ld   d, a
 	ld   a, [de]
 	ldh  [$FFCC], a
@@ -664,7 +664,7 @@ L0743D6:;JR
 	add  e
 	ld   e, a
 	ld   a, d
-	adc  a, $00
+	adc  $00
 	ld   d, a
 	ld   a, [de]
 	ldh  [$FFE8], a

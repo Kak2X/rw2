@@ -1,6 +1,6 @@
 SECTION "Main Memory", WRAM0[$C000]
-wLvlLayout:            ds $800 ; $C000
-wLvlUnkTblC800:        ds $100 ; $C800
+wLvlLayout:            ds $800 ; $C000 ; Level layout
+wLvlUnkTblC800:        ds $100 ; $C800 ; Actor layout ??? and/or respawn table
 wLvlGFXReqTbl:         ds $100 ; $C900 ; GFX load request table for each column in the level
 wLvlBlocks:            ds $100 ; $CA00 ; Table of tile IDs for every 16x16 block
 
@@ -10,6 +10,11 @@ SECTION "CC00", WRAM0[$CC00]
 ds $20
 wRoomTrsU:             ds $20 ; $CC20 ; Table of target room IDs when scrolling up, indexed by room ID.
 wRoomTrsD:             ds $20 ; $CC40 : See above, but when scrolling down.
+
+SECTION "CD00", WRAM0[$CD00]
+wAct:                  ds $100 ; $CD00 ; Currently loaded actors
+wActColi:              ds $100 ; $CE00 ; Respective collision data for currently loaded actors
+DEF wAct_End EQU wActColi + $100
 
 SECTION "CF00", WRAM0[$CF00]
 
@@ -43,12 +48,26 @@ wPlRelY:               db ; $CF16 ; Player Y position, relative to the screen
 SECTION "CF20", WRAM0[$CF20]
 wScrollVDir:           db ; $CF20 ; Vertical scroll direction
 
+SECTION "CF2B", WRAM0[$CF2B]
+; Parameters to ActS_Spawn for, well, spawning actors
+wActSpawnX:       db ; $CF2B ; X Position
+wActSpawnY:       db ; $CF2C ; Y Position
+wActSpawnId:      db ; $CF2D ; Actor ID
+wActSpawnByte3:   db ; $CF2E ; ???
+wActCurSlotPtr:   db ; $CF2F ; Low byte of the pointer to the currently processed actor slot. High byte will be from wAct or wActColi.
+wActOAMFull:      db ; $CF30 ; Marks if the OAM was filled
 
+SECTION "CF37", WRAM0[$CF37]
+wActNoProc:             db ; $CF37 ; ??? Disables actor processing
+wActCurSprMapRelId:     db ; $CF38 ; Sprite mapping ID offset, relative to the one packed in iActSprMap
 SECTION "CF3D", WRAM0[$CF3D]
-wShutterBGPtr_Low:     db ; $CF3D ; Target tilemap pointer when animating the shutter.
-wShutterBGPtr_High:    db ; $CF3E
+wShutterBGPtr_Low:      db ; $CF3D ; Target tilemap pointer when animating the shutter.
+wShutterBGPtr_High:     db ; $CF3E
 ds 2
-wActGfxId:             db ; $CF41 ; Loaded art set for room actors
+wActGfxId:              db ; $CF41 ; Loaded art set for room actors
+
+SECTION "CF52", WRAM0[$CF52]
+wActCurSprFlagsRes:     db ; $CF52 ; Final OBJ flags for the current actor's sprite, calculated
 
 SECTION "CF56", WRAM0[$CF56]
 wTmpTileIdUL:           db ; $CF56 ; Temporary location to store the four tile IDs from wLvlBlocks
@@ -56,8 +75,12 @@ wTmpTileIdDL:           db ; $CF57
 wTmpTileIdUR:           db ; $CF58
 wTmpTileIdDR:           db ; $CF59
 
+SECTION "CF66", WRAM0[$CF66]
+wStageSelCursor:        db ; $CF66 ; Cursor location on the stage select
+wActCurSprFlags:        db ; $CF67 ; OBJ flags for the current actor
 
-SECTION "CFC0", WRAM0[$CFC0]
+SECTION "CF90", WRAM0[$CF90]
+wStageSelStarfieldPos:  ds $30 ; $CF90 ; Table of coordinates for each star
 wPassSelTbl:            ds $10 ; $CFC0 ; Dots placed on the password screen ($00 or $FF)
 wPlHealth:              db ; $CFD0 ; Player's health
 DEF wPassSelTbl_End EQU wPlHealth
@@ -101,6 +124,7 @@ wPassCursorY:           db ; $CFF5 ; Password cursor - Y position
 SECTION "DD00", WRAM0[$DD00]
 ; Multipurpose scratch buffer for screen transfers
 UNION
+; TODO: Check for improper labels to this after all's done
 wScrEvRows:            ds $40 ; $DD00 ; Tile IDs when vertical scrolling
 NEXTU
 wTilemapBuf:           ds $100 ; $DD00 ; TilemapDef tilemap buffer (Generic)
@@ -115,6 +139,10 @@ DEF wPassCursorULObj EQU wWorkOAM + (OBJ_SIZE * 0)
 DEF wPassCursorURObj EQU wWorkOAM + (OBJ_SIZE * 1)
 DEF wPassCursorDLObj EQU wWorkOAM + (OBJ_SIZE * 2)
 DEF wPassCursorDRObj EQU wWorkOAM + (OBJ_SIZE * 3)
+DEF wStageSelCursorULObj EQU wWorkOAM + (OBJ_SIZE * 0)
+DEF wStageSelCursorDLObj EQU wWorkOAM + (OBJ_SIZE * 1)
+DEF wStageSelCursorURObj EQU wWorkOAM + (OBJ_SIZE * 2)
+DEF wStageSelCursorDRObj EQU wWorkOAM + (OBJ_SIZE * 3)
 
 SECTION "HRAM", HRAM[$FF80]
 hOAMDMA:             ds $0A; ; $FF80 ; OAMDMA_Code.end-OAMDMA_Code
@@ -139,11 +167,10 @@ hSFXSet:             db ; $FF99 ; Requested SFX Id
 hBGMCur:             db ; $FF9A ; Current BGM Id
 
 SECTION "FF9D", HRAM[$FF9D]
-hRomBankLast:        db ; $FF9D ; Last ROM bank loaded (Bank to restore when done with hRomBank)
-hRomBank:            db ; $FF9E ; Current ROM bank loaded
-hTrsRowsProc:        db ; $FF9F ; Number of block rows processed during vertical transitions
-
-SECTION "FFB0", HRAM[$FFB0]
+hRomBankLast:            db ; $FF9D ; Last ROM bank loaded (Bank to restore when done with hRomBank)
+hRomBank:                db ; $FF9E ; Current ROM bank loaded
+hTrsRowsProc:            db ; $FF9F ; Number of block rows processed during vertical transitions
+hActCur:                 ds $10 ; $FFA0 ; Currently processed actor, copied from the actor slot
 hScrEvLvlLayoutPtr_Low:  db ; $FFB0 ; Source level layout pointer
 hScrEvLvlLayoutPtr_High: db ; $FFB1 ; 
 hScrEvOffH:              db ; $FFB2 ; Target horizontal offset in grid
@@ -165,3 +192,59 @@ hRandSt0:            db ; $FFFB ; RNG state, topmost byte (output)
 hRandSt1:            db ; $FFFC ; "", byte 1
 hRandSt2:            db ; $FFFD ; "", byte 2
 hRandSt3:            db ; $FFFE ; "", lowest byte
+
+;
+; STRUCTS
+;
+
+; wTilemapBuf
+DEF iTilemapDefPtr_High EQU $00
+DEF iTilemapDefPtr_Low  EQU $01
+DEF iTilemapDefOpt      EQU $02
+DEF iTilemapDefPayload  EQU $03
+
+; wAct
+DEF iActId            EQU $00 ; Actor ID. Must be a multiple of two. If zero, the slot is free.
+DEF iActRtnId         EQU $01 ; Routine ID, actor-specific
+DEF iActSprMap        EQU $02 ; Sprite mapping ID + direction flags
+DEF iAct_Unk_UnkTblPtr            EQU $03 ; ???
+DEF iActXSub          EQU $04 ; X subpixel position
+DEF iActX             EQU $05 ; X position
+DEF iActYSub          EQU $06 ; Y subpixel position
+DEF iActY             EQU $07 ; Y position
+DEF iActSpdXSub       EQU $08 ; Horizontal speed (subpixels)
+DEF iActSpdX          EQU $09 ; Horizontal speed
+DEF iActSpdYSub       EQU $0A ; Vertical speed (subpixels)
+DEF iActSpdY          EQU $0B ; Vertical speed
+DEF iActTimer0C            EQU $0C ; Actor-specific
+DEF iAct0D            EQU $0D ; Actor-specific
+DEF iAct0E            EQU $0E ; Actor-specific
+DEF iAct0F            EQU $0F ; Actor-specific
+DEF iActEnd EQU $10
+
+; Actor-specific fields
+
+; see Act_Boss_InitIntro
+DEF iBossIntroTimer EQU iActTimer0C
+DEF iBossIntroSprMap0 EQU iAct0D
+DEF iBossIntroSprMap1 EQU iAct0E
+DEF iBossIntroFrameLen EQU iAct0F
+
+; wActColi
+DEF iActColiBoxH EQU $00 ; Collision box width
+DEF iActColiBoxV EQU $01 ; Collision box height
+DEF iActColiType EQU $02 ; Collision type
+DEF iActColiDamage EQU $03 ; Damage dealt
+DEF iActColiHealth EQU $04 ; Health (if <= $10, the actor is defeated)
+DEF iActColiInvulnTimer EQU $05 ; Invulnerability time
+DEF iActColi6 EQU $06
+DEF iActColi7 EQU $07
+DEF iActColi8 EQU $08
+DEF iActColi9 EQU $09
+DEF iActColiA EQU $0A
+DEF iActColiB EQU $0B
+DEF iActColiC EQU $0C
+DEF iActColiD EQU $0D
+DEF iActColiE EQU $0E
+DEF iActColiF EQU $0F
+DEF iActColiEnd EQU $10

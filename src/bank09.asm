@@ -1,4 +1,4 @@
-L094000: db $00
+GFX_CrashMan: db $00
 L094001: db $00
 L094002: db $00
 L094003: db $00
@@ -4094,7 +4094,7 @@ L094FFC: db $00
 L094FFD: db $00
 L094FFE: db $00
 L094FFF: db $00
-L095000: db $FF
+GFX_MetalMan: db $FF
 L095001: db $00
 L095002: db $FF
 L095003: db $00
@@ -8190,7 +8190,7 @@ L095FFC: db $F0
 L095FFD: db $C0
 L095FFE: db $C0
 L095FFF: db $00
-L096000: db $00
+GFX_WoodMan: db $00
 L096001: db $00
 L096002: db $00
 L096003: db $00
@@ -12286,7 +12286,7 @@ L096FFC: db $00
 L096FFD: db $00
 L096FFE: db $00
 L096FFF: db $00
-L097000: db $00
+GFX_AirMan: db $00
 L097001: db $00
 L097002: db $00
 L097003: db $00
