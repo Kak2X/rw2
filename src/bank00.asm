@@ -389,7 +389,7 @@ VBlankHandler:
 	call LoadTilemapDef
 	
 	xor  a
-	ld   [wBarDrawQueued], a		; Signal out there's no bar to draw
+	ld   [wBarQueuePos], a		; Signal out there's no bar to draw
 	ld   [wTilemapBarEv], a
 	jp   VBlankHandler_UpdateScreen
 	
@@ -786,7 +786,7 @@ GFXSet_Load:
 .set0: db $E4, $E4, $E4, $00 ; GFXSET_TITLE
 .set1: db $E4, $1C, $C4, $00 ; GFXSET_STAGESEL
 .set2: db $E4, $1C, $C4, $00 ; GFXSET_PASSWORD
-.set3: db $E4, $1C, $C4, $00 ; GFXSET_LEVEL
+.set3: db $E4, $1C, $C4, $00 ; GFXSET_LEVEL (Gets overwritten by Lvl_InitSettings)
 .set4: db $E4, $E4, $E4, $00 ; GFXSET_GETWPN
 .set5: db $E4, $1C, $E4, $00 ; GFXSET_CASTLE
 .set6: db $E4, $1C, $E4, $00 ; GFXSET_STATION
@@ -1396,11 +1396,11 @@ LoadTilemapDef:
 	inc  de
 	
 	; byte2: Writing mode + Number of bytes to write
-	;        FORMAT: RDCCCCCC
+	;        FORMAT: DRCCCCCC
 	;        - C: Number of bytes to write ($00-$3F)
-	;        - D: Writing direction (if clear, Right; if set, Down)
 	;        - R: Repeat mode (if clear, <C> bytes should be copied from src to dest;
 	;                          if set, the next byte should be repeated <C> tiles)
+	;        - D: Writing direction (if clear, Right; if set, Down)
 	
 	; B = Number of bytes to write
 	ld   a, [de]
@@ -1633,242 +1633,450 @@ L0007C2: db $54;X
 L0007C3: db $C1;X
 L0007C4: db $E1;X
 L0007C5: db $C9;X
-L0007C6:;C
+
+; =============== Lvl_LoadData ===============
+; Loads all of the data for the currently selected level.
+Lvl_LoadData:
 	push af
-	ld   a, $05
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(Lvl_LayoutPtrTbl) ; BANK $05
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
+	
+	;
+	; LEVEL LAYOUT
+	;
+	; This is compressed using RLE, and once decompressed it takes up $A00 bytes.
+	; In the same archive, it packs:
+	; - Actual level layout ($800 bytes)
+	;   This is a straight 256x8 level map, taking up $800 bytes uncompressed.
+	;   The entire level is loaded all at once and the data is read/ordered as-is.
+	;   This has a few implications:
+	;   - There's no hard concept of rooms loading their own layout data
+	;   - Room transitions simply work by warping the player to another point of the same level.
+	; - Actor layout ($200 bytes)
+	;   Split into two $100 tables, all indexed by column number.
+	;   The first contains the Y position & nospawn flag of the actor, while the second one
+	;   has a mix of Actor IDs and GFX set IDs.
+	;   A few notes:
+	;   - The X position isn't stored anywhere here.
+	;     Instead, the index to the actor layout represents the column number.
+	;     This means there can be at most one actor/column.
+	;   - The game determines if a given entry is for a GFX set ID
+	;     by checking for the respective value in the first table to be 0. 
+	;   - The nospawn flag is always set to 0 in the compressed data, otherwise the actor wouldn't load.
+	;     In RAM, this helps to avoid respawning on-screen actors or to permanently delete actors (see below)
+	;     
+	
+	; DE = Ptr to compressed level layout data
 	ld   a, [wLvlId]
-	ld   hl, $4000
-	ld   b, $00
+	ld   hl, Lvl_LayoutPtrTbl 	; BANK $05
+	ld   b, $00					; BC = wLvlId * 2
 	sla  a
 	ld   c, a
 	add  hl, bc
-	ldi  a, [hl]
+	ldi  a, [hl]	; Read ptr out to DE
 	ld   e, a
 	ld   a, [hl]
 	ld   d, a
-	ld   hl, $C000
-L0007E2:;R
-	ld   a, [de]
-	inc  de
-	bit  7, a
-	jr   nz, L0007EB
-	ldi  [hl], a
-	jr   L0007F4
-L0007EB:;R
-	and  $7F
-	ld   b, a
-	ld   a, [de]
-	inc  de
-L0007F0:;R
-	ldi  [hl], a
-	dec  b
-	jr   nz, L0007F0
-L0007F4:;R
+	
+	; Decompress it to wLvlLayout.
+	; The RLE format takes advantage of how the data never has the MSB set, allowing for some shortcuts.
+	; The bytes are read in sequence, and:
+	; - If the MSB isn't set, the current byte is copied directly to the destination.
+	; - If the MSB is set, the next byte is repeated <current byte> times.
+	;
+	; These is no explicit length to this data, instead decompression ends when moving
+	; outside the buffer.
+	
+	ld   hl, wLvlLayout
+.nextCmdL:
+	ld   a, [de]		; Read command byte
+	inc  de				; SrcPtr++
+	bit  7, a			; Is the MSB set?
+	jr   nz, .repL		; If so, it's a repeated copy
+.uncL:
+	ldi  [hl], a		; Otherwise, it's a raw byte. Copy it as-is, DestPtr++
+	jr   .chkEndL
+.repL:
+	and  $7F			; Filter out MSB
+	ld   b, a			; B = Repeat count
+	ld   a, [de]		; Read single byte
+	inc  de				; SrcPtr++
+.repLoopL:
+	ldi  [hl], a		; Copy the same byte over, DestPtr++
+	dec  b				; Done the repeated copy?
+	jr   nz, .repLoopL	; If not, loop it
+.chkEndL:
 	ld   a, h
-	cp   $CA
-	jr   c, L0007E2
-	ld   a, [$CF7F]
-	or   a
-	jr   nz, L00080B
-	xor  a
-	ld   hl, $DC00
+	cp   HIGH(wLvlLayoutDecode_End)			; Reached the end?
+	jr   c, .nextCmdL
+	
+	
+.restPerm:
+	;
+	; PERMADESPAWNS
+	;
+	; The nospawn flag for actors starts out as 0, is set when one spawns, and normally unset when one despawns.
+	; This prevents actors that are currently on-screen from being reloaded, any actor with the nospawn flag set
+	; is skipped.
+	;
+	; There wouldn't need to be anything else to do if that was it but some actors, like 1UPs, need to permanently
+	; despawn once collected. This is accomplished by them despawning without clearning the nospawn flag.
+	; However, when the level reloads after the player has died, the actor layout is fully reset, and so are the nospawn flags.
+	;
+	; To enforce permadespawns, the nospawn data is also stored into a separate buffer, which is applied after the level loads.
+	; If this is the first time we load the level however, that's not necessary -- moreover, that memory range is dirty and 
+	; needs to be wiped clean.
+	;
+	ld   a, [wPlRespawn]
+	or   a							; Reloading after player death?
+	jr   nz, .loadPerm				; If so, jump
+.initPerm:
+	xor  a							; Otherwise, initialize the table
+	ld   hl, wActDespawnTbl
 	ld   bc, $0100
 	call ZeroMemory
-	jr   L000818
-L00080B:;R
-	ld   l, $00
-L00080D:;R
-	ld   h, $DC
+	jr   .loadBlocks
+.loadPerm:
+	; Merge the entirety of wActDespawnTbl into the live table at wActLayoutFlags. 
+	ld   l, $00						; For each byte...
+.loopColl:
+	ld   h, HIGH(wActDespawnTbl)	; B = Backup
 	ld   b, [hl]
-	ld   h, $C8
+	ld   h, HIGH(wActLayoutFlags) 	; A = Live
 	ld   a, [hl]
-	or   b
-	ld   [hl], a
-	inc  l
-	jr   nz, L00080D
-L000818:;R
-	ld   a, [wLvlId]
+	or   b							; Merge backup nospawn flag
+	ld   [hl], a					; Save back to main
+	inc  l							; Restored all $100?
+	jr   nz, .loopColl				; If not, loop
+	
+.loadBlocks:
+	;
+	; 16x16 BLOCK DEFINITIONS
+	;
+	; These define, for every block, the four 8x8 tiles they use.
+	;
+	; This data is stored uncompressed in a table indexed by level ID, where each entry
+	; is $100 bytes long (enough space for defining $40 blocks).
+	;
+	ld   a, [wLvlId]		; BC = wLvlId * $100
 	ld   b, a
 	ld   c, $00
-	ld   hl, $7600
-	add  hl, bc
-	ld   de, $CA00
+	ld   hl, Lvl_BlockTbl 	; BANK $05
+	add  hl, bc				; Seek to the block table entry
+	ld   de, wLvlBlocks
 	ld   bc, $0100
-	call CopyMemory
-	ld   hl, $0B78
-	ld   a, [wLvlId]
-	add  a
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ld   e, [hl]
-	inc  hl
-	ld   d, [hl]
-	ld   hl, $4020
-	add  hl, de
-	ld   e, l
+	call CopyMemory			; Copy it over
+	
+	;--
+	
+	;
+	; The remainder of the level data is all stored (in the ROM, at least) in a way that uses 1 byte for each room.
+	; Rooms in this game are simply groups of 10 columns (the horizontal width of a screeen) starting from the leftmost one.
+	;
+	; As the level width is fixed, so is the max number of rooms in a level ($19), therefore, given the same level ID,
+	; the offsets to each set of data are the same.
+	;
+	; Instead of using pointer tables, a single table at Lvl_RoomColOffsetTbl is used containing multiples of the room count.
+	; When indexed by level ID, it will return said offset for each of the tables.
+	; (of course, it would have been better to push/pop the offset instead of always recalculating it...)
+	;
+	
+	; OUT
+	; - DE: Data offset
+	MACRO mGetLvlOffset
+		ld   hl, Lvl_RoomColOffsetTbl	; HL = Base table
+		ld   a, [wLvlId]
+		add  a							; BC = wLvlId * 2
+		ld   b, $00
+		ld   c, a
+		add  hl, bc						; Seek to entry
+		ld   e, [hl]					; Read out offset value to DE
+		inc  hl
+		ld   d, [hl]
+	ENDM
+	
+	;
+	; SCROLL LOCKS (UNPACK)
+	;
+	; Marks which screens the camera is free to scroll towards.
+	; While this data is stored in RAM at wLvlScrollLocks on a per-column basis ($00 -> no scroll, $80 -> scroll),
+	; in the ROM it has a granularity of half a room.
+	;
+	; Specifically, it's packed into $19 bytes, with byte mapping to a single room.
+	; Of that byte, only two bits are used: bit1 for the left side, bit0 for the right.
+	;
+	
+	; DE = Ptr to scroll lock data
+	mGetLvlOffset				; DE = Data offset
+	ld   hl, Lvl_ScreenLockTbl	; BANK $05
+	add  hl, de					; Seek to level scroll data
+	ld   e, l					; DE = HL
 	ld   d, h
-	ld   hl, $CB00
-	ld   b, $19
-L000844:;R
-	ld   a, [de]
-	rrca 
-	rrca 
-	and  $80
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   a, [de]
-	rrca 
-	and  $80
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	inc  de
-	dec  b
-	jr   nz, L000844
-	ld   hl, $0B78
-	ld   a, [wLvlId]
-	add  a
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ld   e, [hl]
-	inc  hl
-	ld   d, [hl]
-	ld   hl, $4020
+	
+	; Unpack the data to RAM
+	ld   hl, wLvlScrollLocks	; HL = Starting address
+	ld   b, $19					; B = Rooms left
+.lockLoop:						; For each byte...
+
+	; LEFT SIDE
+	ld   a, [de]		; Read byte
+	rrca 				; shift bit1 to bit0
+	rrca 				; shift bit0 to bit7
+	and  $80			; Remove other bits
+	REPT ROOM_COLCOUNT/2	
+		ldi  [hl], a	; Apply it for the left half of the room
+	ENDR
+	
+	; RIGHT SIDE
+	ld   a, [de]		; Reread same byte
+	rrca 				; shift bit0 to bit7
+	and  $80			; Remove other bits
+	REPT ROOM_COLCOUNT/2	
+		ldi  [hl], a	; Apply it for the right half of the room
+	ENDR
+	
+	inc  de				; SrcPtr++
+	dec  b				; Done for all rooms?
+	jr   nz, .lockLoop	; If not, loop
+	
+	;
+	; SCREEN LOCKS (RAW)
+	;
+	; This will be later used to determine the player's spawn position on the current room.
+	;
+	mGetLvlOffset					; DE = Data offset
+	ld   hl, Lvl_ScreenLockTbl
 	add  hl, de
-	ld   de, $CC00
+	ld   de, wLvlScrollLocksRaw
 	ld   bc, $0019
 	call CopyMemory
-	ld   hl, $0B78
-	ld   a, [wLvlId]
-	add  a
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ld   e, [hl]
-	inc  hl
-	ld   d, [hl]
-	ld   hl, $4180
+	
+	;
+	; ROOM TRANSITIONS (UPWARDS)
+	;
+	; For each room, a target room ID is defined when performing a transition to the room above.
+	; These can only be performed by climbing up a ladder.
+	;
+	; It's always possible to perform transitions at any point, it's up to the level designer
+	; to include ladders that allow doing one.
+	;
+	mGetLvlOffset
+	ld   hl, Lvl_RoomTrsUTbl		
 	add  hl, de
 	ld   de, wRoomTrsU
 	ld   bc, $0019
 	call CopyMemory
-	ld   hl, $0B78
-	ld   a, [wLvlId]
-	add  a
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ld   e, [hl]
-	inc  hl
-	ld   d, [hl]
-	ld   hl, $4300
+	
+	;
+	; ROOM TRANSITIONS (DOWNWARDS)
+	;
+	; Like above, but when moving down. Ladders aren't even required here.
+	;
+	; As with upwards transitions, it's always possible to do them at any point of any room, 
+	; here doubly so since you don't need to be on a ladder. 
+	; It's up to the level designer to restrict it with solid blocks or (invisible) spikes.
+	;
+	; Worth noting that there isn't a real concept of pits either. To kill the player instead
+	; of triggering the transition, spikes need to be manually placed on the bottom row.
+	; Spikes placed there have special behavior that instakills the player regardless of
+	; invulnerability status, to really prevent the transition from being triggered.
+	;
+	mGetLvlOffset
+	ld   hl, Lvl_RoomTrsDTbl
 	add  hl, de
 	ld   de, wRoomTrsD
 	ld   bc, $0019
 	call CopyMemory
+	
 	push af
-	ldh  a, [hRomBankLast]
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L0008B6:;C
-	ld   a, [wLvlId]
+	
+; =============== Lvl_InitSettings ===============
+; Initializes additional level properties.
+Lvl_InitSettings:
+	
+	;
+	; LEVEL PALETTE (ANIMATION)
+	;
+	; Overrides the fixed palette loaded by GFXSET_LEVEL.
+	;
+	; Each level has two palettes assigned, to allow for simple palette animations.
+	; This is always enabled -- levels which don't use it merely define two identical palettes.
+	;
+	
+	ld   a, [wLvlId]	; HL = Lvl_PalTbl[wLvlId * 2]
 	add  a
-	ld   hl, $3C24
+	ld   hl, Lvl_PalTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ldi  a, [hl]
+	
+	ldi  a, [hl]		; Read 1st pal
 	ldh  [hBGP], a
-	ldh  [$FFB6], a
-	ld   a, [hl]
-	ldh  [$FFB7], a
+	ldh  [hBGPAnim0], a
+	ld   a, [hl]		; Read 2nd pal
+	ldh  [hBGPAnim1], a
+	
+	;
+	; AIR MAN's stage is hardcoded to use BG priority,
+	; to make the clouds appear in front.
+	;
 	ld   b, $00
 	ld   a, [wLvlId]
-	cp   $07
-	jr   nz, L0008D4
-	ld   b, $80
-L0008D4:;R
+	cp   LVL_AIR
+	jr   nz, .setBGPri
+	ld   b, SPR_BGPRIORITY
+.setBGPri:
 	ld   a, b
 	ld   [wActCurSprFlags], a
-	ld   a, [wLvlId]
-	ld   hl, $3C6A
+	
+	;
+	; WATER SUPPORT
+	;
+	; Levels that don't have any water disable this to save on processing time.
+	;
+	ld   a, [wLvlId]	; wLvlWater = Lvl_WaterFlagTbl[wLvlId]
+	ld   hl, Lvl_WaterFlagTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ld   [$CF6F], a
+	ld   [wLvlWater], a
+	
+	;
+	; STATUS BAR POSITION
+	;
 	ld   a, $80
-	ldh  [hLYC], a
-	ldh  [hWinY], a
+	ldh  [hLYC], a		; Set status bar at the bottom
+	ldh  [hWinY], a		; ""
 	xor  a
-	ldh  [hScrollX2], a
+	ldh  [hScrollX2], a	; Not necessary
 	ld   a, $07
-	ldh  [hWinX], a
+	ldh  [hWinX], a		; Docked to the left
 	ret
-L0008F4:;C
+	
+; =============== Lvl_DrawFullScreen ===============
+; Draws the entire visible screen to the tilemap, as well as setting the current position within the level.
+Lvl_DrawFullScreen:
+
+	;
+	; The main constraint here is that the following need to be consistent with each other:
+	; 1) The position of the blocks within the grid (ScrEv_DrawLvlBlock)
+	; 2) Block IDs being used
+	; 3) Current level position, for collision (wLvlColL)
+	;    ??? This MUST point to the leftmost column currently visible (*not* the tilemap)
+	;
+	; The screen is drawn starting from 2 blocks to the left of the current room,
+	; to account for the seam position when redrawing the screen during horizontal scrolling.
+	; This influences both #1 and #2, which need to be subtracted by 2.
+	;
+	
+	;--
+	;
+	; #1 POSITION OF BLOCKS
+	;
+	; Calculate to DE the tilemap grid offsets from the current scroll position.
+	; Effectively the scroll position divided by the block's width/height.
+	;
+	; Note that while the code here accounts for the screen positions being potentially anything,
+	; in practice, since the scroll is always reset when we get here, they will always be:
+	; - wTargetRelY: 0
+	; - wTargetRelX: -2
+	;
+	
+	; X GRID OFFSET
+	; wTargetRelX = (hScrollX / 16) - 2
 	ldh  a, [hScrollX]
-	sub  $20
-	swap a
-	and  $0F
-	ld   [$CF0D], a
+	sub  $20			; 2 blocks behind
+	swap a				; / $10
+	and  $0F			; ""
+	ld   [wTargetRelX], a
+	
+	; Y GRID OFFSET
+	; wTargetRelY = hScrollY / 16
 	ldh  a, [hScrollY]
 	swap a
 	and  $0F
-	ld   [wPl_Unk_Alt_Y], a
-	ld   hl, $0B98
+	ld   [wTargetRelY], a
+	;--
+	
+	;
+	; #2 BLOCK IDS USED
+	;
+	; Seek HL to the first block in the room, minus 2.
+	;
+	
+	; Since we're starting from the first row, just find the column associated with the current room.
+	ld   hl, Lvl_RoomColTbl
 	ld   a, [wLvlRoomId]
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ld   [wLvlColL], a
+	; While we're here, set the un-offsetted value as the current level position.
+	ld   [wLvlColL], a 		
+	; Start from 2 blocks behind, as above
 	dec  a
 	dec  a
-	ld   hl, $C000
-	ld   b, $00
+	; Index the level layout using that.
+	ld   hl, wLvlLayout	; HL = Level layout
+	ld   b, $00			; BC = Room offset
 	ld   c, a
 	add  hl, bc
-	ld   d, $00
-L000921:;R
-	ld   e, $00
-L000923:;R
-	push hl
-	add  hl, de
-	push de
-	ld   a, [wPl_Unk_Alt_Y]
-	add  d
-	and  $0F
-	ld   d, a
-	ld   a, [$CF0D]
-	add  e
-	and  $0F
-	ld   e, a
-	ld   a, [hl]
-	call ScrEv_DrawLvlBlock
-	pop  de
+	
+	;
+	; Draw the blocks in a loop, left to right, top to bottom.
+	;
+	; Due to the specific level width used ($100 blocks), which fits exactly into a byte,
+	; moving down a block can be accomplished by just incrementing the high byte of the pointer.
+	;
+	ld   d, $00			; For each row...
+.loopRow:
+	ld   e, $00			; For each block in the row...
+.loopBlk:
+	push hl ; Save base level layout ptr
+	
+		; HL = Ptr to current block ID
+		add  hl, de
+		
+		; Calculate the final 16x16 grid position for the current block.
+		push de
+			; Y POSITION = (wTargetRelY + D) & $0F
+			ld   a, [wTargetRelY]		; Read base offset (always 0)
+			add  d				; Add row iteration
+			and  $0F			; Enforce valid range
+			ld   d, a
+			; X POSITION = (wTargetRelX + E) & $0F
+			ld   a, [wTargetRelX]		; Read base offset (always -2)
+			add  e				; Add col iteration
+			and  $0F			; Enforce valid range
+			ld   e, a
+			
+			ld   a, [hl]		; A = Block ID
+			call ScrEv_DrawLvlBlock
+		pop  de	
 	pop  hl
-	inc  e
+	
+	inc  e				; Move 1 block right
 	ld   a, e
-	cp   $0E
-	jr   nz, L000923
-	inc  d
+	cp   $0E			; Drawn all 14 blocks in the row?
+	jr   nz, .loopBlk	; If not, loop
+	inc  d				; Move 1 block down
 	ld   a, d
-	cp   $08
-	jr   nz, L000921
-	ld   de, $0BB2
+	cp   $08			; Drawn all 8 rows?
+	jr   nz, .loopRow	; If not, draw the next one
+	
+	; Finally, draw the base status bar tilemap.
+	; Its values will be drawn later.
+	ld   de, TilemapDef_StatusBar
 	jp   LoadTilemapDef
+	
 L00094C:;C
 	ldh  a, [hScrollX]
 	sub  $20
@@ -1889,12 +2097,12 @@ L00094C:;C
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
 	ld   l, a
 	ld   b, $E8
-	call L001C56
+	call ActS_SpawnColEdge4
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
 	add  $0E
 	ld   l, a
 	ld   b, $B8
-	jp   L001C61
+	jp   ActS_SpawnColEdge5
 L000980:;J
 	ldh  a, [hScrollX]
 	add  $B0
@@ -1915,12 +2123,12 @@ L000980:;J
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
 	ld   l, a
 	ld   b, $B8
-	call L001C56
+	call ActS_SpawnColEdge4
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
 	sub  $0E
 	ld   l, a
 	ld   b, $E8
-	jp   L001C61
+	jp   ActS_SpawnColEdge5
 	
 ; =============== ScrEv_LvlScrollH ===============
 ; Updates the tilemap for horizontal scrolling during gameplay,
@@ -2169,13 +2377,13 @@ Game_Unk_StartRoomTrs:
 	ldh  [hTrsRowsProc], a
 	
 	; Immediately start a request to load any new actor graphics, if any
-	call ActS_ReqLoadGFXForRoom
+	call ActS_ReqLoadRoomGFX
 	
 	; Fall-through
 
-; =============== Game_Unk_CalcCurCol ===============
+; =============== Game_CalcCurLvlCol ===============
 ; Recalculates the column the player is currently on.
-Game_Unk_CalcCurCol:
+Game_CalcCurLvlCol:
 
 	;
 	; Get column count, relative to the left edge of the screen.
@@ -2467,7 +2675,7 @@ ScrEv_LvlScrollV:
 	ld   [wLvlScrollEvMode], a
 	ret
 	
-L000B78: db $00
+Lvl_RoomColOffsetTbl: db $00
 L000B79: db $00
 L000B7A: db $19
 L000B7B: db $00
@@ -2505,12 +2713,12 @@ L000B97: db $01;X
 ; [POI] The last two values happen to not be used, and the first room is never used.
 Lvl_RoomColTbl:
 	DEF I = 0
-	REPT LVL_ROOMCOUNT
+	REPT LVL_ROOMCOUNT + 1
 		db ROOM_COLCOUNT * I
 		DEF I = I + 1
 	ENDR
 
-L000BB2: db $9C
+TilemapDef_StatusBar: db $9C
 L000BB3: db $00
 L000BB4: db $14
 L000BB5: db $5D
@@ -2584,7 +2792,7 @@ Pl_ResetAllProgress:
 ; ie: after entering a password or continuing from a game over
 Pl_ResetLivesAndWpnAmmo:
 	ld   a, $02
-	ld   [wLives], a
+	ld   [wPlLives], a
 	
 ; =============== Pl_RefillAllWpn ===============
 ; Refills all of the weapon ammo.
@@ -2598,90 +2806,145 @@ Pl_RefillAllWpn:
 	jr   nz, .loop
 	ret
 	
-L000C08:;C
-	ld   a, $12
-	ld   [$CF1D], a
+; =============== Game_Init ===============
+; Initialize all of the needed gameplay variables
+Game_Init:
+	
+	; Start by warping in
+	ld   a, PL_MODE_WARPIN
+	ld   [wPlMode], a
+	
+	; ???
 	ld   a, $FF
-	ld   [$CF5D], a
-	ld   [$CF4A], a
-	ld   [$CF6A], a
-	ld   [$CF6B], a
+	ld   [wCF5D_Unk_ActTargetSlot], a
+	ld   [wCF4A_Unk_ActTargetSlot], a
+	ld   [wCF6A_Unk_ActTargetSlot], a
+	ld   [wCF6B_Unk_ActCurSlotPtrCopy], a
+	
+	; Initialize a bunch of variables, mostly to clean up from last time
 	xor  a
 	ldh  [hScrollXNybLow], a
-	ld   [$CF60], a
-	ld   [$CF27], a
-	ld   [$CF18], a
-	ld   [$CF19], a
-	ld   [$CF42], a
-	ld   [$CF43], a
-	ld   [$CF3A], a
-	ld   [$CF45], a
-	ld   [$CF44], a
-	ld   [$CF49], a
-	ld   [wWpnSel], a
-	ld   [$CFF1], a
-	ld   [$CF5E], a
-	ld   [$CF5F], a
-	ld   [$CF7A], a
-	ld   [$CFEA], a
-	ld   [$CF6C], a
-	ld   [$CF70], a
-	ld   a, $98
+	ld   [wLvlEnd], a
+	ld   [wPlSlideDustTimer], a
+	ld   [wPlSpdXSub], a
+	ld   [wPlSpdX], a
+	ld   [wPlHurtTimer], a
+	ld   [wPlInvulnTimer], a
+	ld   [wNoScroll], a
+	ld   [wBossDmgEna], a
+	ld   [wBossIntroHealth], a
+	ld   [wShutterMode], a
+	ld   [wWpnSel], a 			; Start with the buster always
+	ld   [wWpnItemWarp], a
+	ld   [wWpnSGUseTimer], a
+	ld   [wUnk_Unused_CF5F], a
+	ld   [wLvlWarpDest], a
+	ld   [wWpnTpActive], a
+	ld   [wWpnSGRide], a
+	ld   [wStatusBarRedraw], a
+	
+	; Start with full health
+	ld   a, BAR_MAX
 	ld   [wPlHealth], a
+	
+	;
+	; Determine the automatic weapon unlocks, which aren't stored in the password.
+	;
 	ld   hl, wWpnUnlock1
+	; Start fresh
 	xor  a
 	ld   [hl], a
-	ld   a, [wWpnUnlock0]
-	bit  4, a
-	jr   z, L000C67
-	set  0, [hl]
-L000C67:;R
-	bit  3, a
-	jr   z, L000C6D
-	set  1, [hl]
-L000C6D:;R
-	bit  1, a
-	jr   z, L000C73
-	set  2, [hl]
-L000C73:;R
-	ld   hl, $CC00
+	; Defeating Crash Man unlocks Rush Coil
+.chkRC:
+	ld   a, [wWpnUnlock0]	
+	bit  WPNB_CR, a		; Crash Bomb unlocked?
+	jr   z, .chkRM		; If not, skip
+	set  WPNB_RC, [hl]	; Otherwise, enable Rush Coil
+.chkRM:
+	; Defeating Metal Man unlocks Rush Marine
+	bit  WPNB_ME, a
+	jr   z, .chkRJ
+	set  WPNB_RM, [hl]
+.chkRJ:
+	; Defeating Air Man unlocks Rush Jet
+	bit  WPNB_AR, a
+	jr   z, .setPlPos
+	set  WPNB_RJ, [hl]
+	; NOTE: The Sakugarne unlock is set later on, at ???
+	
+.setPlPos:
+	;
+	; Set the player's spawn coordinates.
+	; They are actually ever so slightly different (by 8 pixels on either side)
+	; depending on the current room's scroll locks.
+	;
+	; This takes advantage of the ROM format of scroll lock data.
+	; The byte defining the scroll lock options for the current room
+	; can be used as an index to the table of X spawn positions
+	; 
+	
+	; A = wLvlScrollLocksRaw[wLvlRoomId]
+	ld   hl, wLvlScrollLocksRaw
 	ld   a, [wLvlRoomId]
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
+	; A = .spawnPosTbl[A & 3]
 	and  $03
-	ld   hl, $0C98
+	ld   hl, .spawnPosTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ld   [wPlRelX], a
-	ld   a, $0F
+	
+	ld   [wPlRelX], a	; Use that as spawn X position
+	ld   a, $0F			; Spawn from the top always
 	ld   [wPlRelY], a
-	ld   a, $01
+	ld   a, $01			; Face right
 	ld   [wPlDirH], a
-	jp   Game_Unk_CalcCurCol
-L000C98: db $58
-L000C99: db $50
-L000C9A: db $60;X
-L000C9B: db $58
-L000C9C:;C
-	ld   a, [wPlHealth]
+	
+	; Finally, recalculate the current column number.
+	; This expects the updated wLvlColL which Lvl_DrawFullScreen set.
+	jp   Game_CalcCurLvlCol
+	
+.spawnPosTbl	
+	db $58 ; Both locked - Center of the room
+	db $50 ; Left locked - Slightly to the left
+	db $60 ; Right locked - Slightly to the right [POI] Not used
+	db $58 ; None locked - Center of the room
+
+; =============== Game_RunInitEv ===============
+; Performs any event-based VRAM updates that need to be executed immediately after the screen is turned on.
+; These are actions that, while happen while the level loads, can also individually happen in the middle of gameplay.
+Game_RunInitEv:
+
+	;
+	; The default status bar tilemap we loaded before contains placeholder values.
+	;
+	ld   a, [wPlHealth]		; Redraw health bar
 	ld   c, $00
-	call L003A25
-	ld   a, [wLives]
-	call L003A9A
-	rst  $18
-	call ActS_ReqLoadGFXForRoom
+	call Game_AddBarDrawEv
+	ld   a, [wPlLives]		; Redraw lives indicator
+	call Game_AddLivesDrawEv
+	rst  $18 ; Wait bar update
+	
+	;
+	; Load the actor graphics using the same code for room transitions.
+	; This is the cause of the noticeable delay before the player is warped in,
+	; since the copy happens during VBlank and there isn't anything else 
+	; (ie: the screen scrolling during a transition) to mask the load times.
+	;
+	call ActS_ReqLoadRoomGFX
 	rst  $20 ; Wait GFX load
 	ret
+	
 L000CB0:;C
 	xor  a
-	ld   [$CF31], a
-	ld   [$CF3B], a
+	ld   [wActScrollX], a
+	ld   [wPlColiBlockL], a
 	ld   [$CF3C], a
-	ld   a, [$CF49]
+	ld   a, [wShutterMode]
 	or   a
 	jp   z, L000DEC
 	dec  a
@@ -2697,9 +2960,9 @@ L000CCA: db $0D
 L000CCB: db $BE
 L000CCC: db $0D
 L000CCD:;I
-	ld   a, [$CF3A]
+	ld   a, [wNoScroll]
 	or   a
-	call nz, ActS_ReqLoadGFXForRoom
+	call nz, ActS_ReqLoadRoomGFX
 	ld   a, [wPlRelY]
 	sub  $10
 	ld   b, a
@@ -2732,27 +2995,27 @@ L000CCD:;I
 	add  c
 	ld   [wShutterBGPtr_Low], a
 	ld   a, $06
-	ld   [$CF3F], a
+	ld   [wShutterTimer], a
 	ld   a, $06
-	ld   [$CF40], a
-	ld   hl, $CF49
+	ld   [wShutterRowsLeft], a
+	ld   hl, wShutterMode
 	inc  [hl]
 	jp   L000E4C
 L000D1A:;I
-	ld   a, [$CF3F]
+	ld   a, [wShutterTimer]
 	or   a
 	jr   z, L000D27
 	dec  a
-	ld   [$CF3F], a
+	ld   [wShutterTimer], a
 	jp   L000E4C
 L000D27:;R
-	ld   a, [$CF40]
+	ld   a, [wShutterRowsLeft]
 	or   a
 	jr   z, L000D42
 	dec  a
-	ld   [$CF40], a
+	ld   [wShutterRowsLeft], a
 	ld   a, $06
-	ld   [$CF3F], a
+	ld   [wShutterTimer], a
 	ld   a, $01
 	ld   [wShutterEvMode], a
 	ld   a, $0A
@@ -2760,12 +3023,12 @@ L000D27:;R
 	jp   L000E4C
 L000D42:;R
 	ld   a, $28
-	ld   [$CF3F], a
-	ld   hl, $CF49
+	ld   [wShutterTimer], a
+	ld   hl, wShutterMode
 	inc  [hl]
 	jp   L000E4C
 L000D4E:;I
-	ld   hl, $CF3F
+	ld   hl, wShutterTimer
 	dec  [hl]
 	jr   z, L000D5A
 	call L000DD7
@@ -2780,29 +3043,29 @@ L000D5A:;R
 	or   b
 	ld   [wShutterBGPtr_Low], a
 	ld   a, $06
-	ld   [$CF3F], a
+	ld   [wShutterTimer], a
 	ld   a, $06
-	ld   [$CF40], a
-	ld   hl, $CF49
+	ld   [wShutterRowsLeft], a
+	ld   hl, wShutterMode
 	inc  [hl]
 	ld   a, $04
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	jp   L000E4C
 L000D81:;I
-	ld   a, [$CF3F]
+	ld   a, [wShutterTimer]
 	or   a
 	jr   z, L000D8E
 	dec  a
-	ld   [$CF3F], a
+	ld   [wShutterTimer], a
 	jp   L000E4C
 L000D8E:;R
-	ld   a, [$CF40]
+	ld   a, [wShutterRowsLeft]
 	or   a
 	jr   z, L000DA9
 	dec  a
-	ld   [$CF40], a
+	ld   [wShutterRowsLeft], a
 	ld   a, $06
-	ld   [$CF3F], a
+	ld   [wShutterTimer], a
 	ld   a, $02
 	ld   [wShutterEvMode], a
 	ld   a, $0A
@@ -2810,30 +3073,30 @@ L000D8E:;R
 	jp   L000E4C
 L000DA9:;R
 	ld   b, $30
-	ld   a, [$CF3A]
+	ld   a, [wNoScroll]
 	or   a
 	jr   z, L000DB3
 	ld   b, $68
 L000DB3:;R
 	ld   a, b
-	ld   [$CF3F], a
-	ld   hl, $CF49
+	ld   [wShutterTimer], a
+	ld   hl, wShutterMode
 	inc  [hl]
 	jp   L000E4C
 L000DBE:;I
 	call L000DD7
 	ld   hl, wPlRelX
 	dec  [hl]
-	ld   hl, $CF3F
+	ld   hl, wShutterTimer
 	dec  [hl]
 	jp   nz, L000E4C
-	ld   hl, $CF3A
+	ld   hl, wNoScroll
 	inc  [hl]
 	xor  a
-	ld   [$CF49], a
+	ld   [wShutterMode], a
 	jp   L000E4C
 L000DD7:;C
-	ld   hl, $CF31
+	ld   hl, wActScrollX
 	dec  [hl]
 L000DDB:;C
 	ldh  a, [hScrollX]
@@ -2849,21 +3112,21 @@ L000DEC:;J
 	ldh  a, [hTimer]
 	and  $3F
 	jr   nz, L000E34
-	ld   a, [$CF6F]
+	ld   a, [wLvlWater]
 	or   a
 	jr   z, L000E34
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	cp   $09
 	jr   c, L000E03
 	cp   $0F
 	jr   c, L000E34
 L000E03:;R
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   a, [wPlRelY]
 	sub  $0C
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	cp   $10
 	jr   z, L000E1C
 	cp   $18
@@ -2872,91 +3135,63 @@ L000E1C:;R
 	ld   a, $64
 	ld   [wActSpawnId], a
 	xor  a
-	ld   [wActSpawnByte3], a
-	ld   a, [$CF0D]
+	ld   [wActSpawnLayoutPtr], a
+	ld   a, [wTargetRelX]
 	ld   [wActSpawnX], a
-	ld   a, [wPl_Unk_Alt_Y]
+	ld   a, [wTargetRelY]
 	ld   [wActSpawnY], a
 	call ActS_Spawn
 L000E34:;R
-	ld   a, [$CF42]
+	ld   a, [wPlHurtTimer]
 	or   a
 	jr   z, L000E40
 	dec  a
-	ld   [$CF42], a
+	ld   [wPlHurtTimer], a
 	jr   L000E51
 L000E40:;R
-	ld   a, [$CF43]
+	ld   a, [wPlInvulnTimer]
 	or   a
 	jr   z, L000E51
 	dec  a
-	ld   [$CF43], a
+	ld   [wPlInvulnTimer], a
 	jr   L000E51
 L000E4C:;J
 	xor  a
 	ldh  [hJoyKeys], a
 	ldh  [hJoyNewKeys], a
 L000E51:;R
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	rst  $00 ; DynJump
-L000E55: db $8D
-L000E56: db $0E
-L000E57: db $68
-L000E58: db $10
-L000E59: db $7F
-L000E5A: db $10
-L000E5B: db $6F
-L000E5C: db $11
-L000E5D: db $A4
-L000E5E: db $12
-L000E5F: db $8A
-L000E60: db $13
-L000E61: db $A3
-L000E62: db $13
-L000E63: db $BA
-L000E64: db $13
-L000E65: db $D3
-L000E66: db $13
-L000E67: db $E9
-L000E68: db $13
-L000E69: db $00
-L000E6A: db $14
-L000E6B: db $23
-L000E6C: db $14
-L000E6D: db $39
-L000E6E: db $14
-L000E6F: db $5C
-L000E70: db $14
-L000E71: db $73
-L000E72: db $14
-L000E73: db $96
-L000E74: db $14
-L000E75: db $99
-L000E76: db $14
-L000E77: db $16
-L000E78: db $15
-L000E79: db $9B
-L000E7A: db $16
-L000E7B: db $AF
-L000E7C: db $16
-L000E7D: db $07
-L000E7E: db $17
-L000E7F: db $27
-L000E80: db $17
-L000E81: db $38
-L000E82: db $17
-L000E83: db $58
-L000E84: db $17
-L000E85: db $6C
-L000E86: db $17
-L000E87: db $6D
-L000E88: db $17
-L000E89: db $7E
-L000E8A: db $17
-L000E8B: db $9E
-L000E8C: db $17
+	dw L000E8D ; PL_MODE_00
+	dw L001068 ; PL_MODE_01
+	dw L00107F ; PL_MODE_02
+	dw L00116F ; PL_MODE_03
+	dw L0012A4 ; PL_MODE_04
+	dw L00138A ; PL_MODE_05
+	dw L0013A3 ; PL_MODE_06
+	dw L0013BA ; PL_MODE_07
+	dw L0013D3 ; PL_MODE_08
+	dw L0013E9 ; PL_MODE_09
+	dw L001400 ; PL_MODE_0A
+	dw L001423 ; PL_MODE_0B
+	dw L001439 ; PL_MODE_0C
+	dw L00145C ; PL_MODE_0D
+	dw L001473 ; PL_MODE_0E
+	dw L001496 ; PL_MODE_0F
+	dw L001499 ; PL_MODE_SLIDE
+	dw L001516 ; PL_MODE_RM
+	dw L00169B ; PL_MODE_WARPIN
+	dw L0016AF ; PL_MODE_13
+	dw L001707 ; PL_MODE_14
+	dw L001727 ; PL_MODE_15
+	dw L001738 ; PL_MODE_16
+	dw L001758 ; PL_MODE_17
+	dw L00176C ; PL_MODE_18
+	dw L00176D ; PL_MODE_19
+	dw L00177E ; PL_MODE_1A
+	dw L00179E ; PL_MODE_1B
 L000E8D:;I
-	ld   a, [$CF6C]
+	ld   a, [wWpnSGRide]
 	or   a
 	jr   z, L000EB8
 	ldh  a, [hJoyKeys]
@@ -2969,16 +3204,16 @@ L000EA0:;R
 	ld   bc, $0400
 	ld   a, $1D
 L000EA5:;R
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	ld   a, c
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, b
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	ld   a, $02
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AE9
 L000EB8:;R
-	ld   a, [$CF42]
+	ld   a, [wPlHurtTimer]
 	or   a
 	jr   z, L000ED0
 	call L00186E
@@ -2992,15 +3227,15 @@ L000ED0:;R
 	call L0017E0
 	call L001895
 	call L0018FE
-	ld   a, [$CF43]
+	ld   a, [wPlInvulnTimer]
 	or   a
 	jr   nz, L000EFC
 	ld   a, [wPlRelY]
 	sub  $08
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $18
 	jr   c, L000EFC
 	cp   $20
@@ -3012,19 +3247,19 @@ L000EFC:;R
 	call L0039C2
 	jr   c, L000F2E
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   a, [wPlRelY]
 	inc  a
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	jr   c, L000F2E
-	call L001BEB
+	call ActS_DespawnAll
 	xor  a
 	ld   [$CF3C], a
 	ld   a, $01
-	ld   [$CF49], a
+	ld   [wShutterMode], a
 	ld   a, $04
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	jp   L001AE9
 L000F2E:;R
 	ldh  a, [hJoyKeys]
@@ -3034,10 +3269,10 @@ L000F2E:;R
 	cp   $28
 	jr   c, L000F5B
 	sub  $0F
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $20
 	jr   nz, L000F5B
 L000F4D: db $CD;X
@@ -3059,15 +3294,15 @@ L000F5B:;R
 	bit  7, a
 	jr   z, L000F80
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   a, [wPlRelY]
 	inc  a
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	cp   $21
 	jr   nz, L000F80
 	ld   a, $05
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	call L001A45
 	jp   L001AE9
 L000F80:;R
@@ -3077,35 +3312,35 @@ L000F80:;R
 	ldh  a, [hJoyKeys]
 	bit  7, a
 	jr   z, L000FD4
-	ld   a, [$CF6B]
+	ld   a, [wCF6B_Unk_ActCurSlotPtrCopy]
 	cp   $FF
 	jr   nz, L000FD4
 	ld   a, [wPlDirH]
 	or   a
 	jr   nz, L000FA6
 	ld   a, [wPlRelX]
-	ld   [$CF35], a
+	ld   [wPlSlideDustX], a
 	sub  $10
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	jr   L000FB1
 L000FA6:;R
 	ld   a, [wPlRelX]
-	ld   [$CF35], a
+	ld   [wPlSlideDustX], a
 	add  $10
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 L000FB1:;R
 	ld   a, [wPlRelY]
-	ld   [$CF36], a
+	ld   [wPlSlideDustY], a
 	sub  $0F
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	jp   nc, L000FD4
 	ld   a, $10
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   a, $1E
-	ld   [$CF2A], a
+	ld   [wPlSlideTimer], a
 	ld   a, $30
-	ld   [$CF27], a
+	ld   [wPlSlideDustTimer], a
 	jp   L001AE9
 L000FD4:;JR
 	ldh  a, [hJoyNewKeys]
@@ -3113,40 +3348,40 @@ L000FD4:;JR
 	jr   z, L00100E
 	ld   a, [wPlRelY]
 	sub  $18
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
 	sub  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	jr   nc, L00100E
 	ld   a, [wPlRelX]
 	add  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	jr   nc, L00100E
 	ld   a, $80
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, $03
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	ld   a, $01
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AE9
 L00100E:;JR
 	call L001836
-	ld   a, [$CF26]
+	ld   a, [wColiGround]
 	and  $03
 	cp   $03
 	jr   nz, L00102C
 L00101A:;X
 	ld   a, $00
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, $01
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	ld   a, $03
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AE9
 L00102C:;R
-	ld   a, [$CF6B]
+	ld   a, [wCF6B_Unk_ActCurSlotPtrCopy]
 	cp   $FF
 	jr   nz, L00103A
 	ldh  a, [hJoyKeys]
@@ -3154,33 +3389,33 @@ L00102C:;R
 	jp   nz, L001AAF
 L00103A:;R
 	xor  a
-	ld   [$CF13], a
-	ld   a, [$CF21]
+	ld   [wPlWalkAnimMode], a
+	ld   a, [wPlBlinkChkDelay]
 	or   a
 	jr   nz, L001050
 	call Rand
 	cp   $03
 	jr   nc, L001060
 	ld   a, $19
-	ld   [$CF21], a
+	ld   [wPlBlinkChkDelay], a
 L001050:;R
 	dec  a
-	ld   [$CF21], a
+	ld   [wPlBlinkChkDelay], a
 	cp   $0C
 	jr   c, L001060
 	ld   a, $05
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	jp   L001AE9
 L001060:;R
 	ld   a, $04
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	jp   L001AE9
 L001068:;I
 	call L014000 ; BANK $01
 	call L001895
 	call L0018FE
 	ld   a, $07
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	ldh  a, [hJoyKeys]
 	bit  0, a
 	jr   nz, L001093
@@ -3189,11 +3424,11 @@ L00107F:;I
 	call L014000 ; BANK $01
 	call L001895
 	call L0018FE
-	ld   a, [$CF6C]
+	ld   a, [wWpnSGRide]
 	or   a
 	jr   nz, L0010C0
 	ld   a, $07
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 L001093:;R
 	ldh  a, [hJoyKeys]
 	bit  6, a
@@ -3202,80 +3437,80 @@ L001093:;R
 	cp   $28
 	jr   c, L0010C0
 	sub  $0F
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $20
 	jr   nz, L0010C0
 	call L0017D2
 	ld   a, $04
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	call L001A45
 	jp   L001AE9
 L0010C0:;R
 	ld   a, [wPlRelY]
 	cp   $18
 	jp   c, L00115D
-	ld   a, [$CF1A]
+	ld   a, [wPlSpdYSub]
 	ld   b, a
 	ld   a, [wPlRelY]
 	sub  b
-	ld   [$CF17], a
+	ld   [wPl_Unk_RelY_Copy], a
 	sub  $18
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	jr   nc, L00114E
 	ld   a, [wPlRelX]
 	sub  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	jr   nc, L00115D
 	ld   a, [wPlRelX]
 	add  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	jr   nc, L00115D
-	ld   a, [$CF17]
+	ld   a, [wPl_Unk_RelY_Copy]
 	ld   [wPlRelY], a
-	ld   a, [$CF6F]
+	ld   a, [wLvlWater]
 	or   a
 	jr   z, L001120
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   a, [wPlRelY]
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	cp   $10
 	jr   z, L001137
 	cp   $18
 	jr   z, L001137
 L001120:;R
 	ld   bc, $0020
-	ld   a, [$CF1B]
+	ld   a, [wPlSpdY]
 	sub  c
-	ld   [$CF1B], a
-	ld   a, [$CF1A]
+	ld   [wPlSpdY], a
+	ld   a, [wPlSpdYSub]
 	sbc  b
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	or   a
 	jr   z, L00115D
 	jp   L001AE9
 L001137:;R
 	ld   bc, $0008
-	ld   a, [$CF1B]
+	ld   a, [wPlSpdY]
 	sub  c
-	ld   [$CF1B], a
-	ld   a, [$CF1A]
+	ld   [wPlSpdY], a
+	ld   a, [wPlSpdYSub]
 	sbc  b
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	or   a
 	jr   z, L00115D
 	jp   L001AE9
 L00114E:;R
-	ld   a, [$CF1C]
+	ld   a, [wPlYCeilMask]
 	ld   b, a
 	ld   a, [wPlRelY]
 	sub  $17
@@ -3284,14 +3519,14 @@ L00114E:;R
 	ld   [wPlRelY], a
 L00115D:;JR
 	ld   a, $00
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, $01
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	ld   a, $03
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AE9
 L00116F:;I
-	ld   a, [$CF42]
+	ld   a, [wPlHurtTimer]
 	or   a
 	jr   z, L00117D
 	call L0018AE
@@ -3302,11 +3537,11 @@ L00117D:;R
 	call L001895
 	call L0018FE
 L001186:;R
-	ld   a, [$CF6C]
+	ld   a, [wWpnSGRide]
 	or   a
 	jr   nz, L0011BE
 	ld   a, $07
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	ldh  a, [hJoyKeys]
 	bit  6, a
 	jr   z, L0011BE
@@ -3314,102 +3549,102 @@ L001186:;R
 	cp   $28
 	jr   c, L0011BE
 	sub  $0F
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $20
 	jr   nz, L0011BE
 	call L0017D2
 	ld   a, $04
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	call L001A45
 	jp   L001AE9
 L0011BE:;R
-	ld   a, [$CF4A]
+	ld   a, [wCF4A_Unk_ActTargetSlot]
 	cp   $FF
 	jp   nz, L00128F
-	ld   a, [$CF1A]
+	ld   a, [wPlSpdYSub]
 	ld   b, a
 	ld   a, [wPlRelY]
 	add  b
-	ld   [$CF17], a
+	ld   [wPl_Unk_RelY_Copy], a
 	call L00186E
 	jp   z, L0011FD
-	ld   a, [$CF17]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   a, [wPl_Unk_RelY_Copy]
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
 	sub  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $21
 	jp   nc, L001287
 	ld   a, [wPlRelX]
 	add  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $21
 	jp   nc, L001287
 L0011FD:;J
-	ld   a, [$CF17]
+	ld   a, [wPl_Unk_RelY_Copy]
 	ld   [wPlRelY], a
 	cp   $98
 	jr   c, L001226
 	sub  $10
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $18
 	jr   c, L00121E
 	cp   $20
 	jp   c, L0017A5
 L00121E:;R
 	ld   a, $0D
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AE9
 L001226:;R
-	ld   a, [$CF6F]
+	ld   a, [wLvlWater]
 	or   a
 	jr   z, L001243
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   a, [wPlRelY]
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	cp   $10
 	jr   z, L001265
 	cp   $18
 	jr   z, L001265
 L001243:;R
 	ld   bc, $0020
-	ld   a, [$CF1B]
+	ld   a, [wPlSpdY]
 	add  c
-	ld   [$CF1B], a
-	ld   a, [$CF1A]
+	ld   [wPlSpdY], a
+	ld   a, [wPlSpdYSub]
 	adc  b
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	cp   $04
 	jp   c, L001AE9
 	xor  a
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, $04
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	jp   L001AE9
 L001265:;R
 	ld   bc, $0008
-	ld   a, [$CF1B]
+	ld   a, [wPlSpdY]
 	add  c
-	ld   [$CF1B], a
-	ld   a, [$CF1A]
+	ld   [wPlSpdY], a
+	ld   a, [wPlSpdYSub]
 	adc  b
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	cp   $01
 	jp   c, L001AE9
 	xor  a
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, $01
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	jp   L001AE9
 L001287:;J
 	ld   a, [wPlRelY]
@@ -3418,8 +3653,8 @@ L001287:;J
 L00128F:;J
 	call L0017D2
 	xor  a
-	ld   [$CF1D], a
-	ld   a, [$CF6C]
+	ld   [wPlMode], a
+	ld   a, [wWpnSGRide]
 	or   a
 	jp   nz, L001AE9
 	ld   a, $01
@@ -3428,31 +3663,31 @@ L00128F:;J
 L0012A4:;I
 	call L014000 ; BANK $01
 	ld   a, $09
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   a, [wPlRelY]
 	sub  $0F
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	cp   $20
 	jr   nc, L0012C9
 	ld   a, $03
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AD6
 L0012C9:;R
 	ldh  a, [hJoyNewKeys]
 	bit  0, a
 	jp   z, L0012E2
 	ld   a, $00
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, $01
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	ld   a, $03
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AE9
 L0012E2:;J
-	ld   a, [$CF22]
+	ld   a, [wPlShootTimer]
 	or   a
 	jp   nz, L001AE9
 	ldh  a, [hJoyKeys]
@@ -3473,26 +3708,26 @@ L001302:;R
 	jr   z, L001347
 	ld   a, [wPlRelY]
 	sub  $18
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $20
 	jr   nc, L001325
 	ld   a, $07
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AD6
 L001325:;R
 	ld   a, [wPlRelY]
 	cp   $29
 	jr   nc, L001334
 	ld   a, $0B
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AD6
 L001334:;R
-	ld   a, [$CF1F]
+	ld   a, [wPlRelYSub]
 	sub  $C0
-	ld   [$CF1F], a
+	ld   [wPlRelYSub], a
 	ld   a, [wPlRelY]
 	sbc  $00
 	ld   [wPlRelY], a
@@ -3502,11 +3737,11 @@ L001347:;R
 	bit  7, a
 	jp   z, L001AE9
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   a, [wPlRelY]
 	inc  a
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	jr   c, L001367
 L001360: db $AF;X
 L001361: db $EA;X
@@ -3520,72 +3755,72 @@ L001367:;R
 	cp   $98
 	jp   c, L001377
 	ld   a, $09
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AD6
 L001377:;J
-	ld   a, [$CF1F]
+	ld   a, [wPlRelYSub]
 	add  $C0
-	ld   [$CF1F], a
+	ld   [wPlRelYSub], a
 	ld   a, [wPlRelY]
 	adc  $00
 	ld   [wPlRelY], a
 	jp   L001AD6
 L00138A:;I
 	ld   a, $08
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	ld   a, [wPlRelY]
 	add  $08
 	ld   [wPlRelY], a
 	ld   a, $06
-	ld   [$CF1E], a
-	ld   hl, $CF1D
+	ld   [wPl_CF1E_DelayTimer], a
+	ld   hl, wPlMode
 	inc  [hl]
 	jp   L001AE9
 L0013A3:;I
-	ld   hl, $CF1E
+	ld   hl, wPl_CF1E_DelayTimer
 	dec  [hl]
 	jp   nz, L001AE9
 	ld   a, [wPlRelY]
 	add  $10
 	ld   [wPlRelY], a
 	ld   a, $04
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AE9
 L0013BA:;I
 	ld   a, $08
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	ld   a, [wPlRelY]
 	sub  $10
 	ld   [wPlRelY], a
 	ld   a, $06
-	ld   [$CF1E], a
-	ld   hl, $CF1D
+	ld   [wPl_CF1E_DelayTimer], a
+	ld   hl, wPlMode
 	inc  [hl]
 	jp   L001AE9
 L0013D3:;I
-	ld   hl, $CF1E
+	ld   hl, wPl_CF1E_DelayTimer
 	dec  [hl]
 	jp   nz, L001AE9
 	ld   a, [wPlRelY]
 	sub  $08
 	ld   [wPlRelY], a
 	xor  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   L001AE9
 L0013E9:;I
-	call L001BEB
+	call ActS_DespawnAll
 	ld   a, $09
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	ld   a, $01
 	ld   [wScrollVDir], a
 	call Game_Unk_StartRoomTrs
-	ld   hl, $CF1D
+	ld   hl, wPlMode
 	inc  [hl]
 	jp   L001AD6
 L001400:;I
-	ld   a, [$CF1F]
+	ld   a, [wPlRelYSub]
 	add  $40
-	ld   [$CF1F], a
+	ld   [wPlRelYSub], a
 	ld   a, [wPlRelY]
 	adc  $00
 	sub  $02
@@ -3593,23 +3828,23 @@ L001400:;I
 	call Game_Unk_DoRoomTrs
 	jp   nz, L001AD6
 	ld   a, $04
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	call L001AD6
-	jp   L001C25
+	jp   ActS_SpawnRoom
 L001423:;I
-	call L001BEB
+	call ActS_DespawnAll
 	ld   a, $09
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	xor  a
 	ld   [wScrollVDir], a
 	call Game_Unk_StartRoomTrs
-	ld   hl, $CF1D
+	ld   hl, wPlMode
 	inc  [hl]
 	jp   L001AD6
 L001439:;I
-	ld   a, [$CF1F]
+	ld   a, [wPlRelYSub]
 	sub  $40
-	ld   [$CF1F], a
+	ld   [wPlRelYSub], a
 	ld   a, [wPlRelY]
 	sbc  $00
 	add  $02
@@ -3617,23 +3852,23 @@ L001439:;I
 	call Game_Unk_DoRoomTrs
 	jp   nz, L001AD6
 	ld   a, $04
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	call L001AD6
-	jp   L001C25
+	jp   ActS_SpawnRoom
 L00145C:;I
-	call L001BEB
+	call ActS_DespawnAll
 	ld   a, $07
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	ld   a, $01
 	ld   [wScrollVDir], a
 	call Game_Unk_StartRoomTrs
-	ld   hl, $CF1D
+	ld   hl, wPlMode
 	inc  [hl]
 	jp   L001AE9
 L001473:;I
-	ld   a, [$CF1B]
+	ld   a, [wPlSpdY]
 	add  $40
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, [wPlRelY]
 	adc  $00
 	sub  $02
@@ -3641,14 +3876,14 @@ L001473:;I
 	call Game_Unk_DoRoomTrs
 	jp   nz, L001AE9
 	ld   a, $03
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	call L001AE9
-	jp   L001C25
+	jp   ActS_SpawnRoom
 L001496:;I
 	jp   L001AE9
 L001499:;I
 	ld   a, $0A
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	call L0017E0
 	ldh  a, [hJoyKeys]
 	ld   b, a
@@ -3669,48 +3904,48 @@ L0014B7:;R
 	call L0018FE
 	call L001AE9
 	call L001836
-	ld   a, [$CF26]
+	ld   a, [wColiGround]
 	and  $03
 	cp   $03
 	jr   nz, L0014E2
 	ld   a, $00
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, $01
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	ld   a, $03
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   hl, wPlRelY
 	inc  [hl]
 	jp   L001AE9
 L0014E2:;R
-	ld   a, [$CF2A]
+	ld   a, [wPlSlideTimer]
 	or   a
 	jr   z, L0014EC
 	dec  a
-	ld   [$CF2A], a
+	ld   [wPlSlideTimer], a
 L0014EC:;R
 	ld   a, [wPlRelY]
 	sub  $10
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
 	sub  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	ret  nc
 	ld   a, [wPlRelX]
 	add  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	ret  nc
-	ld   a, [$CF2A]
+	ld   a, [wPlSlideTimer]
 	or   a
 	ret  nz
 	xor  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ret
 L001516:;I
 	call L014000 ; BANK $01
-	ld   hl, $CF75
+	ld   hl, wPlRmSpdL
 	ldh  a, [hJoyKeys]
 	bit  5, a
 	jr   z, L001530
@@ -3737,23 +3972,23 @@ L00153D:;R
 	sub  $0F
 	call L001641
 	jr   z, L00155E
-	ld   a, [$CF75]
+	ld   a, [wPlRmSpdL]
 	srl  a
-	ld   [$CF76], a
+	ld   [wPlRmSpdR], a
 	or   a
 	jr   z, L001567
 	ld   bc, $0100
 	call L0018CC
 	xor  a
-	ld   [$CF75], a
+	ld   [wPlRmSpdL], a
 	jr   L001567
 L00155E:;R
-	ld   a, [$CF75]
+	ld   a, [wPlRmSpdL]
 	ld   c, a
 	ld   b, $00
 	call L0018BD
 L001567:;R
-	ld   hl, $CF76
+	ld   hl, wPlRmSpdR
 	ldh  a, [hJoyKeys]
 	bit  4, a
 	jr   z, L00157F
@@ -3780,23 +4015,23 @@ L00158C:;R
 	add  $0F
 	call L001641
 	jr   z, L0015AD
-	ld   a, [$CF76]
+	ld   a, [wPlRmSpdR]
 	srl  a
-	ld   [$CF75], a
+	ld   [wPlRmSpdL], a
 	or   a
 	jr   z, L0015B6
 	ld   bc, $0100
 	call L0018BD
 	xor  a
-	ld   [$CF76], a
+	ld   [wPlRmSpdR], a
 	jr   L0015B6
 L0015AD:;R
-	ld   a, [$CF76]
+	ld   a, [wPlRmSpdR]
 	ld   c, a
 	ld   b, $00
 	call L0018CC
 L0015B6:;R
-	ld   hl, $CF77
+	ld   hl, wPlRmSpdU
 	ldh  a, [hJoyKeys]
 	bit  6, a
 	jr   z, L0015C9
@@ -3823,19 +4058,19 @@ L0015D6:;R
 	call L001665
 	jr   z, L0015E6
 	xor  a
-	ld   [$CF77], a
+	ld   [wPlRmSpdU], a
 	jr   L0015F9
 L0015E6:;R
-	ld   a, [$CF77]
+	ld   a, [wPlRmSpdU]
 	ld   b, a
-	ld   a, [$CF68]
+	ld   a, [wPlRmSpdYSub]
 	sub  b
-	ld   [$CF68], a
-	ld   a, [$CF69]
+	ld   [wPlRmSpdYSub], a
+	ld   a, [wPlRmSpdY]
 	sbc  $00
-	ld   [$CF69], a
+	ld   [wPlRmSpdY], a
 L0015F9:;R
-	ld   hl, $CF78
+	ld   hl, wPlRmSpdD
 	ldh  a, [hJoyKeys]
 	bit  7, a
 	jr   z, L00160C
@@ -3861,25 +4096,25 @@ L001619:;R
 	call L001665
 	jr   z, L001628
 	xor  a
-	ld   [$CF78], a
+	ld   [wPlRmSpdD], a
 	jr   L00163B
 L001628:;R
-	ld   a, [$CF78]
+	ld   a, [wPlRmSpdD]
 	ld   b, a
-	ld   a, [$CF68]
+	ld   a, [wPlRmSpdYSub]
 	add  b
-	ld   [$CF68], a
-	ld   a, [$CF69]
+	ld   [wPlRmSpdYSub], a
+	ld   a, [wPlRmSpdY]
 	adc  $00
-	ld   [$CF69], a
+	ld   [wPlRmSpdY], a
 L00163B:;R
 	call L0018DB
 	jp   L001A89
 L001641:;C
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   a, [wPlRelY]
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	cp   $10
 	jr   z, L001654
 	cp   $18
@@ -3887,17 +4122,17 @@ L001641:;C
 L001654:;R
 	ld   a, [wPlRelY]
 	sub  $0F
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	cp   $10
 	ret  z
 	cp   $18
 	ret
 L001665:;C
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $10
 	jr   z, L001678
 	cp   $18
@@ -3905,8 +4140,8 @@ L001665:;C
 L001678:;R
 	ld   a, [wPlRelX]
 	sub  $0E
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $10
 	jr   z, L00168A
 	cp   $18
@@ -3914,102 +4149,102 @@ L001678:;R
 L00168A:;R
 	ld   a, [wPlRelX]
 	add  $0E
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $10
 	ret  z
 	cp   $18
 	ret
 L00169B:;I
 	ld   a, $00
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, $01
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	ld   a, $31
-	ld   [$CF11], a
-	ld   hl, $CF1D
+	ld   [wPlSprMapId], a
+	ld   hl, wPlMode
 	inc  [hl]
 	ret
 L0016AF:;I
 	ld   a, [wPlRelY]
 	ld   b, a
-	ld   a, [$CF1A]
+	ld   a, [wPlSpdYSub]
 	add  b
-	ld   [$CF17], a
+	ld   [wPl_Unk_RelY_Copy], a
 	cp   $48
 	jr   c, L0016CF
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	jr   nc, L0016F4
-	ld   a, [$CF17]
+	ld   a, [wPl_Unk_RelY_Copy]
 L0016CF:;R
 	ld   [wPlRelY], a
 	ld   bc, $0020
-	ld   a, [$CF1B]
+	ld   a, [wPlSpdY]
 	add  c
-	ld   [$CF1B], a
-	ld   a, [$CF1A]
+	ld   [wPlSpdY], a
+	ld   a, [wPlSpdYSub]
 	adc  b
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	cp   $04
 	jp   c, L001AE9
 	xor  a
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, $04
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	jp   L001AE9
 L0016F4:;R
 	ld   a, [wPlRelY]
 	or   $0F
 	ld   [wPlRelY], a
-	ld   hl, $CF1D
+	ld   hl, wPlMode
 	inc  [hl]
 	xor  a
-	ld   [$CF65], a
+	ld   [wPlWarpSprMapRelId], a
 	jp   L001AE9
 L001707:;I
-	ld   a, [$CF65]
+	ld   a, [wPlWarpSprMapRelId]
 	inc  a
-	ld   [$CF65], a
+	ld   [wPlWarpSprMapRelId], a
 	srl  a
 	cp   $05
 	jr   z, L00171E
 	ld   b, a
 	ld   a, $31
 	add  b
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	jp   L001AE9
 L00171E:;R
 	ld   a, $0C
 	ldh  [hSFXSet], a
 	xor  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ret
 L001727:;I
 	ld   a, $0A
-	ld   [$CF65], a
+	ld   [wPlWarpSprMapRelId], a
 	ld   a, $34
-	ld   [$CF11], a
-	ld   hl, $CF1D
+	ld   [wPlSprMapId], a
+	ld   hl, wPlMode
 	inc  [hl]
 	jp   L001AE9
 L001738:;I
-	ld   a, [$CF65]
+	ld   a, [wPlWarpSprMapRelId]
 	dec  a
-	ld   [$CF65], a
+	ld   [wPlWarpSprMapRelId], a
 	srl  a
 	jr   z, L00174D
 	ld   b, a
 	ld   a, $30
 	add  b
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	jp   L001AE9
 L00174D:;R
 	ld   a, $0D
 	ldh  [hSFXSet], a
-	ld   hl, $CF1D
+	ld   hl, wPlMode
 	inc  [hl]
 	jp   L001AE9
 L001758:;I
@@ -4018,39 +4253,39 @@ L001758:;I
 	ld   [wPlRelY], a
 	and  $F0
 	jp   nz, L001AE9
-	ld   hl, $CF1D
+	ld   hl, wPlMode
 	inc  [hl]
 	jp   L001AE9
 L00176C:;I
 	ret
 L00176D:;I
 	ld   a, $0A
-	ld   [$CF65], a
+	ld   [wPlWarpSprMapRelId], a
 	ld   a, $34
-	ld   [$CF11], a
-	ld   hl, $CF1D
+	ld   [wPlSprMapId], a
+	ld   hl, wPlMode
 	inc  [hl]
 	jp   L001AE9
 L00177E:;I
-	ld   a, [$CF65]
+	ld   a, [wPlWarpSprMapRelId]
 	dec  a
-	ld   [$CF65], a
+	ld   [wPlWarpSprMapRelId], a
 	srl  a
 	jr   z, L001793
 	ld   b, a
 	ld   a, $30
 	add  b
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	jp   L001AE9
 L001793:;R
 	ld   a, $0D
 	ldh  [hSFXSet], a
-	ld   hl, $CF1D
+	ld   hl, wPlMode
 	inc  [hl]
 	jp   L001AE9
 L00179E:;I
-	ld   a, [$CF7A]
-	ld   [$CF60], a
+	ld   a, [wLvlWarpDest]
+	ld   [wLvlEnd], a
 	ret
 L0017A5:;J
 	ldh  a, [hInvulnCheat]
@@ -4076,32 +4311,32 @@ L0017BA: db $E9;X
 L0017BB: db $1A;X
 L0017BC:;R
 	ld   a, [wPlRelX]
-	ld   [$CF63], a
+	ld   [wExplodeOrgX], a
 	ld   a, [wPlRelY]
 	sub  $0C
-	ld   [$CF64], a
+	ld   [wExplodeOrgY], a
 	ld   a, $01
-	ld   [$CF60], a
+	ld   [wLvlEnd], a
 	jp   L001AE9
 L0017D2:;C
 	ld   a, [wWpnSel]
 	cp   $04
 	ret  nz
 	xor  a
-	ld   [$CFEA], a
-	ld   [$CC60], a
+	ld   [wWpnTpActive], a
+	ld   [wShot0], a
 	ret
 L0017E0:;C
-	ld   a, [$CF4A]
+	ld   a, [wCF4A_Unk_ActTargetSlot]
 	cp   $FF
 	ret  nz
 	ld   a, [wPlRelY]
 	inc  a
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
 	sub  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	ld   bc, $0080
 	cp   $30
 	jr   c, L001811
@@ -4115,8 +4350,8 @@ L0017E0:;C
 L001811:;R
 	ld   a, [wPlRelX]
 	add  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	ld   bc, $0080
 	cp   $30
 	jr   c, L001835
@@ -4130,44 +4365,44 @@ L001811:;R
 L001835:;R
 	ret
 L001836:;C
-	ld   a, [$CF4A]
+	ld   a, [wCF4A_Unk_ActTargetSlot]
 	cp   $FF
 	jr   z, L001842
 	xor  a
-	ld   [$CF26], a
+	ld   [wColiGround], a
 	ret
 L001842:;R
 	ld   a, [wPlRelY]
 	inc  a
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
 	sub  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $21
-	ld   hl, $CF26
+	ld   hl, wColiGround
 	rl   [hl]
 	ld   a, [wPlRelX]
 	add  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $21
-	ld   hl, $CF26
+	ld   hl, wColiGround
 	rl   [hl]
 	ret
 L00186E:;C
 	ld   a, [wPlRelY]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
 	sub  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $21
 	ret  nz
 	ld   a, [wPlRelX]
 	add  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $21
 	ret
 L001890:;C
@@ -4198,89 +4433,89 @@ L0018B9:;JC
 	bit  7, a
 	jr   nz, L0018CC
 L0018BD:;JCR
-	ld   a, [$CF18]
+	ld   a, [wPlSpdXSub]
 	sub  c
-	ld   [$CF18], a
-	ld   a, [$CF19]
+	ld   [wPlSpdXSub], a
+	ld   a, [wPlSpdX]
 	sbc  b
-	ld   [$CF19], a
+	ld   [wPlSpdX], a
 	ret
 L0018CC:;JCR
-	ld   a, [$CF18]
+	ld   a, [wPlSpdXSub]
 	add  c
-	ld   [$CF18], a
-	ld   a, [$CF19]
+	ld   [wPlSpdXSub], a
+	ld   a, [wPlSpdX]
 	adc  b
-	ld   [$CF19], a
+	ld   [wPlSpdX], a
 	ret
 L0018DB:;C
-	ld   a, [$CF19]
+	ld   a, [wPlSpdX]
 	or   a
 	ret  z
 	bit  7, a
 	jr   z, L0018F4
 	xor  $FF
 	inc  a
-	ld   [$CF19], a
+	ld   [wPlSpdX], a
 L0018EA:;R
 	call L001961
-	ld   hl, $CF19
+	ld   hl, wPlSpdX
 	dec  [hl]
 	jr   nz, L0018EA
 	ret
 L0018F4:;R
 	call L0019F5
-	ld   hl, $CF19
+	ld   hl, wPlSpdX
 	dec  [hl]
 	jr   nz, L0018F4
 	ret
 L0018FE:;JC
-	ld   a, [$CF19]
+	ld   a, [wPlSpdX]
 	or   a
 	ret  z
 	bit  7, a
 	jr   z, L001917
 	xor  $FF
 	inc  a
-	ld   [$CF19], a
+	ld   [wPlSpdX], a
 L00190D:;R
 	call L001921
-	ld   hl, $CF19
+	ld   hl, wPlSpdX
 	dec  [hl]
 	jr   nz, L00190D
 	ret
 L001917:;R
 	call L0019B5
-	ld   hl, $CF19
+	ld   hl, wPlSpdX
 	dec  [hl]
 	jr   nz, L001917
 	ret
 L001921:;C
 	ld   a, [wPlRelX]
 	sub  $07
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   a, [wPlRelY]
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
-	ld   [$CF3B], a
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
+	ld   [wPlColiBlockL], a
 	ret  nc
 	ld   a, [wPlRelY]
 	sub  $07
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ret  nc
 	ld   a, [wPlRelY]
 	sub  $0F
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ret  nc
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	cp   $10
 	jr   z, L001961
 	ld   a, [wPlRelY]
 	sub  $17
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ret  nc
 L001961:;CR
 	ld   a, [wPlRelX]
@@ -4294,7 +4529,7 @@ L001961:;CR
 	jr   nz, L00198A
 	ld   hl, wLvl_Unk_CurCol
 	dec  [hl]
-	ld   a, [$CF3A]
+	ld   a, [wNoScroll]
 	or   a
 	jr   nz, L00199B
 	ld   h, $CB
@@ -4304,7 +4539,7 @@ L001961:;CR
 	bit  7, a
 	call nz, L00094C
 L00198A:;R
-	ld   a, [$CF3A]
+	ld   a, [wNoScroll]
 	or   a
 	jr   nz, L00199B
 	ld   h, $CB
@@ -4318,7 +4553,7 @@ L00199B:;R
 	dec  [hl]
 	ret
 L0019A0:;R
-	ld   hl, $CF31
+	ld   hl, wActScrollX
 	inc  [hl]
 	ldh  a, [hScrollX]
 	dec  a
@@ -4333,35 +4568,35 @@ L0019A0:;R
 L0019B5:;C
 	ld   a, [wPlRelX]
 	add  $07
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   a, [wPlRelY]
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ld   [$CF3C], a
 	ret  nc
 	ld   a, [wPlRelY]
 	sub  $07
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ret  nc
 	ld   a, [wPlRelY]
 	sub  $0F
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ret  nc
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	cp   $10
 	jr   z, L0019F5
 	ld   a, [wPlRelY]
 	sub  $17
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ret  nc
 L0019F5:;CR
 	ld   a, [wPlRelX]
 	cp   $9F
 	ret  nc
-	ld   a, [$CF3A]
+	ld   a, [wNoScroll]
 	or   a
 	jr   nz, L001A0C
 	ld   h, $CB
@@ -4375,7 +4610,7 @@ L001A0C:;R
 	inc  [hl]
 	jr   L001A25
 L001A12:;R
-	ld   hl, $CF31
+	ld   hl, wActScrollX
 	dec  [hl]
 	ldh  a, [hScrollX]
 	inc  a
@@ -4393,7 +4628,7 @@ L001A25:;R
 	ret  nz
 	ld   hl, wLvl_Unk_CurCol
 	inc  [hl]
-	ld   a, [$CF3A]
+	ld   a, [wNoScroll]
 	or   a
 	ret  nz
 	ld   h, $CB
@@ -4449,76 +4684,76 @@ L001A86: db $CF;X
 L001A87: db $34;X
 L001A88: db $C9;X
 L001A89:;J
-	ld   a, [$CF69]
+	ld   a, [wPlRmSpdY]
 	or   a
 	ret  z
 	bit  7, a
 	jp   z, L001AA4
 	xor  $FF
 	inc  a
-	ld   [$CF69], a
+	ld   [wPlRmSpdY], a
 L001A99:;X
 	ld   hl, wPlRelY
 	dec  [hl]
-	ld   hl, $CF69
+	ld   hl, wPlRmSpdY
 	dec  [hl]
 	jr   nz, L001A99
 	ret
 L001AA4:;J
 	ld   hl, wPlRelY
 	inc  [hl]
-	ld   hl, $CF69
+	ld   hl, wPlRmSpdY
 	dec  [hl]
 	jr   nz, L001AA4
 	ret
 L001AAF:;J
-	ld   a, [$CF13]
+	ld   a, [wPlWalkAnimMode]
 	cp   $07
 	jr   z, L001AC1
 	inc  a
-	ld   [$CF13], a
+	ld   [wPlWalkAnimMode], a
 	ld   a, $06
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	jr   L001AE9
 L001AC1:;R
-	ld   a, [$CF14]
+	ld   a, [wPlAnimTimer]
 	add  $08
-	ld   [$CF14], a
+	ld   [wPlAnimTimer], a
 	swap a
 	srl  a
 	srl  a
 	and  $03
-	ld   [$CF11], a
+	ld   [wPlSprMapId], a
 	jr   L001AE9
 L001AD6:;JC
-	ld   a, [$CF14]
+	ld   a, [wPlAnimTimer]
 	add  $06
-	ld   [$CF14], a
+	ld   [wPlAnimTimer], a
 	swap a
 	srl  a
 	srl  a
 	and  $01
 	ld   [wPlDirH], a
 L001AE9:;JCR
-	ld   a, [$CFEA]
+	ld   a, [wWpnTpActive]
 	or   a
 	jp   nz, L001B9D
-	ld   a, [$CF42]
+	ld   a, [wPlHurtTimer]
 	or   a
 	jr   z, L001B0D
 	ldh  a, [hTimer]
 	rra  
 	jp   nc, L001B9D
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	cp   $10
 	jr   nc, L001B0D
-	ld   a, [$CF6C]
+	ld   a, [wWpnSGRide]
 	or   a
 	jr   nz, L001B0D
 	ld   a, $30
 	jr   L001B22
 L001B0D:;R
-	ld   a, [$CF43]
+	ld   a, [wPlInvulnTimer]
 	or   a
 	jr   z, L001B1A
 	ldh  a, [hTimer]
@@ -4526,9 +4761,9 @@ L001B0D:;R
 	rra  
 	jp   nc, L001B9D
 L001B1A:;R
-	ld   a, [$CF23]
+	ld   a, [wPlShootType]
 	ld   b, a
-	ld   a, [$CF11]
+	ld   a, [wPlSprMapId]
 	or   b
 L001B22:;R
 	push af
@@ -4619,11 +4854,11 @@ L001B94:;R
 	ld   [MBC1RomBank], a
 	pop  af
 L001B9D:;J
-	ld   a, [$CF27]
+	ld   a, [wPlSlideDustTimer]
 	or   a
 	ret  z
 	dec  a
-	ld   [$CF27], a
+	ld   [wPlSlideDustTimer], a
 	swap a
 	and  $03
 	ld   hl, $1BD6
@@ -4632,17 +4867,17 @@ L001B9D:;J
 	add  hl, bc
 	ld   a, [hl]
 	ld   b, a
-	ld   a, [$CF31]
+	ld   a, [wActScrollX]
 	ld   c, a
 	ld   h, $DF
 	ldh  a, [hWorkOAMPos]
 	ld   l, a
-	ld   a, [$CF36]
+	ld   a, [wPlSlideDustY]
 	sub  $07
 	ldi  [hl], a
-	ld   a, [$CF35]
+	ld   a, [wPlSlideDustX]
 	add  c
-	ld   [$CF35], a
+	ld   [wPlSlideDustX], a
 	sub  $04
 	ldi  [hl], a
 	ld   a, b
@@ -4655,279 +4890,368 @@ L001B9D:;J
 L001BD6: db $62
 L001BD7: db $61
 L001BD8: db $60
+
 ; =============== ActS_ClearAll ===============
-; Prepares actors
-; Deletes all currently processed actors.
+; Prepares the actor memory.
 ActS_ClearAll:
-	; As well as deleting the last loaded GFX marker
+	; Delete the last loaded GFX marker
 	ld   a, $FF
 	ld   [wActGfxId], a
 	
-	; and disables the lock
-	; ??? This might be a lock to disable actor processing when they aren't wanted
+	; Start processing actors from the first slot
 	xor  a
-	ld   [wActNoProc], a
+	ld   [wActStartEndSlotPtr], a
 	
-	; Delete everything from the actor area
+	; Delete everything old from the actor area
 	ld   hl, wAct
 	ld   bc, wAct_End-wAct
 	jp   ZeroMemory
 	
-L001BEB:;C
-	ld   d, $C8
-	ld   hl, wAct
-L001BF0:;R
-	ld   a, [hl]
-	or   a
-	jr   z, L001C00
-	push hl
-	xor  a
-	ldi  [hl], a
-	inc  l
-	inc  l
-	ld   a, [hl]
-	ld   e, a
-	ld   a, [de]
-	res  7, a
-	ld   [de], a
-	pop  hl
-L001C00:;R
-	ld   a, l
-	add  $10
+; =============== ActS_DespawnAll ===============
+; Despawns all of the current actors.
+; Mostly used at the start of room transitions.
+; See also: ActS_Despawn
+ActS_DespawnAll:
+	ld   d, HIGH(wActLayoutFlags)	; DE = Actor layout (high byte)
+	ld   hl, wAct					; HL = Current actors
+.loop:
+	ld   a, [hl]					; Read iActId
+	or   a							; Is this slot active?
+	jr   z, .next					; If not, skip it
+	push hl							; Otherwise...
+		; Mark it as empty
+		xor  a						
+		ldi  [hl], a				; iActId
+		inc  l						; iActRtnId
+		inc  l						; iActSprMap
+		
+		; Allow the actor to respawn if scrolled back in
+		ld   a, [hl]				; DE = iActLayoutPtr (low byte)
+		ld   e, a
+		ld   a, [de]				; Read flags associated to this slot
+		res  ACTLB_NOSPAWN, a		; Clear nospawn flag
+		ld   [de], a				; Save back
+	pop  hl							; Restore base slot ptr
+.next:
+	ld   a, l						; Seek to the next slot
+	add  iActEnd
 	ld   l, a
-	jr   nz, L001BF0
+	jr   nz, .loop					; Done all 16? If not, loop
+	
+	; By despawning all actors, we also despawned Rush & the Sakugarne.
+	; Clear out their flags that affect the player.
 	xor  a
-	ld   [$CFF1], a
-	ld   [$CF6C], a
+	ld   [wWpnItemWarp], a			; Rush/SG no longer there, can be recalled
+	ld   [wWpnSGRide], a			; Disable pogo movement mode
+	
+	; Remove all weapon shots/actors.
+	
+	; Top Spin is melee weapon, and its "shot" is allowed to move through rooms.
 	ld   a, [wWpnSel]
-	cp   $04
+	cp   WPNSEL_TP
 	ret  z
+	
+	; The rest get deleted though
 	xor  a
-	ld   hl, $CC60
+	ld   hl, wShot0+iShotId
 	ld   [hl], a
-	ld   hl, $CC70
+	ld   hl, wShot1+iShotId
 	ld   [hl], a
-	ld   hl, $CC80
+	ld   hl, wShot2+iShotId
 	ld   [hl], a
-	ld   hl, $CC90
+	ld   hl, wShot3+iShotId
 	ld   [hl], a
 	ret
-L001C25:;J
+	
+; =============== ActS_SpawnRoom ===============
+; Spawns all of the actors in the current room.
+; Meant to be called when the level loads or after a room transition
+; to immediately spawn all actors that would be visible.
+ActS_SpawnRoom:
+
+	;
+	; As a room is made of 10 columns (width of a screen), this will spawn any actors
+	; defined on the 10 columns after the current one.
+	;
+	; In case the screen is locked to the right, one extra column is loaded. (??? why)
+	;
+
+	; A = Current room locks
 	ld   a, [wLvlRoomId]
-	ld   hl, $CC00
+	ld   hl, wLvlScrollLocksRaw
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ld   c, $0A
-	bit  0, a
-	jr   z, L001C37
-	inc  c
-L001C37:;R
-	ld   a, [wLvlColL]
-	ld   l, a
-	ld   b, $07
-L001C3D:;R
+	
+	ld   c, ROOM_COLCOUNT
+	bit  0, a				; Is the screen locked to the right? (bit0 clear)
+	jr   z, .setStart		; If so, skip (load 10 columns)
+	inc  c					; Otherwise, make that 11
+	
+.setStart:
+	
+	; Start from the current column number.
+	ld   a, [wLvlColL]		; HL = &wActLayoutFlags[wLvlColL]
+	ld   l, a				;     (high byte set later)
+	
+	; Set the initial (relative) X position, which is autocalculated and *NOT* stored in the actor layout.
+	; Since there is 1 actor/column, as we loop to the next column, this will be increased by the block width.
+	;
+	; The value being hardcoded means there's a big assumption about the screen being aligned to the block
+	; boundary, which is one of the reasons levels shouldn't allow misaligned transitions
+	; (otherwise actors' X positions would be offset incorrectly).
+	;
+	; This value is initialized to 7 rather than 0 to account for the actor's horizontal origin being at the center of the block.
+	; What it does *NOT* account is the offset applied to the hardware, since actor positions and sprite positions
+	; are one and the same. (ActS_SpawnFromLayout takes care of that)
+	ld   b, $07				; B = Initial X pos
+	
+.loop:
 	push hl
 	push bc
-	ld   h, $C8
-	ld   a, [hl]
-	bit  7, a
-	jr   nz, L001C4B
-	bit  4, a
-	call nz, L001C6C
-L001C4B:;R
+		ld   h, HIGH(wActLayoutFlags) 	; Set the high byte
+		ld   a, [hl]					; Read spawn flags
+		bit  ACTLB_NOSPAWN, a			; Is the actor prevented from spawning?
+		jr   nz, .skip					; If so, skip it (already on-screen or already collected)
+		bit  ACTLB_SPAWN4, a			; Is the 4th bit set?
+		call nz, ActS_SpawnFromLayout	; If so, spawn it
+.skip:
 	pop  bc
 	pop  hl
-	inc  l
-	ld   a, b
-	add  $10
+	
+	inc  l				; Seek to the next actor layout entry, for the next column
+	ld   a, b			; Spawn next actor to the next column
+	add  BLOCK_H
 	ld   b, a
-	dec  c
-	jr   nz, L001C3D
+	
+	dec  c				; Done all columns?
+	jr   nz, .loop		; If not, loop
 	ret
-L001C56:;C
-	ld   h, $C8
+	
+; =============== ActS_SpawnColEdge4 ===============
+; Spawns the actor, if one is defined, for the column that got scrolled in.
+; ??? Uses the 4th bit like the room spawn code.
+; IN
+; - L: Actor layout pointer
+; - B: X Position
+ActS_SpawnColEdge4:
+	ld   h, HIGH(wActLayoutFlags)
 	ld   a, [hl]
-	bit  7, a
-	ret  nz
-	bit  4, a
-	ret  z
-	jr   L001C6C
-L001C61:;J
-	ld   h, $C8
+	bit  ACTLB_NOSPAWN, a			; Is the actor prevented from spawning?
+	ret  nz							; If so, return
+	bit  ACTLB_SPAWN4, a			; Is the 4th bit set?
+	ret  z							; If not, return
+	jr   ActS_SpawnFromLayout
+	
+; =============== ActS_SpawnColEdge1 ===============
+; Spawns the actor, if one is defined, for the column that got scrolled in.
+; ??? Uses the 5th bit unlike the room spawn code.
+; IN
+; - L: Actor layout pointer
+; - B: X Position
+ActS_SpawnColEdge5:
+	ld   h, HIGH(wActLayoutFlags)
 	ld   a, [hl]
-	bit  7, a
-	ret  nz
-	bit  5, a
-	ret  z
-	jr   L001C6C
-L001C6C:;CR
-	set  7, a
+	bit  ACTLB_NOSPAWN, a			; Is the actor prevented from spawning?
+	ret  nz							; If so, return
+	bit  ACTLB_SPAWN5, a			; Is the 5th bit set?
+	ret  z							; If not, return
+	jr   ActS_SpawnFromLayout
+	
+	
+; =============== ActS_SpawnFromLayout ===============
+; Spawns an actor from an actor layout entry.
+; IN
+; - HL: Ptr to an wActLayoutFlags entry
+; -  A: Value dereferenced from the above
+; -  B: X Position
+ActS_SpawnFromLayout:
+	; The actor is being spawned, not to repeat that since it'll be active
+	set  ACTLB_NOSPAWN, a
 	ld   [hl], a
-	and  $07
-	swap a
-	add  $10
-	or   $0F
+	
+	;
+	; Prepare the call to ActS_Spawn
+	;
+	
+	; Y POSITION
+	; Stored in bits0-2 of the wActLayoutFlags entry, representing the row number to spawn on.
+	and  $07			; Filter unwanted bits out
+	swap a				; From row number to pixels (A *= BLOCK_V)
+	add  OBJ_OFFSET_Y	; Actor positions are sprite positions, so get offsetted by the hardware
+	or   BLOCK_V-1		; Actor origin is at the bottom, so align it
 	ld   [wActSpawnY], a
+	
+	; X POSITION
+	; Comes from the loop itself, already accounts for that origin being at the center.
 	ld   a, b
-	add  $08
+	add  OBJ_OFFSET_X		; It does not account for the hardware offset though
 	ld   [wActSpawnX], a
-	ld   h, $C9
+	
+	; ACTOR ID
+	; Stored in the respective wActLayoutIds entry 
+	ld   h, HIGH(wActLayoutIds)
 	ld   a, [hl]
 	ld   [wActSpawnId], a
+	
+	; ACTOR LAYOUT POINTER
+	; Needed to know where to clear ACTLB_NOSPAWN on despawn.
 	ld   a, l
-	ld   [wActSpawnByte3], a
+	ld   [wActSpawnLayoutPtr], a
+	
 	jp   ActS_Spawn
-L001C8D:;C
-	ld   a, $07
+	
+; =============== ActS_SpawnLargeExpl ===============
+; Spawns the eight explosion particles when a player or boss dies.
+; These originate from the player's position and move outwards.
+ActS_SpawnLargeExpl:
+	ld   a, ACT_EXPLPART			; Explosion particle
 	ld   [wActSpawnId], a
-	xor  a
-	ld   [wActSpawnByte3], a
-	ld   b, $08
-	ld   hl, $1CFD
-L001C9B:;R
+	xor  a							; Not part of the layout
+	ld   [wActSpawnLayoutPtr], a
+	ld   b, $08						; Spawn 8 of them
+	ld   hl, ActS_ExplTbl			; Reading their settings off a table
+	
+	; In a loop, spawn the base actor, then alter their speed values.
+.loop:
 	push hl
 	push bc
-	call ActS_Spawn
-	ld   e, l
-	ld   d, h
+		call ActS_Spawn	; Spawn with default settings
+		ld   e, l		; DE = Potentially a ptr to iActId
+		ld   d, h
 	pop  bc
 	pop  hl
-	ret  c
-	inc  de
-	inc  de
-	ldi  a, [hl]
+	ret  c				; Could it spawn? If not, abort early
+	
+	; byte0 - Sprite mapping
+	inc  de ; iActRtnId
+	inc  de ; iActSprMap
+	ldi  a, [hl]		; Read byte0, seek to next
 	ld   [de], a
-	inc  de
-	inc  de
-	inc  de
-	inc  de
-	inc  de
-	inc  de
-	inc  hl
-	inc  hl
-	inc  hl
-	inc  hl
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
+	
+	; byte5 - H Speed
+	inc  de ; iActLayoutPtr
+	inc  de ; iActXSub
+	inc  de ; iActX
+	inc  de ; iActYSub
+	inc  de ; iActY
+	inc  de ; iActSpdXSub
+	inc  hl ; byte2
+	inc  hl ; byte3
+	inc  hl ; byte4
+	inc  hl ; byte5
+	ldi  a, [hl] 		; Read byte5, seek to next
+	ld   [de], a		; Set subpixel speed
+	inc  de ; iActSpdX
 	xor  a
-	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
+	ld   [de], a		; iActSpdX = 0
+	
+	; byte6 - V Speed
+	inc  de ; iActSpdYSub
+	ldi  a, [hl]		; Read byte6, seek to byte0 of next entry
+	ld   [de], a		; Set subpixel speed
+	inc  de ; iActSpdY
 	xor  a
-	ld   [de], a
-	dec  b
-	jr   nz, L001C9B
+	ld   [de], a		; iActSpdY = 0
+	
+	dec  b				; Spawned all 8 particles?
+	jr   nz, .loop		; If not, loop
 	ret
-L001CC2:;C
-	ld   a, $07
+	
+; =============== ActS_SpawnAbsorb ===============
+; Spawns the eight explosion particles when absorbing a weapon.
+; These move inwards from the sides of the screen towards the center,
+; which is where the player is expected to be.
+ActS_SpawnAbsorb:
+	ld   a, ACT_EXPLPART			; Explosion particle
 	ld   [wActSpawnId], a
-	xor  a
-	ld   [wActSpawnByte3], a
-	ld   b, $08
-	ld   hl, $1CFD
-L001CD0:;R
+	xor  a							; Not part of the layout
+	ld   [wActSpawnLayoutPtr], a
+	ld   b, $08						; Spawn 8 of them
+	ld   hl, ActS_ExplTbl			; Reading their settings off a table
+
+	; In a loop, spawn the base actor, then alter their starting position & speed values.
+	; The only difference between this and ActS_SpawnLargeExpl is that this one copies
+	; the starting positions and flips the particle directions.
+.loop:
 	push hl
 	push bc
-	call ActS_Spawn
-	ld   e, l
-	ld   d, h
+		call ActS_Spawn	; Spawn with default settings
+		ld   e, l		; DE = Potentially a ptr to iActId
+		ld   d, h
 	pop  bc
 	pop  hl
-	ret  c
-	inc  de
-	inc  de
-	ldi  a, [hl]
-	xor  $C0
+	ret  c				; Could it spawn? If not, abort early
+	
+	; byte0 - Sprite mapping
+	inc  de ; iActRtnId
+	inc  de ; iActSprMap
+	ldi  a, [hl]			; Read byte0, seek to next
+	xor  ACTDIR_R|ACTDIR_D	; Flip both directions to make them move inward	
 	ld   [de], a
+	
+	;--
+	; The X and Y positions retrieved from the table make the actor spawn from an edge of the screen.
+	
+	; byte1/2 - X Position
+	inc  de ; iActLayoutPtr
+	inc  de ; iActXSub
+	ldi  a, [hl]	; Read byte1, seek to next
+	ld   [de], a	; Set X subpixel pos
+	inc  de ; iActX
+	ldi  a, [hl]	; Read byte2, seek to next
+	ld   [de], a	; Set X pos
+	
+	; byte2/3 - Y Position
+	inc  de ; iActYSub
+	ldi  a, [hl]	; Read byte3, seek to next
+	ld   [de], a	; Set Y subpixel pos
+	inc  de ; iActY
+	ldi  a, [hl]	; Read byte4, seek to next
+	ld   [de], a	; Set Y pos
+	;--
+	
+	; byte5 - H Speed
 	inc  de
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
+	ldi  a, [hl] 		; Read byte5, seek to byte6
+	ld   [de], a		; Set subpixel speed
+	inc  de ; iActSpdX
 	xor  a
-	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
+	ld   [de], a		; iActSpdX = 0
+	
+	; byte6 - V Speed
+	inc  de ; iActSpdYSub
+	ldi  a, [hl]		; Read byte6, seek to byte0 of next entry
+	ld   [de], a		; Set subpixel speed
+	inc  de ; iActSpdY
 	xor  a
-	ld   [de], a
-	dec  b
-	jr   nz, L001CD0
+	ld   [de], a		; iActSpdY = 0
+	
+	dec  b				; Spawned all 8 particles?
+	jr   nz, .loop		; If not, loop
 	ret
-L001CFD: db $00
-L001CFE: db $00
-L001CFF: db $58
-L001D00: db $3C
-L001D01: db $10
-L001D02: db $00
-L001D03: db $FF
-L001D04: db $80
-L001D05: db $30
-L001D06: db $82
-L001D07: db $D0
-L001D08: db $21
-L001D09: db $B4
-L001D0A: db $B4
-L001D0B: db $80
-L001D0C: db $C4
-L001D0D: db $93
-L001D0E: db $00
-L001D0F: db $4C
-L001D10: db $FF
-L001D11: db $00
-L001D12: db $C0
-L001D13: db $30
-L001D14: db $82
-L001D15: db $30
-L001D16: db $76
-L001D17: db $B4
-L001D18: db $B4
-L001D19: db $40
-L001D1A: db $00
-L001D1B: db $58
-L001D1C: db $C4
-L001D1D: db $87
-L001D1E: db $00
-L001D1F: db $FF
-L001D20: db $40
-L001D21: db $D0
-L001D22: db $2D
-L001D23: db $30
-L001D24: db $76
-L001D25: db $B4
-L001D26: db $B4
-L001D27: db $00
-L001D28: db $3C
-L001D29: db $1C
-L001D2A: db $00
-L001D2B: db $4C
-L001D2C: db $FF
-L001D2D: db $00
-L001D2E: db $00
-L001D2F: db $D0
-L001D30: db $2D
-L001D31: db $D0
-L001D32: db $21
-L001D33: db $B4
-L001D34: db $B4
+	
+; =============== ActS_ExplTbl ===============
+; Explosion particle table, contains settings for each of the 8 actors.
+; Has settings used for both inwards and outwards explosions
+MACRO mExplPart
+	db \1 ; Directions (relative to outward explosion)
+	dw \2 ; X Position
+	dw \3 ; Y Position
+	db \4 ; H Speed
+	db \5 ; V Speed
+ENDM
+ActS_ExplTbl:
+	;         DIR                X      Y     HSpd VSpd
+	mExplPart $00,               $5800, $103C, $00, $FF
+	mExplPart ACTDIR_R,          $8230, $21D0, $B4, $B4
+	mExplPart ACTDIR_R,          $93C4, $4C00, $FF, $00
+	mExplPart ACTDIR_R|ACTDIR_D, $8230, $7630, $B4, $B4
+	mExplPart ACTDIR_D,          $5800, $87C4, $00, $FF
+	mExplPart ACTDIR_D,          $2DD0, $7630, $B4, $B4
+	mExplPart $00,               $1C3C, $4C00, $FF, $00
+	mExplPart $00,               $2DD0, $21D0, $B4, $B4
 
 ; =============== ActS_SpawnRel ===============
 ; Spawns the specified actor, positioned relative to the currently processed one.
@@ -4943,9 +5267,11 @@ L001D34: db $B4
 ; - C Flag: If set, the actor couldn't be spawned (no free slot found)
 ActS_SpawnRel:
 	ld   [wActSpawnId], a
-	; ???
+	
+	; These manually spawned actors aren't part of the actor layout, so they don't have a pointer associated to them.
+	; As a consequence, as soon they despawn in any way, they are gone permanently.
 	xor  a
-	ld   [wActSpawnByte3], a
+	ld   [wActSpawnLayoutPtr], a
 	
 	; Set spawn pos relative to current
 	ldh  a, [hActCur+iActX]	; Read base pos
@@ -4961,10 +5287,12 @@ ActS_SpawnRel:
 ; Spawns an actor.
 ; IN
 ; - wActSpawnId
-; - wActSpawnByte3
+; - wActSpawnLayoutPtr
 ; - wActSpawnX
 ; - wActSpawnY
 ; OUT
+; - HL: Pointer to the actor slot with the newly spawned one.
+;       Only valid if the following flag is clear.
 ; - C Flag: If set, the actor couldn't be spawned (no free slot found)
 ActS_Spawn:
 
@@ -5004,9 +5332,9 @@ ActS_Spawn:
 			; And from the first sprite mapping, with no flags
 			ldi  [hl], a ; iActSprMap
 			
-			; iAct_Unk_UnkTblPtr
-			ld   a, [wActSpawnByte3]
-			ldi  [hl], a
+			; Set the actor layout pointer
+			ld   a, [wActSpawnLayoutPtr]
+			ldi  [hl], a ; iActLayoutPtr
 			
 			; Set spawn coords
 			xor  a
@@ -5078,7 +5406,7 @@ ActS_Spawn:
 		xor  a
 		ld   [de], a ; iActColiInvulnTimer
 		
-	pop  hl
+	pop  hl ; HL = Ptr to newly spawned actor slot
 	
 	push af
 		ldh  a, [hRomBankLast]
@@ -5087,23 +5415,24 @@ ActS_Spawn:
 	pop  af
 	ret
 	
-; =============== ActS_ReqLoadGFXForRoom ===============
+; =============== ActS_ReqLoadRoomGFX ===============
 ; Loads the actor graphics for the current room.
 ; Specifically, it triggers requests to load the graphics during VBlank,
 ; so they may take a couple of frames to fully load.
 ;
 ; TODO: This and the related table ActS_GFXSetTbl might be better called Lvl_ReqLoadRoomObjGFX / Lvl_ObjGFXSetTbl or Obj_GFXSetTbl
 ;       ACTGFX_HARDMAN -> OBJGFX_HARDMAN
-ActS_ReqLoadGFXForRoom:
+ActS_ReqLoadRoomGFX:
 
 	;
 	; Each column in a level can be associated to a potential set of actor graphics,
-	; with the table at wLvlGFXReqTbl mapping every column to an art request ID.
+	; with the table at wActLayoutIds potentially being able to map every column to an art request ID.
 	;
 	; This subroutine scans a room worth of columns, loading the first set found.
+	; In practice, generally the actor layout is optimized to deliver a set ID immediately.
 	;
 
-	; HL = Starting pointer (wLvlGFXReqTbl + wLvlColL)
+	; HL = Starting pointer (wActLayoutIds + wLvlColL)
 	ld   a, [wLvlColL]
 	ld   l, a
 	; B = Number of entries to scan
@@ -5114,18 +5443,22 @@ ActS_ReqLoadGFXForRoom:
 	;
 	; If there's a request at the current column, apply that.
 	;
-	; ??? However, there's a catch. If the same offset at wLvlUnkTblC800 is non-zero,
-	; skip the entry. What's the point of this?
+	; As you may have noticed, this data is stored inside wActLayoutIds, which has the other important
+	; purpose of defining actor IDs.
+	;
+	; How to distinguish between the two? 
+	; Actors need to define some data in their respective wActLayoutFlags entry.
+	; Art sets don't make use of it, and they MUST have this entry zeroed out.
 	;
 	
-	; Skip if an ??? entry is set
-	ld   h, HIGH(wLvlUnkTblC800)
+	; Otherwise we treat it as an actor ID (ie: not what we're looking for), so we skip to the next column
+	ld   h, HIGH(wActLayoutFlags)
 	ld   a, [hl]
 	or   a
 	jr   nz, .nextCol
 	
-	; Skip if there's no art set for this column
-	ld   h, HIGH(wLvlGFXReqTbl)
+	; Skip if there's no art set defined for this column
+	ld   h, HIGH(wActLayoutIds)
 	ld   a, [hl]
 	or   a
 	jr   z, .nextCol
@@ -5134,7 +5467,7 @@ ActS_ReqLoadGFXForRoom:
 ; - A: Actor GFX set ID
 .tryLoadBySetId:
 	ld   hl, wActGfxId
-	cp   [hl]		; Requesting the same set as last time?
+	cp   [hl]			; Requesting the same set as last time?
 	ret  z				; If so, return (graphics already loaded)
 	
 ; IN
@@ -5169,7 +5502,7 @@ ActS_ReqLoadGFXForRoom:
 	ret ; We never get here
 
 L001DE4:;C
-	call L001F2A
+	call ActS_GetHealth
 	cp   $11
 	ret  nc
 	call L001E11
@@ -5190,7 +5523,7 @@ L001DE4:;C
 	scf  
 	ret
 L001E03:;C
-	call L001F2A
+	call ActS_GetHealth
 	cp   $11
 	ret  nc
 	call L001E11
@@ -5232,7 +5565,7 @@ L001E41:;R
 	ld   a, b
 	ld   [wActSpawnId], a
 	xor  a
-	ld   [wActSpawnByte3], a
+	ld   [wActSpawnLayoutPtr], a
 	ld   h, $CD
 	ld   a, [wActCurSlotPtr]
 	add  $05
@@ -5317,18 +5650,18 @@ ActS_FlipH:
 	xor  ACTDIR_R
 	ldh  [hActCur+iActSprMap], a
 	ret
-; =============== ActS_Unk_FlipV ===============
-; ??? Flips the current actor's vertical direction.
-ActS_Unk_FlipV:
+; =============== ActS_FlipV ===============
+; Flips the current actor's vertical direction.
+ActS_FlipV:
 	ldh  a, [hActCur+iActSprMap]
-	xor  ACTDIR_UNK_UPGRAVEND
+	xor  ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
 	ret
 ; =============== ActS_ClrSprMapId ===============
 ; Resets the current actor's sprite mapping to return to the first frame.
 ActS_ClrSprMapId:
 	ldh  a, [hActCur+iActSprMap]
-	and  ACTDIR_R|ACTDIR_UNK_UPGRAVEND	; Keep flags only
+	and  ACTDIR_R|ACTDIR_D	; Keep direction flags only
 	ldh  [hActCur+iActSprMap], a
 	ret
 ; =============== ActS_IncRtnId ===============
@@ -5438,35 +5771,57 @@ L001F08: db $B0;X
 L001F09: db $E0;X
 L001F0A: db $A2;X
 L001F0B: db $C9;X
-L001F0C:;C
-	ld   h, $CE
+
+; =============== ActS_SetColiBox ===============
+; Sets the current actor's collision box size.
+; IN
+; - B: Horizontal radius
+; - C: Vertical radius
+ActS_SetColiBox:
+	ld   h, HIGH(wActColi)
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
-	ld   [hl], b
+	ld   [hl], b ; iActColiBoxH
 	inc  hl
-	ld   [hl], c
+	ld   [hl], c ; iActColiBoxV
 	ret
-L001F16:;C
-	ld   h, $CE
+	
+; =============== ActS_SetColiType ===============
+; Sets the current actor's collision type.
+; IN
+; - B: Collision type (ACTCOLI_*)
+ActS_SetColiType:
+	ld   h, HIGH(wActColi)
 	ld   a, [wActCurSlotPtr]
-	add  $02
+	add  iActColiType
 	ld   l, a
 	ld   [hl], b
 	ret
-L001F20:;C
-	ld   h, $CE
+	
+; =============== ActS_SetHealth ===============
+; Sets the current actor's health.
+; IN
+; - B: Health amount
+ActS_SetHealth:
+	ld   h, HIGH(wActColi)
 	ld   a, [wActCurSlotPtr]
-	add  $04
+	add  iActColiHealth
 	ld   l, a
 	ld   [hl], b
 	ret
-L001F2A:;C
-	ld   h, $CE
+	
+; =============== ActS_GetHealth ===============
+; Gets the current actor's health.
+; OUT
+; - A: Health amount
+ActS_GetHealth:
+	ld   h, HIGH(wActColi)
 	ld   a, [wActCurSlotPtr]
-	add  $04
+	add  iActColiHealth
 	ld   l, a
 	ld   a, [hl]
 	ret
+	
 ; =============== ActS_SetSprMapId ===============
 ; Sets the current actor's base sprite mapping ID.
 ; IN
@@ -5481,51 +5836,85 @@ ActS_SetSprMapId:
 	
 	; Update iActSprMap
 	ldh  a, [hActCur+iActSprMap]
-	and  ACTDIR_R|ACTDIR_UNK_UPGRAVEND	; Keep flags only
-	or   b								; Merge with new ID
+	and  ACTDIR_R|ACTDIR_D			; Keep direction flags only
+	or   b							; Merge with new ID
 	ldh  [hActCur+iActSprMap], a
 	ret
 	
-L001F43:;C
-	ldh  a, [hActCur+iActSprMap]
-	and  $C0
+; =============== ActS_Anim2 ===============
+; Animates the actor's 2 frame animation.
+; IN
+; - C: Animation speed
+ActS_Anim2:
+	
+	ldh  a, [hActCur+iActSprMap]	; Preserve the old directions to B
+	and  ACTDIR_R|ACTDIR_D
 	ld   b, a
+	
+	;
+	; This and other ActS_Anim* cycles are accomplished by adding an arbitrary value to the
+	; animation timer stored in iActSprMap, then modulo-ing the result.
+	;
+	; This timer is stored in the lower 3 bits of iActSprMap, while the sprite mapping ID 
+	; uses the next 3 bits after that. Therefore, it eventually will overflow, triggering
+	; the frame change.
+	;
+	
 	ldh  a, [hActCur+iActSprMap]
-	add  c
-	and  $0F
-	or   b
+	add  c							; Add to anim timer
+	and  $0F						; Force sprite mapping ID in range $00-$01
+	or   b							; Add back old directions
 	ldh  [hActCur+iActSprMap], a
 	ret
-L001F51:;C
-	ldh  a, [hActCur+iActSprMap]
-	and  $C0
+	
+; =============== ActS_Anim4 ===============
+; Animates the actor's 4 frame animation.
+; IN
+; - C: Animation speed
+ActS_Anim4:
+	ldh  a, [hActCur+iActSprMap]	; Preserve the old directions to B
+	and  ACTDIR_R|ACTDIR_D
 	ld   b, a
+	
 	ldh  a, [hActCur+iActSprMap]
-	add  c
-	and  $1F
-	or   b
+	add  c							; Add to anim timer
+	and  $1F						; Force sprite mapping ID in range $00-$03
+	or   b							; Add back old directions
 	ldh  [hActCur+iActSprMap], a
 	ret
-L001F5F:;C
+	
+; =============== ActS_AnimCustom ===============
+; Animates the actor's frame cycle up to the specified frame.
+; Used for actors with animation cycles not divisible by 2.
+;
+; IN
+; - B: Max sprite mapping ID (exclusive)
+; - C: Animation speed
+ActS_AnimCustom:
+	
+	sla  b							; Shift max ID to proper place
 	sla  b
 	sla  b
-	sla  b
-	ldh  a, [hActCur+iActSprMap]
-	and  $C0
+	
+	ldh  a, [hActCur+iActSprMap]	; Preserve the old directions to E
+	and  ACTDIR_R|ACTDIR_D
 	ld   e, a
+	
 	ldh  a, [hActCur+iActSprMap]
-	add  c
-	ld   c, a
-	and  $07
-	ld   d, a
-	ld   a, c
-	and  $38
-	cp   b
-	jr   nz, L001F78
-	xor  a
-L001F78:;R
-	or   d
-	or   e
+	add  c							; Add to anim timer
+	ld   c, a						;--
+		and  $07					; Preserve updated sub frame timer to D
+		ld   d, a
+	ld   a, c						;--
+	
+	and  $38						; Only keep the three sprite mapping ID bits
+	cp   b							; Reached the target value?
+	jr   nz, .save					; If not, jump
+	xor  a							; Otherwise, loop it back to 0
+	
+.save:
+	or   d							; Merge back subframe timer
+	or   e							; Merge back directions
 	ldh  [hActCur+iActSprMap], a
 	ret
 	
@@ -5535,7 +5924,7 @@ L001F78:;R
 ; Intros all use two different sprite mappings, each lasting the same amount of frames.
 ; This applies to both the gameplay and in the stage select screen.
 ;
-; Note that the sprite mappings specified are all relative to the current one (wActCurSprMapRelId).
+; Note that the sprite mappings specified are all relative to the current one (iActSprMap).
 ;
 ; IN
 ; - D: 1st sprite mapping
@@ -5618,179 +6007,371 @@ Act_Boss_PlayIntro:
 	or   a
 	ret
 	
-L001FB9:;C
-	ld   b, $0C
-L001FBB:;C
+; =============== ActS_AngleToPl ===============
+; Makes the actor move slowly at an angle towards the player.
+; Used by actors that "track" a snapshot of the player's position, like carrots.
+ActS_AngleToPl:
+
+	; Target is 12 pixels above the player's origin.
+	; This corresponds to the center of their body.
+	ld   b, $0C		
+	
+	; Fall-through
+	
+; =============== ActS_AngleToPlCustom ===============
+; See above, but with a custom vertical offset.
+; Used exclusively by ??? to track the player's origin rather than center of the body.
+;
+; IN
+; - B: Target Y offset, relative to the player's origin
+ActS_AngleToPlCustom:
+
+	
+	;
+	; We are indexing a table of speed values by the current distance range between the actor and the player.
+	; This table is set up to make the object travel at the same speed regardless of the angle it moves to.
+	;
+	; While the player may move later on, the speed values won't be updated manually.
+	;
+	; That needs an index first, which is split into the two coordinates.
+	;
+	
+	;
+	; PREPARATIONS
+	;
+	
+	DEF tSprMapFlags = wColiGround
+	DEF tActPlYDiff = wTmpCF52
+	DEF tActPlXDiff = wTmpCF53
+	
+	; Shift the target Y coordinate up by <B> pixels.
+	; If we got here from ActS_SetSpeedToPl, that makes it track the middle of the player.
 	ld   a, [wPlRelY]
 	sub  b
 	ld   b, a
+	
+	; Reset speed & direction since we're writing those
 	xor  a
-	ld   [$CF26], a
+	ld   [tSprMapFlags], a		; Default to upwards, left
 	ldh  [hActCur+iActSpdX], a
 	ldh  [hActCur+iActSpdY], a
-	ldh  a, [hActCur+iActY]
-	sub  b
-	jr   c, L001FD2
-	ld   [wActCurSprFlagsRes], a
-	jr   L001FE0
-L001FD2:;R
-	xor  $FF
+	
+	
+.calcYDiff:
+	;
+	; Y COORDINATE
+	;
+	; tActPlYDiff = ABS(iActY - (wPlRelY - B))
+	;
+	
+	; Find the distance between the actor's and player's Y coordinates.
+	; In case that would be negative (player below the actor), invert it and set the downwards direction flag.
+	
+	ldh  a, [hActCur+iActY]		; A = iActY
+	sub  b						; - TargetY
+	jr   c, .plBelow			; Is that negative? (TargetY > iActY) If so, jump
+.plAbove:
+	ld   [tActPlYDiff], a		; Write the absolute distance
+	jr   .calcXDiff
+.plBelow:
+	xor  $FF					; Invert to positive
 	inc  a
-	ld   [wActCurSprFlagsRes], a
-	ld   a, [$CF26]
-	set  6, a
-	ld   [$CF26], a
-L001FE0:;R
-	ld   a, [wPlRelX]
+	ld   [tActPlYDiff], a		; Write the absolute distance
+	ld   a, [tSprMapFlags]		; Flag downwards movement
+	set  ACTDIRB_D, a
+	ld   [tSprMapFlags], a
+	
+.calcXDiff:
+	;
+	; X COORDINATE
+	;
+	; tActPlYDiff = ABS(iActX - wPlRelX)
+	;
+	
+	; Identical to the above basically, except the X coordinate always points to the origin.
+	ld   a, [wPlRelX]			; B = TargetX
 	ld   b, a
-	ldh  a, [hActCur+iActX]
-	sub  b
-	jr   c, L001FEE
-	ld   [$CF53], a
-	jr   L001FFC
-L001FEE:;R
-	xor  $FF
+	ldh  a, [hActCur+iActX]		; A = iActX
+	sub  b						; - TargetX
+	jr   c, .plRight			; Is that negative? (TargetX > iActX) If so, jump
+.plLeft:
+	ld   [tActPlXDiff], a		; Write the absolute distance
+	jr   .findSpeed
+.plRight:
+	xor  $FF					; Invert to positive
 	inc  a
-	ld   [$CF53], a
-	ld   a, [$CF26]
-	set  7, a
-	ld   [$CF26], a
-L001FFC:;R
-	ld   hl, $2512
-	ld   a, [$CF53]
+	ld   [tActPlXDiff], a		; Write the absolute distance
+	ld   a, [tSprMapFlags]		; Flag movement to the right
+	set  ACTDIRB_R, a
+	ld   [tSprMapFlags], a
+	
+	
+.findSpeed:
+	;
+	; Read the subpixel speed values for both axes.
+	;
+	; The table of speed values is set up in a specific sawtooth pattern that allows
+	; to get the complementary speed values for any given combination of distances.
+	;
+	; It also expects the index to be set up in a very specific way:
+	; - The upper nybble should be the distance on the same axis of the speed value we want
+	; - The lower nybble should be the distance on the opposite axis
+	;
+	; For example, if we want the *horizontal* speed, the upper nybble should contain the *horizontal* distance,
+	; while the lower nybble the *vertical* distance.
+	;
+	; As a result, the table entries are split in groups of $10, each for any of the possible "same axis" distances.
+	; The downwards sawtooth pattern used in all of them makes sure that, as the distance on the opposite
+	; axis grows, the speed on the main one gets reduced.
+	;
+	; To go with that, the speed values across different groups is specifically chosen so that swapping
+	; the nybbles of the index will give out the complementary speed for the other axis.
+	; 
+	; To cut down on the table size, only the upper nybbles of each distance is kept, 
+	; essentially dividing the playfield into a 16x16 grid of unique speed values.
+	;
+
+	;
+	; X SPEED
+	;
+	ld   hl, ActS_DistToSpdTbl		; HL = Table base
+	ld   a, [tActPlXDiff]			; X Diff is high nybble (& $F0)
 	and  $F0
 	ld   b, a
-	ld   a, [wActCurSprFlagsRes]
+	ld   a, [tActPlYDiff]			; Y Diff is low nybble (/ $10)
 	and  $F0
 	swap a
-	or   b
+	or   b							; Merge the two
+	; At this point, the A register could have been saved elsewhere to avoid having to recalculate it later.
+	; Pushing it here, then later on "pop af" and "swap a" was all that would've been needed to get the Y SPEED index.
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
+	add  hl, bc						; Index the table with it
 	ld   a, [hl]
-	ldh  [hActCur+iActSpdXSub], a
-	ld   hl, $2512
-	ld   a, [wActCurSprFlagsRes]
+	ldh  [hActCur+iActSpdXSub], a	; Got the horizontal speed
+	
+	;
+	; Y SPEED
+	;
+	ld   hl, ActS_DistToSpdTbl		; HL = Table base
+	ld   a, [tActPlYDiff]			; Y Diff is high nybble (& $F0)
 	and  $F0
 	ld   b, a
-	ld   a, [$CF53]
+	ld   a, [tActPlXDiff]			; X Diff is low nybble (/ $10)
 	and  $F0
 	swap a
-	or   b
+	or   b							; Merge the two
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
+	add  hl, bc						; Index the table with it
 	ld   a, [hl]
-	ldh  [hActCur+iActSpdYSub], a
+	ldh  [hActCur+iActSpdYSub], a	; Got the vertical speed
+	
+	; Save the updated direction flags, to let routines that move actors 
+	; along the current direction to target the player properly.
 	ldh  a, [hActCur+iActSprMap]
-	and  $3F
+	and  $FF^(ACTDIR_R|ACTDIR_D)	; Delete directions from old value
 	ld   b, a
-	ld   a, [$CF26]
-	or   b
-	ldh  [hActCur+iActSprMap], a
+	ld   a, [tSprMapFlags]			; Get new directions
+	or   b							; Merge with old value
+	ldh  [hActCur+iActSprMap], a	; Save back
 	ret
-L002038:;C
+	
+	
+; =============== ActS_InitCirclePath ===============
+; Initializes the data for the circular path.
+ActS_InitCirclePath:
+
+	; Not used here, presumably leftover copypaste from Act_Boss_InitIntro
 	xor  a
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $01
-	ldh  [hActCur+iAct0D], a
-	xor  a
-	ldh  [hActCur+iAct0E], a
-	ld   a, $58
-	ldh  [hActCur+iAct0F], a
+	
+	;
+	; Set the initial ActS_ArcPathTbl indexes & direction for both axes.
+	;
+	; These are respectively set to:
+	; - X index: Increase index, start from the lowest value
+	; - Y index: Decrease index, start from the highest value
+	;
+	; The indexes move back and forth from 0 to 88, and the closer one is to 0, 
+	; the faster the actor will move to that particular direction.
+	; 
+	; The way the indexes are offsetted alongside the logic for flipping the actor
+	; when it reaches its lowest speed makes for a circular path.
+	;
+	ld   a, ADR_INC_IDX|ADR_DEC_IDY	; Set index directions
+	ldh  [hActCur+iArcIdDir], a
+	xor  a							; Move fast horz
+	ldh  [hActCur+iArcIdX], a
+	ld   a, ARC_MAX					; Move slow vert
+	ldh  [hActCur+iArcIdY], a
 	ret
-L002047:;C
-	ld   [wActCurSprFlagsRes], a
+	
+; =============== ActS_ApplyCirclePath ===============
+; Moves the current actor along a circular path.
+; IN
+; - A: Movement speed (1 or 2)
+ActS_ApplyCirclePath:
+	DEF tArcSpd = wTmpCF52
+	; Save this for later
+	ld   [tArcSpd], a
+	
+	;
+	; Get the actor's speed from the table for the current indexes.
+	;
+	; Note that the speed is relative to the current direction, meaning
+	; this *could* be used to handle both clockwise and anticlockwise paths.
+	;
+	
+	; Speed values here are all subpixel-based
 	xor  a
 	ldh  [hActCur+iActSpdX], a
 	ldh  [hActCur+iActSpdY], a
-	ldh  a, [hActCur+iAct0E]
-	ld   hl, $2612
+	
+	; iActSpdXSub = ActS_ArcPathTbl[iArcIdX]
+	ldh  a, [hActCur+iArcIdX]
+	ld   hl, ActS_ArcPathTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
 	ldh  [hActCur+iActSpdXSub], a
-	ldh  a, [hActCur+iAct0F]
-	ld   hl, $2612
+	
+	; iActSpdYSub = ActS_ArcPathTbl[iArcIdY]
+	ldh  a, [hActCur+iArcIdY]
+	ld   hl, ActS_ArcPathTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
 	ldh  [hActCur+iActSpdYSub], a
-	ldh  a, [hActCur+iAct0D]
-	bit  1, a
-	jr   nz, L002088
-	ld   a, [wActCurSprFlagsRes]
+	
+	;
+	; Update the indexes to the next value, flipping the direction as needed only
+	; when the speed reaches near 0.
+	; This flip timing is important to make the actor move on a proper circular path.
+	;
+	
+	;
+	; HORIZONTAL INDEX
+	;
+	
+.updX:
+	ldh  a, [hActCur+iArcIdDir]
+	bit  ADRB_DEC_IDX, a			; Decreasing the X index?
+	jr   nz, .decX					; If so, jump
+.incX:
+	;
+	; Increase the index by the speed amount we passed to the subroutine.
+	; If it reaches the maximum value of ARC_MAX, make the actor turn horizontally
+	; and, from the next frame, start decreasing the indexes.
+	;
+	
+	ld   a, [tArcSpd]				; iArcIdX += tArcSpd
 	ld   b, a
-	ldh  a, [hActCur+iAct0E]
+	ldh  a, [hActCur+iArcIdX]
 	add  b
-	ldh  [hActCur+iAct0E], a
-	cp   $58
-	jr   nz, L00209A
-	ldh  a, [hActCur+iAct0D]
-	xor  $02
-	ldh  [hActCur+iAct0D], a
-	ldh  a, [hActCur+iActSprMap]
-	xor  $80
+	ldh  [hActCur+iArcIdX], a
+	
+	; The equality check here brings an assumption.
+	; ARC_MAX needs to be a multiple of tArcSpd, otherwise we miss the specific value we check for.
+	cp   ARC_MAX					; iArcIdX == ARC_MAX? (lowest speed)
+	jr   nz, .updY					; If not, skip
+	
+	ldh  a, [hActCur+iArcIdDir]		; Start decreasing the index next time
+	xor  ADR_DEC_IDX
+	ldh  [hActCur+iArcIdDir], a
+	ldh  a, [hActCur+iActSprMap]	; Turn around
+	xor  ACTDIR_R
 	ldh  [hActCur+iActSprMap], a
-	jr   L00209A
-L002088:;R
-	ld   a, [wActCurSprFlagsRes]
+	jr   .updY
+	
+.decX:
+	;
+	; Decrease the index by the speed amount we passed to the subroutine.
+	; If it reaches the minimum value of start increasing the indexes.
+	;
+	
+	ld   a, [tArcSpd]				; iArcIdX -= tArcSpd
 	ld   b, a
-	ldh  a, [hActCur+iAct0E]
+	ldh  a, [hActCur+iArcIdX]
 	sub  b
-	ldh  [hActCur+iAct0E], a
-	or   a
-	jr   nz, L00209A
-	ldh  a, [hActCur+iAct0D]
-	xor  $02
-	ldh  [hActCur+iAct0D], a
-L00209A:;R
-	ldh  a, [hActCur+iAct0D]
-	bit  0, a
-	jr   nz, L0020B9
-	ld   a, [wActCurSprFlagsRes]
+	ldh  [hActCur+iArcIdX], a
+	
+	or   a							; iArcIdX == 0? (max speed)
+	jr   nz, .updY					; If not, skip
+	
+	ldh  a, [hActCur+iArcIdDir]		; Start increasing the index next time
+	xor  ADR_DEC_IDX
+	ldh  [hActCur+iArcIdDir], a
+	
+	
+.updY:
+	;
+	; VERTICAL INDEX
+	; Identical to the other one, just for the other axis.
+	;
+	ldh  a, [hActCur+iArcIdDir]
+	bit  ADRB_DEC_IDY, a
+	jr   nz, .decY
+	
+.incY:
+	ld   a, [tArcSpd]				; iArcIdY += tArcSpd
 	ld   b, a
-	ldh  a, [hActCur+iAct0F]
+	ldh  a, [hActCur+iArcIdY]
 	add  b
-	ldh  [hActCur+iAct0F], a
-	cp   $58
-	ret  nz
-	ldh  a, [hActCur+iAct0D]
-	xor  $01
-	ldh  [hActCur+iAct0D], a
-	ldh  a, [hActCur+iActSprMap]
-	xor  $40
+	ldh  [hActCur+iArcIdY], a
+	
+	cp   ARC_MAX					; iArcIdY == ARC_MAX? (lowest speed)
+	ret  nz							; If not, return
+	
+	ldh  a, [hActCur+iArcIdDir]		; Start decreasing the index next time
+	xor  ADR_DEC_IDY
+	ldh  [hActCur+iArcIdDir], a
+	ldh  a, [hActCur+iActSprMap]	; Turn around
+	xor  ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
 	ret
-L0020B9:;R
-	ld   a, [wActCurSprFlagsRes]
+	
+.decY:
+	ld   a, [tArcSpd]				; iArcIdY -= tArcSpd
 	ld   b, a
-	ldh  a, [hActCur+iAct0F]
+	ldh  a, [hActCur+iArcIdY]
 	sub  b
-	ldh  [hActCur+iAct0F], a
+	ldh  [hActCur+iArcIdY], a
 	or   a
 	ret  nz
-	ldh  a, [hActCur+iAct0D]
-	xor  $01
-	ldh  [hActCur+iAct0D], a
+	ldh  a, [hActCur+iArcIdDir]		; Start increasing the index next time
+	xor  ADR_DEC_IDY
+	ldh  [hActCur+iArcIdDir], a
 	ret
-L0020CB:;C
+	
+; =============== ActS_HalfSpdSub ===============
+; Halves the actor's *subpixel* speed.
+; Only the subpixel speed is affected, this assumes the pixel speed is both zero.
+; Code that goes through ActS_AngleToPl is a good candidate. 
+ActS_HalfSpdSub:
+	; iActSpdXSub /= 2
 	ldh  a, [hActCur+iActSpdXSub]
 	srl  a
 	ldh  [hActCur+iActSpdXSub], a
+	; iActSpdYSub /= 2
 	ldh  a, [hActCur+iActSpdYSub]
 	srl  a
 	ldh  [hActCur+iActSpdYSub], a
 	ret
-L0020D8:;C
+	
+; =============== ActS_DoubleSpd ===============
+; Doubles the actor's speed.
+ActS_DoubleSpd:
+	; iActSpdX *= 2
 	ldh  a, [hActCur+iActSpdXSub]
-	sla  a
+	sla  a							; *2 sub
 	ldh  [hActCur+iActSpdXSub], a
 	ldh  a, [hActCur+iActSpdX]
-	rl   a
+	rl   a							; *2 main, shift in carry
 	ldh  [hActCur+iActSpdX], a
+	; iActSpdY *= 2
 	ldh  a, [hActCur+iActSpdYSub]
 	sla  a
 	ldh  [hActCur+iActSpdYSub], a
@@ -5798,59 +6379,109 @@ L0020D8:;C
 	rl   a
 	ldh  [hActCur+iActSpdY], a
 	ret
-L0020F1:;C
-	ld   h, $CE
+	
+; =============== ActS_GetBlockIdFwdGround ===============
+; Gets the block ID that collides with the actor's forward ground sensor.
+; OUT
+; - A: Block ID
+; - C Flag: If set, the block is not solid
+; - wPlYCeilMask: Ceiling collision mask
+ActS_GetBlockIdFwdGround:
+	; This is basically a wrapper to Lvl_GetBlockId
+	
+	; B = Actor's collision box width 
+	ld   h, HIGH(wActColi)
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
 	ld   b, a
+	
+	; Y Target is on the ground
 	ldh  a, [hActCur+iActY]
-	inc  a
-	ld   [wPl_Unk_Alt_Y], a
+	inc  a					; one pixel below the origin
+	ld   [wTargetRelY], a
+	
+	; X Target depends on whatever direction we're facing
 	ldh  a, [hActCur+iActSprMap]
-	bit  7, a
-	jr   nz, L00210E
+	bit  ACTDIRB_R, a		; Facing right?
+	jr   nz, .chkR			; If so, it's on the right corner
+.chkL:						; Otherwise, the left corner
 	ldh  a, [hActCur+iActX]
-	sub  b
-	ld   [$CF0D], a
-	jp   L00332F
-L00210E:;R
+	sub  b					
+	ld   [wTargetRelX], a
+	jp   Lvl_GetBlockId		; Bottom-left
+.chkR:
 	ldh  a, [hActCur+iActX]
 	add  b
-	ld   [$CF0D], a
-	jp   L00332F
-L002117:;C
+	ld   [wTargetRelX], a
+	jp   Lvl_GetBlockId		; Bottom-right
+	
+; =============== ActS_GetGroundColi ===============
+; Gets ground solidity flags for the current actor.
+; Used exclusively to detect if the actor has moved off solid ground.
+; OUT
+; - wColiGround: Bitmask containing the ground solidity info.
+;                Each bit, if set, marks that there's no solid ground at that position.
+;                ------LR
+;                L -> Bottom-left corner
+;                R -> Bottom-right corner
+;   In practice, this is only used by some actors that need to know if there's any
+;   solid ground below (ie: both bits set) to make them fall down.
+ActS_GetGroundColi:
+
+	; Reset return value
 	xor  a
-	ld   [$CF26], a
-	ld   h, $CE
+	ld   [wColiGround], a
+	
+	DEF tActColiH = wTmpCF52
+	
+	; Read out the actor's collision box width to a temp area
+	ld   h, HIGH(wActColi)
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
-	ld   [wActCurSprFlagsRes], a
+	ld   [tActColiH], a
+	
+	;
+	; Do the collision checks and store their result into wColiGround.
+	;
+	; This needs to detect if there's currently any solid block on the ground in either direction.
+	; To do that, two sensors are needed, one on each side, both on the ground.
+	;
+	; There is no center sensor here, but it doesn't matter.
+	;
+	
+	; Y coordinate of the sensor is fixed, it's one pixel below the origin
 	ldh  a, [hActCur+iActY]
 	inc  a
-	ld   [wPl_Unk_Alt_Y], a
-	ld   a, [wActCurSprFlagsRes]
+	ld   [wTargetRelY], a
+	
+	; LEFT SIDE
+	ld   a, [tActColiH]			; Get radius width
 	ld   b, a
-	ldh  a, [hActCur+iActX]
-	sub  b
-	ld   [$CF0D], a
-	call L00332F
-	ld   hl, $CF26
+	ldh  a, [hActCur+iActX]		; Get X position
+	sub  b						; Move to left border
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId			; Solid block there? (if not, C flag set)
+	
+	ld   hl, wColiGround		; Shift to bit0
 	rl   [hl]
-	ld   a, [wActCurSprFlagsRes]
+	
+	; RIGHT SIDE
+	ld   a, [tActColiH]			; Get radius width
 	ld   b, a
-	ldh  a, [hActCur+iActX]
-	add  b
-	ld   [$CF0D], a
-	call L00332F
-	ld   hl, $CF26
+	ldh  a, [hActCur+iActX]		; Get X position
+	add  b						; Move to right border
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId			; Solid block there? (if not, C flag set)
+	
+	ld   hl, wColiGround		; Shift to bit0, and the L one to bit1
 	rl   [hl]
 	ret
 	
-; =============== ActS_ApplySpeedFwd ===============
+; =============== ActS_ApplySpeedFwdX ===============
 ; Moves the actor forward by the current horizontal speed.
-ActS_ApplySpeedFwd:
+ActS_ApplySpeedFwdX:
 	; BC = SpeedX
 	ldh  a, [hActCur+iActSpdXSub]
 	ld   c, a
@@ -5900,170 +6531,308 @@ ActS_ApplySpeedFwd:
 	jp   z, ActS_Despawn
 	ret
 	
-L002180:;C
-	ld   h, $CE
+; =============== ActS_ApplySpeedFwdXColi ===============
+; Moves the actor forward by the current horizontal speed, while checking for solid collision. 
+ActS_ApplySpeedFwdXColi:
+	; Read out the actor's collision box size to a temp area
+	ld   h, HIGH(wActColi)
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
-	ld   [$CF54], a
+	ld   [wTmpColiBoxH], a
 	ld   a, [hl]
-	ld   [$CF55], a
+	ld   [wTmpColiBoxV], a
+	
+	; BC = SpeedX
 	ldh  a, [hActCur+iActSpdXSub]
 	ld   c, a
 	ldh  a, [hActCur+iActSpdX]
 	ld   b, a
+	
+	; "Forward" has different meanings depending on the direction we're facing.
+	; This will affect our horizontal collision targets, to make them point either
+	; to the left or right border.
 	ldh  a, [hActCur+iActSprMap]
-	bit  7, a
-	jr   nz, L0021BA
+	bit  ACTDIRB_R, a			; Facing right?
+	jr   nz, .moveR				; If so, jump
+.moveL:
+	
+	DEF tNewXPosSub = wTmpCF52
+	DEF tNewXPos    = wTmpCF53
+	
+	;
+	; Calculate the potential new X position
+	; NewYPos = XPos - BC
+	;
 	ldh  a, [hActCur+iActXSub]
 	sub  c
-	ld   [wActCurSprFlagsRes], a
+	ld   [tNewXPosSub], a
 	ldh  a, [hActCur+iActX]
 	sbc  b
-	ld   [$CF53], a
+	ld   [tNewXPos], a
+	
+	; Standard off-screen despawn check (see: ActS_ApplySpeedFwdX)
 	and  $F0
 	cp   $D0
 	jp   z, ActS_Despawn
-	ld   a, [$CF54]
+	
+	;
+	; The collision target is on the left border
+	; wTargetRelX = tNewXPos - wTmpColiBoxH
+	;
+	ld   a, [wTmpColiBoxH]
 	ld   b, a
-	ld   a, [$CF53]
+	ld   a, [tNewXPos]
 	sub  b
-	ld   [$CF0D], a
-	jr   L0021D8
-L0021BA:;R
+	ld   [wTargetRelX], a
+	jr   .chkColi
+.moveR:
+
+	;
+	; Calculate the potential new X position
+	; NewYPos = XPos + BC
+	;
 	ldh  a, [hActCur+iActXSub]
 	add  c
-	ld   [wActCurSprFlagsRes], a
+	ld   [tNewXPosSub], a
 	ldh  a, [hActCur+iActX]
 	adc  b
-	ld   [$CF53], a
+	ld   [tNewXPos], a
+	
+	; Standard off-screen despawn check (see: ActS_ApplySpeedFwdX)
 	and  $F0
 	cp   $D0
 	jp   z, ActS_Despawn
-	ld   a, [$CF54]
+	
+	;
+	; The collision target is on the right border
+	; wTargetRelX = tNewXPos + wTmpColiBoxH
+	;
+	ld   a, [wTmpColiBoxH]
 	ld   b, a
-	ld   a, [$CF53]
+	ld   a, [tNewXPos]
 	add  b
-	ld   [$CF0D], a
-L0021D8:;R
-	ldh  a, [hActCur+iActY]
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelX], a
+	
+.chkColi:
+
+	;
+	; Check for collision on the forward border.
+	;
+	; This goes off three sensors:
+	; - Top-forward corner
+	; - Middle-forward
+	; - Bottom-forward corner
+	;
+	; If any if these points to a solid block, no movement is made.
+	;
+	
+	;
+	; BOTTOM-FWD
+	; wTargetRelY = iActY
+	;
+	ldh  a, [hActCur+iActY]	
+	ld   [wTargetRelY], a	; The origin is at the bottom, so it matches
+	call Lvl_GetBlockId
 	ret  nc
-	ld   a, [$CF55]
+	
+	;
+	; MIDDLE-FWD
+	; wTargetRelY -= wTmpColiBoxV
+	;
+	ld   a, [wTmpColiBoxV]
 	ld   b, a
-	ld   a, [wPl_Unk_Alt_Y]
-	sub  b
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   a, [wTargetRelY]
+	sub  b					; subtract the vertical radius to get to the middle
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ret  nc
-	ld   a, [$CF55]
+	
+	;
+	; TOP-FWD
+	; wTargetRelY -= wTmpColiBoxV
+	;
+	ld   a, [wTmpColiBoxV]
 	ld   b, a
-	ld   a, [wPl_Unk_Alt_Y]
-	sub  b
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   a, [wTargetRelY]
+	sub  b					; subtract the vertical radius again to get to the top
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ret  nc
-	ld   a, [wActCurSprFlagsRes]
+	
+	;
+	; Passed the gauntlet, save the new position
+	;
+	ld   a, [tNewXPosSub]
 	ldh  [hActCur+iActXSub], a
-	ld   a, [$CF53]
+	ld   a, [tNewXPos]
 	ldh  [hActCur+iActX], a
 	ret
-L00220A:;C
+	
+; =============== ActS_ApplySpeedFwdY ===============
+; Moves the actor forward by the current vertical speed.
+ActS_ApplySpeedFwdY:
+	; BC = SpeedY
 	ldh  a, [hActCur+iActSpdYSub]
 	ld   c, a
 	ldh  a, [hActCur+iActSpdY]
 	ld   b, a
+	
+	; "Forward" has different meanings depending on the direction we're facing.
 	ldh  a, [hActCur+iActSprMap]
-	bit  6, a
-	jr   nz, L002228
+	bit  ACTDIRB_D, a				; Is the bit set?
+	jr   nz, .moveD					; If so, we're moving down
+	
+.moveU:
+	; YPos -= SpeedY
 	ldh  a, [hActCur+iActYSub]
 	sub  c
 	ldh  [hActCur+iActYSub], a
 	ldh  a, [hActCur+iActY]
 	sbc  b
 	ldh  [hActCur+iActY], a
-	and  $F0
+	
+	; Standard off-screen above check (see also: ActS_ApplySpeedUpY)
+	and  $F0				; $00-$0F
 	cp   $00
 	jp   z, ActS_Despawn
 	ret
-L002228:;R
+	
+.moveD:
+	; YPos += SpeedY
 	ldh  a, [hActCur+iActYSub]
 	add  c
 	ldh  [hActCur+iActYSub], a
 	ldh  a, [hActCur+iActY]
 	adc  b
 	ldh  [hActCur+iActY], a
-	and  $F0
+	
+	; Standard off-screen below check (see also: ActS_ApplySpeedDownY)
+	and  $F0				; $A0-$AF
 	cp   $A0
 	jp   z, ActS_Despawn
 	ret
-L00223A:;C
-	ld   h, $CE
+	
+; =============== ActS_ApplySpeedFwdYColi ===============
+; Moves the actor forward by the current vertical speed, while checking for solid collision.
+; 
+; See also: ActS_ApplySpeedFwdY, ActS_ApplySpeedFwdXColi
+ActS_ApplySpeedFwdYColi:
+
+	; Read out the actor's collision box size to a temp area
+	ld   h, HIGH(wActColi)
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
-	ld   [$CF54], a
+	ld   [wTmpColiBoxH], a
 	ld   a, [hl]
-	ld   [$CF55], a
+	ld   [wTmpColiBoxV], a
+	
+	; BC = SpeedY
 	ldh  a, [hActCur+iActSpdYSub]
 	ld   c, a
 	ldh  a, [hActCur+iActSpdY]
 	ld   b, a
+	
+	DEF tNewYPosSub = wTmpCF52
+	DEF tNewYPos    = wTmpCF53
+	
+	; "Forward" has different meanings depending on the direction we're facing.
+	; We need to check for collision on either the top or bottom border, depending on that.
 	ldh  a, [hActCur+iActSprMap]
-	bit  6, a
-	jr   nz, L002276
+	bit  ACTDIRB_D, a			; Is the bit set?
+	jr   nz, .moveD				; If so, we're moving down
+	
+.moveU:
+	; YPos -= SpeedY
 	ldh  a, [hActCur+iActYSub]
 	sub  c
-	ld   [wActCurSprFlagsRes], a
+	ld   [tNewYPosSub], a
 	ldh  a, [hActCur+iActY]
 	sbc  b
-	ld   [$CF53], a
-	and  $F0
+	ld   [tNewYPos], a
+	
+	; Standard off-screen above check (see also: ActS_ApplySpeedUpY)
+	and  $F0				; $00-$0F
 	cp   $00
 	jp   z, ActS_Despawn
-	ld   a, [$CF55]
-	sla  a
+	
+	; The sensors are at the top border.
+	ld   a, [wTmpColiBoxV]	; Get vertical radius
+	sla  a					; From radius to height
 	ld   b, a
-	ld   a, [$CF53]
-	sub  b
-	ld   [wPl_Unk_Alt_Y], a
-	jr   L002290
-L002276:;R
+	ld   a, [tNewYPos]		; Get new Y pos
+	sub  b					; Move up to the top border
+	ld   [wTargetRelY], a	; That's the target
+	
+	jr   .chkColi
+	
+.moveD:
+	; YPos += SpeedY
 	ldh  a, [hActCur+iActYSub]
 	add  c
-	ld   [wActCurSprFlagsRes], a
+	ld   [tNewYPosSub], a
 	ldh  a, [hActCur+iActY]
 	adc  b
-	ld   [$CF53], a
-	and  $F0
+	ld   [tNewYPos], a
+	
+	; Standard off-screen below check (see also: ActS_ApplySpeedDownY)
+	and  $F0				; $A0-$AF
 	cp   $A0
 	jp   z, ActS_Despawn
-	ld   a, [$CF53]
+	
+	; The sensors are 1 pixel below the bottom border,
+	; as the actor shouldn't sink inside the solid block.
+	ld   a, [tNewYPos]
 	inc  a
-	ld   [wPl_Unk_Alt_Y], a
-L002290:;R
+	ld   [wTargetRelY], a
+	
+.chkColi:
+	;
+	; Check for collision on the previouly set border.
+	;
+	; Uses three sensors along that border:
+	; - Left corner
+	; - Center
+	; - Right corner
+	;
+	; If any of them points to a solid block, the actor won't move there.
+	;
+
+	;
+	; CENTER
+	;
 	ldh  a, [hActCur+iActX]
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	ret  nc
-	ld   a, [$CF54]
+	
+	;
+	; LEFT CORNER
+	;
+	ld   a, [wTmpColiBoxH]
 	ld   b, a
 	ldh  a, [hActCur+iActX]
 	sub  b
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	ret  nc
-	ld   a, [$CF54]
+	
+	;
+	; RIGHT CORNER
+	;
+	ld   a, [wTmpColiBoxH]
 	ld   b, a
 	ldh  a, [hActCur+iActX]
 	add  b
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	ret  nc
-	ld   a, [wActCurSprFlagsRes]
+	
+	; Save back the changes if we passed the checks
+	ld   a, [tNewYPosSub]
 	ldh  [hActCur+iActYSub], a
-	ld   a, [$CF53]
+	ld   a, [wTmpCF53]
 	ldh  [hActCur+iActY], a
 	ret
 L0022C0: db $F0;X
@@ -6078,7 +6847,7 @@ L0022C5: db $31;X
 ; Applies downwards gravity at 0.125px/frame.
 ;
 ; "Upwards" highly emphasized, this is the other way around
-; compared to the more normal ActS_ApplySpeedY, where the speed gets
+; compared to the more normal ActS_ApplySpeedDownY, where the speed gets
 ; added to the vertical position, moving you down instead.
 ;
 ; OUT
@@ -6101,10 +6870,10 @@ ActS_ApplySpeedUpY:
 	jr   nc, .moveUp
 	
 .end:
-	
-	; Otherwise, flag that movement is stalled
+	; Otherwise, flip the vertical direction.
+	; There's the assumption here that, since we were moving up, ACTDIR_D should be clear.
 	ldh  a, [hActCur+iActSprMap]
-	xor  ACTDIR_UNK_UPGRAVEND
+	xor  ACTDIR_D				; Set ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
 	
 	; And clear out the speed
@@ -6139,10 +6908,10 @@ ActS_ApplySpeedUpY:
 	scf  ; C Flag = Set (can move)
 	ret
 	
-; =============== ActS_ApplySpeedY ===============
+; =============== ActS_ApplySpeedDownY ===============
 ; Moves the current actor *downwards* by the current vertical speed.
 ; Applies downwards gravity at 0.125px/frame.
-ActS_ApplySpeedY:
+ActS_ApplySpeedDownY:
 
 	; Increase downwards speed at 0.125px/frame
 	; BC = YSpeed + $00.20
@@ -6188,144 +6957,300 @@ L002324: db $77;X
 L002325: db $C2;X
 L002326: db $A8;X
 L002327: db $23;X
-L002328:;C
-	ld   h, $CE
+
+; =============== ActS_ApplySpeedUpYColi ===============
+; Moves the current actor *upwards* by the current vertical speed, applying gravity.
+; Gravity is reset is a solid block is hit, ending movement.
+;
+; Effectively a version of ActS_ApplySpeedUpY that checks for solid collision.
+;
+; OUT
+; - C flag: If set, the actor could move.
+ActS_ApplySpeedUpYColi:
+
+	; Read out the actor's collision box size to a temp area
+	ld   h, HIGH(wActColi)
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
-	ld   [$CF54], a
+	ld   [wTmpColiBoxH], a
 	ld   a, [hl]
-	ld   [$CF55], a
+	ld   [wTmpColiBoxV], a
+	
+	;--
+	;
+	; Update the gravity the same way ActS_ApplySpeedUpY does it
+	;
+	
+	; Decrease updwards speed at 0.125px/frame
+	; BC = YSpeed - $00.20
 	ldh  a, [hActCur+iActSpdYSub]
 	sub  $20
 	ld   c, a
 	ldh  a, [hActCur+iActSpdY]
 	sbc  $00
 	ld   b, a
-	jr   c, L00239D
+	
+	; If we didn't underflow the speed, apply it
+	jr   c, .startFallAuto
+	
+	; Update the speed value
 	ld   a, c
 	ldh  [hActCur+iActSpdYSub], a
 	ld   a, b
 	ldh  [hActCur+iActSpdY], a
+	;--
+	
+	
+	DEF tNewYPosSub = wTmpCF52
+	DEF tNewYPos    = wTmpCF53
+	
+	;
+	; Calculate the potential new Y position
+	; NewYPos = YPos - BC
+	;
 	ldh  a, [hActCur+iActYSub]
 	sub  c
-	ld   [wActCurSprFlagsRes], a
+	ld   [tNewYPosSub], a
 	ldh  a, [hActCur+iActY]
 	sbc  b
-	ld   [$CF53], a
-	ld   a, [$CF55]
-	sla  a
-	dec  a
+	ld   [tNewYPos], a
+	
+	;
+	; Check for top collision.
+	;
+	; If, with the new position, the actor's top border would collide with a solid
+	; block, do not move and stop the vertical movement.
+	;
+	; This goes off three sensors, all 1 pixel below the actor's top border:
+	; - Top-left corner
+	; - Top-center
+	; - Top-right corner
+	;
+	; If any if these points to a solid block, no movement is made and the jump ends.
+	;
+	;
+	
+	;
+	; Y COMPONENT
+	; 
+	; Since the origin is at the bottom edge of the sprite's collosion box, but collision sizes are half-width:
+	; wTargetRelY = tNewYPos - (wTmpColiBoxV * 2) + 1
+	;
+	ld   a, [wTmpColiBoxV]		; Get collision
+	sla  a						; From radius to height
+	dec  a						; 1 pixel below the edge, for some reason. 
+								; This is inconsistent with similar collision checks like the one in ActS_ApplySpeedFwdYColi.
 	ld   b, a
-	ld   a, [$CF53]
-	sub  b
-	ld   [wPl_Unk_Alt_Y], a
-	ldh  a, [hActCur+iActX]
-	ld   [$CF0D], a
-	call L00332F
-	jr   nc, L00239E
-	ld   a, [$CF54]
+	ld   a, [tNewYPos]			; Get new Y pos
+	sub  b						; Move up to 1px below the edge
+	ld   [wTargetRelY], a		; That's the target
+	
+	;
+	; X COMPONENT, CENTER
+	;
+	; The origin is already at the center of an actor, so:
+	; wTargetRelX = iActX
+	;
+	ldh  a, [hActCur+iActX]		
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId			; Is it a solid block?
+	jr   nc, .startFall			; If so, we're done
+	
+	;
+	; X COMPONENT, LEFT
+	; wTargetRelX = iActX - wTmpColiBoxH
+	;
+	ld   a, [wTmpColiBoxH]		; Get horz radius
 	ld   b, a
-	ldh  a, [hActCur+iActX]
-	sub  b
-	ld   [$CF0D], a
-	call L00332F
-	jr   nc, L00239E
-	ld   a, [$CF54]
+	ldh  a, [hActCur+iActX]		; Get X position
+	sub  b						; Subtract the radius
+	ld   [wTargetRelX], a		; We have the left border
+	call Lvl_GetBlockId
+	jr   nc, .startFall
+	
+	;
+	; X COMPONENT, RIGHT
+	; wTargetRelX = iActX + wTmpColiBoxH
+	;
+	ld   a, [wTmpColiBoxH]		; Get horz radius
 	ld   b, a
-	ldh  a, [hActCur+iActX]
-	add  b
-	ld   [$CF0D], a
-	call L00332F
-	jr   nc, L00239E
-	ld   a, [wActCurSprFlagsRes]
+	ldh  a, [hActCur+iActX]		; Get X position
+	add  b						; Add the radius
+	ld   [wTargetRelX], a		; We have the left border
+	call Lvl_GetBlockId
+	jr   nc, .startFall
+	
+	;
+	; SAVE CHANGES
+	;
+	
+	; Save the updated Y coords back.
+	ld   a, [tNewYPosSub]		; iActYSub = tNewYPosSub
 	ldh  [hActCur+iActYSub], a
-	ld   a, [$CF53]
+	ld   a, [tNewYPos]			; iActY = tNewYPos
 	ldh  [hActCur+iActY], a
-	and  $F0
+	
+	; If the new position would cause the actor to move off-screen above, despawn it.
+	and  $F0					; YPos >= $00 && YPos <= $0F?
 	cp   $00
-	jp   z, ActS_Despawn
-	scf  
+	jp   z, ActS_Despawn		; If so, delete it
+	
+	scf		; C Flag = Set (move ok)  
 	ret
-L00239D:;R
-	ccf  
-L00239E:;R
-	push af
-	xor  a
-	ldh  [hActCur+iActYSub], a
-	ldh  [hActCur+iActSpdYSub], a
-	ldh  [hActCur+iActSpdY], a
+.startFallAuto:
+	ccf		; We got here with "jr c", clear that
+.startFall:
+	; Zero out the vertical speed & subpixel value.
+	; This forces the actor to start falling down ???
+	push af ; Preserve cleared carry flag (does it matter?)
+		xor  a
+		ldh  [hActCur+iActYSub], a
+		ldh  [hActCur+iActSpdYSub], a
+		ldh  [hActCur+iActSpdY], a
 	pop  af
 	ret
-L0023A8:;C
-	ld   h, $CE
+	
+; =============== ActS_ApplySpeedDownYColi ===============
+; Moves the current actor *downwards* by the current vertical speed, applying gravity.
+; Gravity is reset is a solid block is hit, ending movement.
+;
+; Like ActS_ApplySpeedUpYColi but for ActS_ApplySpeedDownY.
+;
+; OUT
+; - C flag: If set, the actor could move.
+ActS_ApplySpeedDownYColi:
+
+	; Read out the actor's horizontal collision box size to a temp area
+	ld   h, HIGH(wActColi)
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
 	ldi  a, [hl]
-	ld   [$CF54], a
+	ld   [wTmpColiBoxH], a
+	
+	;--
+	;
+	; Update the gravity the same way ActS_ApplySpeedDownY does it
+	;
+	
+	; Increase downwards speed at 0.125px/frame
+	; BC = YSpeed + $00.20
 	ldh  a, [hActCur+iActSpdYSub]
 	add  $20
 	ld   c, a
 	ldh  a, [hActCur+iActSpdY]
 	adc  $00
 	ld   b, a
-	cp   $04
-	jr   c, L0023C3
-	ld   bc, $0400
-L0023C3:;R
+	
+	; Cap the movement to 4px/frame
+	cp   $04			; YSpeed < 4?
+	jr   c, .moveDown	; If so, jump
+	ld   bc, $0400		; Otherwise, cap
+.moveDown:
+
+	; Update the speed value
 	ld   a, c
 	ldh  [hActCur+iActSpdYSub], a
 	ld   a, b
 	ldh  [hActCur+iActSpdY], a
+	
+	DEF tNewYPosSub = wTmpCF52
+	DEF tNewYPos    = wTmpCF53
+	
+	;
+	; Calculate the potential new Y position
+	; NewYPos = YPos + BC
+	;
 	ldh  a, [hActCur+iActYSub]
 	add  c
-	ld   [wActCurSprFlagsRes], a
+	ld   [tNewYPosSub], a
 	ldh  a, [hActCur+iActY]
 	adc  b
-	ld   [$CF53], a
-	inc  a
-	ld   [wPl_Unk_Alt_Y], a
-	ldh  a, [hActCur+iActX]
-	ld   [$CF0D], a
-	call L00332F
-	jr   nc, L002413
-	ld   a, [$CF54]
+	ld   [tNewYPos], a
+	
+	;
+	; Check for collision on the bottom border:
+	;
+	; This goes off three sensors, all 1 pixel below the actor's top border:
+	; - Bottom-left corner
+	; - Bottom-center
+	; - Bottom-right corner
+	;
+	; If any if these points to a solid block, movement stops and the actor is aligned to the ground.
+	;
+	
+	inc  a						; The Y position is 1 pixel below the origin.
+	ld   [wTargetRelY], a
+	
+	;
+	; CENTER
+	;
+	ldh  a, [hActCur+iActX]		; wTargetRelX = origin
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
+	jr   nc, .stopFall
+	
+	;
+	; LEFT
+	;
+	ld   a, [wTmpColiBoxH]		; wTargetRelX = origin - h radius
 	ld   b, a
 	ldh  a, [hActCur+iActX]
 	sub  b
-	ld   [$CF0D], a
-	call L00332F
-	jr   nc, L002413
-	ld   a, [$CF54]
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
+	jr   nc, .stopFall
+	
+	;
+	; RIGHT
+	;
+	ld   a, [wTmpColiBoxH]		; wTargetRelX = origin + h radius
 	ld   b, a
 	ldh  a, [hActCur+iActX]
 	add  b
-	ld   [$CF0D], a
-	call L00332F
-	jr   nc, L002413
-	ld   a, [wActCurSprFlagsRes]
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
+	jr   nc, .stopFall
+	
+	; Save the updated Y coords back.
+	ld   a, [tNewYPosSub]
 	ldh  [hActCur+iActYSub], a
-	ld   a, [$CF53]
+	ld   a, [tNewYPos]
 	ldh  [hActCur+iActY], a
-	and  $F0
+	
+	; If the new position would cause the actor to move off-screen above, despawn it.
+	and  $F0					; YPos >= $A0 && YPos <= $AF?
 	cp   $A0
-	jp   z, ActS_Despawn
+	jp   z, ActS_Despawn		; If so, delete it
 	ret
-L002413:;R
+	
+.stopFall:
+	; Zero out the vertical speed & subpixel value.
 	xor  a
 	ldh  [hActCur+iActYSub], a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
+	
+	; Snap actor to the top of the 16x16 solid block
 	ldh  a, [hActCur+iActY]
 	or   $0F
 	ldh  [hActCur+iActY], a
 	ret
-L002421:;C
-	ld   a, [$CF31]
+	
+; =============== ActS_MoveByScrollX ===============
+; Moves the current actor based on how much the player has scrolled the screen.
+ActS_MoveByScrollX:
+	
+	; This is important since actor coordinates are relative to the screen,
+	; so if the player scrolls it, actor positions need to be adjusted.
+	
+	ld   a, [wActScrollX]	; B = 
 	ld   b, a
 	ldh  a, [hActCur+iActX]
 	add  b
 	ldh  [hActCur+iActX], a
+	
+	; Standard off-screen despawn check (see: ActS_ApplySpeedFwdX)
 	and  $F0
 	cp   $D0
 	ret  nz
@@ -6334,34 +7259,39 @@ L002421:;C
 ; Despawns the current actor.
 ActS_Despawn:
 
-	; ???
+	;
+	; When Rush Coil/Jet/Marine and the Sakugarne despawn, they have finished their teleport animation.
+	; Clear that for later, otherwise they can't be called in again.
+	;
 	ldh  a, [hActCur+iActId]
 	cp   ACT_E0			; iActId < $E0?
 	jr   c, .despawn	; If so, skip
 	cp   ACT_E4			; iActId >= $E4?
 	jr   nc, .despawn	; If so, skip
 	xor  a
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	
 .despawn:
 	; Mark the slot as free
 	xor  a
 	ldh  [hActCur+iActId], a
 	
-	; ???
-	; If this actor has a respawn table pointer associated to it, flag it.
-	ld   h, HIGH(wLvlUnkTblC800)			; High byte is fixed
-	ldh  a, [hActCur+iAct_Unk_UnkTblPtr]
-	or   a				; Is there a pointer associated?
-	ret  z				; If not, return
-	ld   l, a			; Otherwise, seek HL to the entry
-	ld   a, [hl]		; and flag it as defeated ???
-	res  7, a
+	; Allow the actor to respawn.
+	; Since the actor is gone, it should be able to spawn again when scrolling towards its initial position.
+	; Actors that call this subroutine and have a pointer set *always* do this.
+	; If permadespawning is wanted (ie: collecting 1UPs) just mark the slot as free without doing anything else.
+	ld   h, HIGH(wActLayoutFlags)			; (Could have been set later)
+	ldh  a, [hActCur+iActLayoutPtr]
+	or   a									; Is the actor part of the actor layout?
+	ret  z									; If not, return (can't tell to respawn what's not there)
+	ld   l, a								; Otherwise, seek HL to the wActLayoutFlags entry
+	ld   a, [hl]
+	res  ACTLB_NOSPAWN, a					; and disable nospawn flag
 	ld   [hl], a
 	ret
 	
 ; =============== ActS_DrawSprMap ===============
-; :(
+; Draws an actor sprite mapping to the screen.
 ActS_DrawSprMap:
 	push af
 		ld   a, BANK(ActS_SprMapPtrTbl) ; BANK $03
@@ -6398,7 +7328,7 @@ ActS_DrawSprMap:
 	ld   b, a					
 	ld   a, [wActCurSprFlags]
 	or   b						
-	ld   [wActCurSprFlagsRes], a
+	ld   [wTmpCF52], a
 	
 	;--
 	
@@ -6493,6 +7423,9 @@ ActS_DrawSprMap:
 	; Two completely separate loops are used to handle horizontal flipping.
 	; This is due to the relative positions between individual OBJ being inverted,
 	; and it's also faster to perform the check only once.
+	;
+	; Note that vertical flipping isn't supported. The ACTDIR_D flag is only used to 
+	; determine the "forward" vertical direction, but doesn't affect how the sprite is drawn.
 	ldh  a, [hActCur+iActSprMap]
 	bit  ACTDIRB_R, a		; Actor facing right?
 	jr   nz, .loopR			; If so, jump
@@ -6524,13 +7457,13 @@ ActS_DrawSprMap:
 	inc  de
 	ldi  [hl], a
 	
-	; Flags = byte3 | wActCurSprFlagsRes
+	; Flags = byte3 | wTmpCF52
 	; Curiously, the base flags are OR'd with ours, compared to the usual way of XOR'ing them.
 	; This prevents you from overriding all options.
 	ld   a, [de]
 	inc  de
 	ld   c, a
-	ld   a, [wActCurSprFlagsRes]
+	ld   a, [wTmpCF52]
 	or   c
 	ldi  [hl], a
 	
@@ -6580,11 +7513,11 @@ ActS_DrawSprMap:
 	inc  de
 	ldi  [hl], a
 	
-	; Flags = (byte3 | wActCurSprFlagsRes) ^ SPR_XFLIP
+	; Flags = (byte3 | wTmpCF52) ^ SPR_XFLIP
 	ld   a, [de]
 	inc  de
 	ld   c, a
-	ld   a, [wActCurSprFlagsRes]
+	ld   a, [wTmpCF52]
 	or   c
 	xor  SPR_XFLIP			; Flip the individual OBJ graphic
 	ldi  [hl], a
@@ -6602,8 +7535,12 @@ ActS_DrawSprMap:
 	
 .full:
 	ldh  [hWorkOAMPos], a	; Save back current OAM ptr
+	
+	; Since any further actors won't draw and their processing order is the draw order,
+	; on the next frame start processing them from the current slot.
+	; Note that the remaining actors *will* still get processed, just not drawn.
 	ld   a, [wActCurSlotPtr]
-	ld   [wActOAMFull], a	; Mark end of OAM reached
+	ld   [wActLastDrawSlotPtr], a	; Mark end of OAM reached
 .end:
 	push af
 		ldh  a, [hRomBankLast]
@@ -6612,353 +7549,45 @@ ActS_DrawSprMap:
 	pop  af
 	ret
 	
-L002512: db $B4
-L002513: db $3E
-L002514: db $25
-L002515: db $19
-L002516: db $19
-L002517: db $0D
-L002518: db $0D
-L002519: db $0D
-L00251A: db $0D
-L00251B: db $0D
-L00251C: db $0D
-L00251D: db $0D;X
-L00251E: db $0D;X
-L00251F: db $00
-L002520: db $00;X
-L002521: db $00;X
-L002522: db $F7
-L002523: db $B4
-L002524: db $6D
-L002525: db $56
-L002526: db $3E
-L002527: db $32
-L002528: db $32
-L002529: db $25
-L00252A: db $25
-L00252B: db $25
-L00252C: db $19
-L00252D: db $19;X
-L00252E: db $19;X
-L00252F: db $19;X
-L002530: db $19;X
-L002531: db $19;X
-L002532: db $FC
-L002533: db $E7
-L002534: db $B4
-L002535: db $83
-L002536: db $6D
-L002537: db $56
-L002538: db $4A
-L002539: db $3E
-L00253A: db $3E
-L00253B: db $32
-L00253C: db $32
-L00253D: db $32;X
-L00253E: db $25;X
-L00253F: db $25;X
-L002540: db $25;X
-L002541: db $25;X
-L002542: db $FE
-L002543: db $F0
-L002544: db $DB
-L002545: db $B4
-L002546: db $8E
-L002547: db $78
-L002548: db $6D
-L002549: db $56
-L00254A: db $56
-L00254B: db $4A
-L00254C: db $3E
-L00254D: db $3E;X
-L00254E: db $3E;X
-L00254F: db $32;X
-L002550: db $32;X
-L002551: db $32;X
-L002552: db $FE
-L002553: db $F7
-L002554: db $E7
-L002555: db $D4
-L002556: db $B4
-L002557: db $98
-L002558: db $83
-L002559: db $78
-L00255A: db $62
-L00255B: db $62
-L00255C: db $56;X
-L00255D: db $4A;X
-L00255E: db $4A;X
-L00255F: db $3E;X
-L002560: db $3E;X
-L002561: db $3E;X
-L002562: db $FF
-L002563: db $FA
-L002564: db $F0
-L002565: db $E1
-L002566: db $CD
-L002567: db $B4
-L002568: db $98
-L002569: db $8E
-L00256A: db $78;X
-L00256B: db $6D;X
-L00256C: db $62;X
-L00256D: db $62;X
-L00256E: db $56;X
-L00256F: db $56;X
-L002570: db $4A;X
-L002571: db $4A;X
-L002572: db $FF
-L002573: db $FA
-L002574: db $F4
-L002575: db $E7
-L002576: db $DB
-L002577: db $CD
-L002578: db $B4
-L002579: db $A2
-L00257A: db $8E;X
-L00257B: db $83;X
-L00257C: db $78;X
-L00257D: db $6D;X
-L00257E: db $62;X
-L00257F: db $62;X
-L002580: db $56;X
-L002581: db $56;X
-L002582: db $FF
-L002583: db $FC
-L002584: db $F7
-L002585: db $F0
-L002586: db $E1
-L002587: db $D4
-L002588: db $C5
-L002589: db $B4;X
-L00258A: db $A2;X
-L00258B: db $98;X
-L00258C: db $83;X
-L00258D: db $78;X
-L00258E: db $78;X
-L00258F: db $6D;X
-L002590: db $62;X
-L002591: db $62;X
-L002592: db $FF
-L002593: db $FC
-L002594: db $F7
-L002595: db $F0
-L002596: db $EC
-L002597: db $E1;X
-L002598: db $D4;X
-L002599: db $C5;X
-L00259A: db $B4;X
-L00259B: db $A2;X
-L00259C: db $98;X
-L00259D: db $8E;X
-L00259E: db $83;X
-L00259F: db $78;X
-L0025A0: db $6D;X
-L0025A1: db $6D;X
-L0025A2: db $FF
-L0025A3: db $FC
-L0025A4: db $FA
-L0025A5: db $F4
-L0025A6: db $EC
-L0025A7: db $E7;X
-L0025A8: db $DB;X
-L0025A9: db $CD;X
-L0025AA: db $C5;X
-L0025AB: db $B4;X
-L0025AC: db $A2;X
-L0025AD: db $98;X
-L0025AE: db $8E;X
-L0025AF: db $83;X
-L0025B0: db $83;X
-L0025B1: db $78;X
-L0025B2: db $FF
-L0025B3: db $FE
-L0025B4: db $FA
-L0025B5: db $F7
-L0025B6: db $F0;X
-L0025B7: db $EC;X
-L0025B8: db $E1;X
-L0025B9: db $DB;X
-L0025BA: db $CD;X
-L0025BB: db $C5;X
-L0025BC: db $B4;X
-L0025BD: db $AB;X
-L0025BE: db $98;X
-L0025BF: db $8E;X
-L0025C0: db $8E;X
-L0025C1: db $83;X
-L0025C2: db $FF;X
-L0025C3: db $FE;X
-L0025C4: db $FA;X
-L0025C5: db $F7;X
-L0025C6: db $F4;X
-L0025C7: db $EC;X
-L0025C8: db $E7;X
-L0025C9: db $E1;X
-L0025CA: db $D4;X
-L0025CB: db $CD;X
-L0025CC: db $BD;X
-L0025CD: db $B4;X
-L0025CE: db $AB;X
-L0025CF: db $A2;X
-L0025D0: db $98;X
-L0025D1: db $8E;X
-L0025D2: db $FF;X
-L0025D3: db $FE;X
-L0025D4: db $FC;X
-L0025D5: db $F7;X
-L0025D6: db $F4;X
-L0025D7: db $F0;X
-L0025D8: db $EC;X
-L0025D9: db $E1;X
-L0025DA: db $DB;X
-L0025DB: db $D4;X
-L0025DC: db $CD;X
-L0025DD: db $BD;X
-L0025DE: db $B4;X
-L0025DF: db $AB;X
-L0025E0: db $A2;X
-L0025E1: db $98;X
-L0025E2: db $FF
-L0025E3: db $FE;X
-L0025E4: db $FC;X
-L0025E5: db $FA;X
-L0025E6: db $F7;X
-L0025E7: db $F0;X
-L0025E8: db $EC;X
-L0025E9: db $E7;X
-L0025EA: db $E1;X
-L0025EB: db $DB;X
-L0025EC: db $D4;X
-L0025ED: db $C5;X
-L0025EE: db $BD;X
-L0025EF: db $B4;X
-L0025F0: db $AB;X
-L0025F1: db $A2;X
-L0025F2: db $FF;X
-L0025F3: db $FE;X
-L0025F4: db $FC;X
-L0025F5: db $FA;X
-L0025F6: db $F7;X
-L0025F7: db $F4;X
-L0025F8: db $F0;X
-L0025F9: db $EC;X
-L0025FA: db $E7;X
-L0025FB: db $DB;X
-L0025FC: db $D4;X
-L0025FD: db $CD;X
-L0025FE: db $C5;X
-L0025FF: db $BD;X
-L002600: db $B4;X
-L002601: db $AB;X
-L002602: db $FF;X
-L002603: db $FE;X
-L002604: db $FC;X
-L002605: db $FA;X
-L002606: db $F7;X
-L002607: db $F4;X
-L002608: db $F0;X
-L002609: db $EC;X
-L00260A: db $E7;X
-L00260B: db $E1;X
-L00260C: db $DB;X
-L00260D: db $D4;X
-L00260E: db $CD;X
-L00260F: db $C5;X
-L002610: db $BD;X
-L002611: db $B4;X
-L002612: db $FF
-L002613: db $FF
-L002614: db $FF
-L002615: db $FF
-L002616: db $FF
-L002617: db $FF
-L002618: db $FF
-L002619: db $FE
-L00261A: db $FE
-L00261B: db $FD
-L00261C: db $FC
-L00261D: db $FB
-L00261E: db $FA
-L00261F: db $F9
-L002620: db $F8
-L002621: db $F7
-L002622: db $F6
-L002623: db $F5
-L002624: db $F3
-L002625: db $F2
-L002626: db $F1
-L002627: db $EF
-L002628: db $ED
-L002629: db $EC
-L00262A: db $EA
-L00262B: db $E8
-L00262C: db $E6
-L00262D: db $E4
-L00262E: db $E2
-L00262F: db $E0
-L002630: db $DE
-L002631: db $DB
-L002632: db $D9
-L002633: db $D7
-L002634: db $D4
-L002635: db $D2
-L002636: db $CF
-L002637: db $CC
-L002638: db $CA
-L002639: db $C7
-L00263A: db $C4
-L00263B: db $C1
-L00263C: db $BE
-L00263D: db $BB
-L00263E: db $B8
-L00263F: db $B5
-L002640: db $B2
-L002641: db $AF
-L002642: db $AB
-L002643: db $A8
-L002644: db $A5
-L002645: db $A1
-L002646: db $9E
-L002647: db $9A
-L002648: db $96
-L002649: db $93
-L00264A: db $8F
-L00264B: db $8B
-L00264C: db $88
-L00264D: db $84
-L00264E: db $80
-L00264F: db $7C
-L002650: db $78
-L002651: db $74
-L002652: db $70
-L002653: db $6C
-L002654: db $68
-L002655: db $64
-L002656: db $60
-L002657: db $5C
-L002658: db $58
-L002659: db $53
-L00265A: db $4F
-L00265B: db $4B
-L00265C: db $47
-L00265D: db $42
-L00265E: db $3E
-L00265F: db $3A
-L002660: db $35
-L002661: db $31
-L002662: db $2C
-L002663: db $28
-L002664: db $24
-L002665: db $1F
-L002666: db $1B
-L002667: db $16
-L002668: db $12
-L002669: db $0D
-L00266A: db $09
-L00266B: db $04;X
-L00266C: db $00;X
+; =============== ActS_DistToSpdTbl ===============
+; Maps every possible pair of distances to the respective speed values.
+; Meant to be indexed using the current axis distance on the high nybble, and opposite axis distance on the lower nybble.
+; See also: ActS_AngleToPlCustom
+ActS_DistToSpdTbl:
+	;  OPPOSITE AXIS ->                                                  | THIS AXIS                               
+	;  $x0,$x1,$x2,$x3,$x4,$x5,$x6,$x7,$x8,$x9,$xA,$xB,$xC,$xD,$xE,$xF   v
+	db $B4,$3E,$25,$19,$19,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D,$00,$00,$00 ; $0x
+	db $F7,$B4,$6D,$56,$3E,$32,$32,$25,$25,$25,$19,$19,$19,$19,$19,$19 ; $1x
+	db $FC,$E7,$B4,$83,$6D,$56,$4A,$3E,$3E,$32,$32,$32,$25,$25,$25,$25 ; $2x
+	db $FE,$F0,$DB,$B4,$8E,$78,$6D,$56,$56,$4A,$3E,$3E,$3E,$32,$32,$32 ; $3x
+	db $FE,$F7,$E7,$D4,$B4,$98,$83,$78,$62,$62,$56,$4A,$4A,$3E,$3E,$3E ; $4x
+	db $FF,$FA,$F0,$E1,$CD,$B4,$98,$8E,$78,$6D,$62,$62,$56,$56,$4A,$4A ; $5x
+	db $FF,$FA,$F4,$E7,$DB,$CD,$B4,$A2,$8E,$83,$78,$6D,$62,$62,$56,$56 ; $6x
+	db $FF,$FC,$F7,$F0,$E1,$D4,$C5,$B4,$A2,$98,$83,$78,$78,$6D,$62,$62 ; $7x
+	db $FF,$FC,$F7,$F0,$EC,$E1,$D4,$C5,$B4,$A2,$98,$8E,$83,$78,$6D,$6D ; $8x
+	db $FF,$FC,$FA,$F4,$EC,$E7,$DB,$CD,$C5,$B4,$A2,$98,$8E,$83,$83,$78 ; $9x
+	db $FF,$FE,$FA,$F7,$F0,$EC,$E1,$DB,$CD,$C5,$B4,$AB,$98,$8E,$8E,$83 ; $Ax
+	db $FF,$FE,$FA,$F7,$F4,$EC,$E7,$E1,$D4,$CD,$BD,$B4,$AB,$A2,$98,$8E ; $Bx
+	db $FF,$FE,$FC,$F7,$F4,$F0,$EC,$E1,$DB,$D4,$CD,$BD,$B4,$AB,$A2,$98 ; $Cx
+	db $FF,$FE,$FC,$FA,$F7,$F0,$EC,$E7,$E1,$DB,$D4,$C5,$BD,$B4,$AB,$A2 ; $Dx
+	db $FF,$FE,$FC,$FA,$F7,$F4,$F0,$EC,$E7,$DB,$D4,$CD,$C5,$BD,$B4,$AB ; $Ex
+	db $FF,$FE,$FC,$FA,$F7,$F4,$F0,$EC,$E7,$E1,$DB,$D4,$CD,$C5,$BD,$B4 ; $Fx
+
+
+; =============== ActS_ArcPathTbl ===============
+; Table of speed values which, if cycled through every frame for both directions, allows actors to move in an arc.
+; With careful flipping, it's also possible to make actors move on a circular path.
+ActS_ArcPathTbl:
+	;  $x0,$x1,$x2,$x3,$x4,$x5,$x6,$x7,$x8,$x9,$xA,$xB,$xC,$xD,$xE,$xF
+	db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FD,$FC,$FB,$FA,$F9,$F8,$F7 ; $0x
+	db $F6,$F5,$F3,$F2,$F1,$EF,$ED,$EC,$EA,$E8,$E6,$E4,$E2,$E0,$DE,$DB ; $1x
+	db $D9,$D7,$D4,$D2,$CF,$CC,$CA,$C7,$C4,$C1,$BE,$BB,$B8,$B5,$B2,$AF ; $2x
+	db $AB,$A8,$A5,$A1,$9E,$9A,$96,$93,$8F,$8B,$88,$84,$80,$7C,$78,$74 ; $3x
+	db $70,$6C,$68,$64,$60,$5C,$58,$53,$4F,$4B,$47,$42,$3E,$3A,$35,$31 ; $4x
+	db $2C,$28,$24,$1F,$1B,$16,$12,$0D,$09                             ; $5x
+	; [POI] Table gets cut off, last two values are unused
+	db $04,$00
+
 ; =============== Game_Main ===============
 ; Main sequence of operations.
 Game_Main:
@@ -7006,21 +7635,23 @@ Game_Main:
 	ld   a, $01
 	ld   [wLvlRoomId], a
 	
-	call L002AC7
-	call L002ADE
+	; Load everything
+	call Module_Game_InitScrOff
+	call Module_Game_InitScrOn
+	
 L0026AC:;R
 	call L0027C9
 	cp   $02
 	jr   z, L0026CC
 	call L002862
 	jr   c, L0026AC
-	ld   a, [$CF6E]
+	ld   a, [wGameOverSel]
 	bit  1, a
 	jr   z, Game_Main.toStageSel
 	ld   a, $01
 	ld   [wLvlRoomId], a
-	call L002AC7
-	call L002ADE
+	call Module_Game_InitScrOff
+	call Module_Game_InitScrOn
 	jr   L0026AC
 L0026CC:;R
 	call L00299F
@@ -7043,8 +7674,8 @@ Game_Main_ToWilyCastle:;X
 	ld   [wLvlRoomId], a
 	ld   a, $08
 	ld   [wLvlId], a
-	call L002AC7
-	call L002ADE
+	call Module_Game_InitScrOff
+	call Module_Game_InitScrOn
 	call L0031BE
 	call L0032C6
 	jr   L00271F
@@ -7053,22 +7684,22 @@ Game_Main_ToTeleport:;R
 	ld   [wLvlRoomId], a
 	ld   a, $08
 	ld   [wLvlId], a
-	call L002AC7
+	call Module_Game_InitScrOff
 	call L0032C6
-	call L002ADE
+	call Module_Game_InitScrOn
 L00271F:;R
 	call L0027C9
 	cp   $02
 	jr   z, L00273F
 	call L002862
 	jr   c, L00271F
-	ld   a, [$CF6E]
+	ld   a, [wGameOverSel]
 	bit  1, a
 	jr   z, Game_Main_ToTeleport
 	ld   a, $01
 	ld   [wLvlRoomId], a
-	call L002AC7
-	call L002ADE
+	call Module_Game_InitScrOff
+	call Module_Game_InitScrOn
 	jr   L00271F
 L00273F:;R
 	call L00299F
@@ -7083,8 +7714,8 @@ Game_Main_ToPreQuint:;X
 	ld   [wLvlRoomId], a
 	ld   a, $08
 	ld   [wLvlId], a
-	call L002AC7
-	call L002ADE
+	call Module_Game_InitScrOff
+	call Module_Game_InitScrOn
 	call L0027C9
 	cp   $02
 	jr   z, L002782
@@ -7121,8 +7752,8 @@ L002785:;R
 	ld   [wLvlRoomId], a
 	ld   a, $09
 	ld   [wLvlId], a
-	call L002AC7
-	call L002ADE
+	call Module_Game_InitScrOff
+	call Module_Game_InitScrOn
 L002798:;R
 	ld   hl, wWpnUnlock1
 	set  3, [hl]
@@ -7131,22 +7762,14 @@ L002798:;R
 	jr   z, L0027BD
 	call L002862
 	jr   c, L002798
-	ld   a, [$CF6E]
+	ld   a, [wGameOverSel]
 	bit  1, a
 	jr   z, L002785
-L0027B0: db $3E;X
-L0027B1: db $01;X
-L0027B2: db $EA;X
-L0027B3: db $0B;X
-L0027B4: db $CF;X
-L0027B5: db $CD;X
-L0027B6: db $C7;X
-L0027B7: db $2A;X
-L0027B8: db $CD;X
-L0027B9: db $DE;X
-L0027BA: db $2A;X
-L0027BB: db $18;X
-L0027BC: db $DB;X
+	ld   a, $01
+	ld   [wLvlRoomId], a
+	call Module_Game_InitScrOff
+	call Module_Game_InitScrOn
+	jr   L002798
 L0027BD:;R
 	call L00299F
 	call L01551D ; BANK $01
@@ -7156,15 +7779,18 @@ L0027C7: db $C6;X
 L0027C8: db $27;X
 L0027C9:;JCR
 	rst  $08 ; Wait Frame
-	ld   hl, $FFB6
+	
+	; Alternate between the two palettes.
+	; This uses hBGPAnim0 for 5 frames, hBGPAnim1 for 3 frames, then it loops.
+	ld   hl, hBGPAnim0	; HL = Ptr to 1st pal
 	ldh  a, [hTimer]
 	and  $07
-	cp   $05
-	jr   c, L0027D6
-	inc  hl
-L0027D6:;R
-	ld   a, [hl]
-	ldh  [hBGP], a
+	cp   $05			; (hTimer & 8) < 5?
+	jr   c, .setPalAnim	; If so, keep 1st pal
+	inc  hl				; Otherwise, switch to 2nd pal
+.setPalAnim:
+	ld   a, [hl]		; Read the palette
+	ldh  [hBGP], a		; Save it
 L0027D9:;R
 	call JoyKeys_Refresh
 	ldh  a, [hJoyNewKeys]
@@ -7188,7 +7814,7 @@ L0027F8:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ldh  a, [hTimer]
-	ld   [$CF39], a
+	ld   [wUnk_FrameStartTimer], a
 	call L000CB0
 	call L00354A
 	call L0143B4 ; BANK $01
@@ -7207,11 +7833,11 @@ L0027F8:;R
 	pop  af
 	call OAM_ClearRest
 	ld   hl, hTimer
-	ld   a, [$CF39]
+	ld   a, [wUnk_FrameStartTimer]
 	cp   [hl]
 	jr   nz, L0027D9
 	call L002AF3
-	ld   a, [$CF60]
+	ld   a, [wLvlEnd]
 	or   a
 	jr   z, L0027C9
 	push af
@@ -7219,8 +7845,8 @@ L0027F8:;R
 	call L0039EF
 	xor  a
 	ld   [wActCurSprFlags], a
-	ld   [$CF6F], a
-	ld   [$CF31], a
+	ld   [wLvlWater], a
+	ld   [wActScrollX], a
 	pop  af
 	cp   $03
 	ret  c
@@ -7230,15 +7856,15 @@ L0027F8:;R
 	ld   [wLvlId], a
 	ld   a, $01
 	ld   [wLvlRoomId], a
-	call L002AC7
-	call L002ADE
+	call Module_Game_InitScrOff
+	call Module_Game_InitScrOn
 	jp   L0027C9
 L002862:;C
 	xor  a
-	ld   [$CFF3], a
-	ld   [$CFF2], a
-	ld   [$CF71], a
-	ld   hl, $CF70
+	ld   [wPlHealthInc], a
+	ld   [wWpnAmmoInc], a
+	ld   [wPlHealthBar], a
+	ld   hl, wStatusBarRedraw
 	set  0, [hl]
 	ld   b, $B4
 L002873:;R
@@ -7255,11 +7881,11 @@ L00287F:;R
 	ld   a, $06
 	ldh  [hSFXSet], a
 L002887:;R
-	ld   a, [$CF63]
+	ld   a, [wExplodeOrgX]
 	ld   [wActSpawnX], a
-	ld   a, [$CF64]
+	ld   a, [wExplodeOrgY]
 	ld   [wActSpawnY], a
-	call L001C8D
+	call ActS_SpawnLargeExpl
 L002896:;R
 	rst  $08 ; Wait Frame
 	xor  a
@@ -7283,9 +7909,9 @@ L002896:;R
 	pop  bc
 	dec  b
 	jr   nz, L002873
-	ld   a, [wLives]
+	ld   a, [wPlLives]
 	sub  $01
-	ld   [wLives], a
+	ld   [wPlLives], a
 	jr   c, L00292C
 	ld   a, [wLvlId]
 	add  a
@@ -7318,19 +7944,19 @@ L0028F3:;R
 	ld   a, [hl]
 	ld   [wLvlRoomId], a
 	ld   a, $01
-	ld   [$CF7F], a
-	call L002AC7
-	call L002ADE
+	ld   [wPlRespawn], a
+	call Module_Game_InitScrOff
+	call Module_Game_InitScrOn
 	xor  a
-	ld   [$CF7F], a
+	ld   [wPlRespawn], a
 	scf  
 	ret
 L002908:;R
 	ld   a, [hl]
 	ld   [wLvlRoomId], a
 	ld   a, $01
-	ld   [$CF7F], a
-	call L002AC7
+	ld   [wPlRespawn], a
+	call Module_Game_InitScrOff
 	ld   b, $10
 L002916:;R
 	push bc
@@ -7338,11 +7964,11 @@ L002916:;R
 	pop  bc
 	dec  b
 	jr   nz, L002916
-	call L002ADE
+	call Module_Game_InitScrOn
 	ld   a, $01
-	ld   [$CF3A], a
+	ld   [wNoScroll], a
 	xor  a
-	ld   [$CF7F], a
+	ld   [wPlRespawn], a
 	scf  
 	ret
 L00292C:;R
@@ -7361,7 +7987,7 @@ L002944:;R
 	ldh  a, [hJoyNewKeys]
 	and  $03
 	jr   z, L002944
-	ld   [$CF6E], a
+	ld   [wGameOverSel], a
 	xor  a
 	ret
 L002953: db $98
@@ -7444,15 +8070,15 @@ L00299F:;C
 	xor  a
 	ldh  [hJoyKeys], a
 	ldh  [hJoyNewKeys], a
-	ld   [$CF1D], a
-	ld   [$CF73], a
-	ld   hl, $CF70
+	ld   [wPlMode], a
+	ld   [wBossHealthBar], a
+	ld   hl, wStatusBarRedraw
 	set  2, [hl]
 	dec  a
-	ld   [$CF5D], a
-	ld   [$CF4A], a
-	ld   [$CF6B], a
-	ld   [$CF6A], a
+	ld   [wCF5D_Unk_ActTargetSlot], a
+	ld   [wCF4A_Unk_ActTargetSlot], a
+	ld   [wCF6B_Unk_ActCurSlotPtrCopy], a
+	ld   [wCF6A_Unk_ActTargetSlot], a
 	call L002A81
 	ld   a, $00
 	ldh  [hBGMSet], a
@@ -7464,11 +8090,11 @@ L0029C5:;R
 	jr   nz, L0029DE
 	ld   a, $06
 	ldh  [hSFXSet], a
-	ld   a, [$CF63]
+	ld   a, [wExplodeOrgX]
 	ld   [wActSpawnX], a
-	ld   a, [$CF64]
+	ld   a, [wExplodeOrgY]
 	ld   [wActSpawnY], a
-	call L001C8D
+	call ActS_SpawnLargeExpl
 L0029DE:;R
 	call L002A97
 	pop  bc
@@ -7492,21 +8118,21 @@ L0029FB:;R
 	jr   L0029EE
 L002A03:;R
 	ld   a, $02
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   a, $03
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	ld   a, $80
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	xor  a
 	ldh  [hJoyKeys], a
 	ldh  [hJoyNewKeys], a
 L002A17:;R
 	call L002A97
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	cp   $03
 	jr   nz, L002A17
 	ld   a, $0F
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   b, $B4
 L002A28:;R
 	ld   a, b
@@ -7525,7 +8151,7 @@ L002A28:;R
 	jr   z, L002A4D
 	jr   L002A50
 L002A44:;R
-	call L001CC2
+	call ActS_SpawnAbsorb
 	ld   a, $0F
 	ldh  [hSFXSet], a
 	jr   L002A50
@@ -7537,14 +8163,14 @@ L002A50:;R
 	dec  b
 	jr   nz, L002A28
 	ld   a, $03
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 L002A5C:;R
 	call L002A97
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	or   a
 	jr   nz, L002A5C
 	ld   a, $15
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   b, $78
 	jp   L002A90
 L002A6F:;C
@@ -7600,36 +8226,46 @@ L002A97:;C
 	pop  de
 	pop  hl
 	ret
-L002AC7:;C
+	
+; =============== Module_Game_InitScrOff ===============
+; Initializes the level data while the screen is turned off.
+Module_Game_InitScrOff:
 	ld   a, GFXSET_LEVEL
-	call GFXSet_Load
-	call L0007C6
-	call L0008B6
-	call L0008F4
-	call L000C08
-	call ActS_ClearAll
-	jp   L001C25
-L002ADE:;C
-	call StartLCDOperation
-	call L000C9C
-	ld   a, [wLvlId]
-	ld   hl, $3C38
+	call GFXSet_Load		; Turns the screen off
+	call Lvl_LoadData		; Load level data
+	call Lvl_InitSettings	; Load settings
+	call Lvl_DrawFullScreen ; Draw spawn screen
+	call Game_Init			; Initialize gameplay
+	call ActS_ClearAll		; Delete any remaining actors
+	jp   ActS_SpawnRoom		; and write new ones for the current room
+	
+; =============== Module_Game_InitScrOn ===============
+; Initializes the level data while the screen is turned on.
+; Almost always called immediately after Module_Game_InitScrOff.
+Module_Game_InitScrOn:
+	call StartLCDOperation	; Turns the screen on
+	call Game_RunInitEv		; Finish up events
+	
+	; Finally, request playing the level's BGM
+	ld   a, [wLvlId]		; hBGMSet = Lvl_BGMTbl[wLvlId]
+	ld   hl, Lvl_BGMTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ld   a, a
+	ld   a, a				; [POI] What?
 	ldh  [hBGMSet], a
 	ret
+	
 L002AF3:;C
-	ld   a, [$CF4C]
+	ld   a, [wGameTimeSub]
 	inc  a
-	ld   [$CF4C], a
+	ld   [wGameTimeSub], a
 	cp   $3C
 	jr   nz, L002B06
 	xor  a
-	ld   [$CF4C], a
-	ld   hl, $CF4D
+	ld   [wGameTimeSub], a
+	ld   hl, wGameTime
 	inc  [hl]
 L002B06:;R
 	xor  a
@@ -7638,11 +8274,11 @@ L002B06:;R
 	ld   hl, wTilemapEv
 	or   [hl]
 	ret  nz
-	ld   a, [$CFF3]
+	ld   a, [wPlHealthInc]
 	or   a
 	jr   z, L002B3B
 	dec  a
-	ld   [$CFF3], a
+	ld   [wPlHealthInc], a
 	ld   a, [wPlHealth]
 	ld   c, a
 	inc  a
@@ -7656,17 +8292,17 @@ L002B25:;R
 	and  $08
 	jr   z, L002B3B
 	ld   a, b
-	ld   [$CF71], a
-	ld   hl, $CF70
+	ld   [wPlHealthBar], a
+	ld   hl, wStatusBarRedraw
 	set  0, [hl]
 	ld   a, $07
 	ldh  [hSFXSet], a
 L002B3B:;R
-	ld   a, [$CFF2]
+	ld   a, [wWpnAmmoInc]
 	or   a
 	jr   z, L002B6A
 	dec  a
-	ld   [$CFF2], a
+	ld   [wWpnAmmoInc], a
 	ld   a, [wWpnSel]
 	or   a
 	ret  z
@@ -7683,35 +8319,35 @@ L002B55:;R
 	and  $08
 	ret  z
 	ld   a, b
-	ld   [$CF72], a
-	ld   hl, $CF70
+	ld   [wWpnAmmoBar], a
+	ld   hl, wStatusBarRedraw
 	set  1, [hl]
 	ld   a, $07
 	ldh  [hSFXSet], a
 L002B6A:;R
-	ld   a, [$CF70]
+	ld   a, [wStatusBarRedraw]
 	ld   b, a
-	ld   hl, $CF71
+	ld   hl, wPlHealthBar
 	ld   c, $00
 	ldi  a, [hl]
 	bit  0, b
-	call nz, L003A25
+	call nz, Game_AddBarDrawEv
 	inc  c
 	ldi  a, [hl]
 	bit  1, b
-	call nz, L003A25
+	call nz, Game_AddBarDrawEv
 	inc  c
 	ldi  a, [hl]
 	bit  2, b
-	call nz, L003A25
+	call nz, Game_AddBarDrawEv
 	ld   a, [hl]
 	bit  3, b
-	call nz, L003A9A
+	call nz, Game_AddLivesDrawEv
 	ld   a, b
 	or   a
 	ret  z
 	xor  a
-	ld   [$CF70], a
+	ld   [wStatusBarRedraw], a
 	inc  a
 	ld   [wTilemapBarEv], a
 	ret
@@ -8053,7 +8689,7 @@ StageSel_BossIntro:
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]					; Read OBJ GFX set ID
-	call ActS_ReqLoadGFXForRoom.loadBySetId
+	call ActS_ReqLoadRoomGFX.loadBySetId
 	
 	; Delete cursor sprites
 	call OAM_ClearAll
@@ -8087,9 +8723,9 @@ StageSel_BossIntro:
 	add  ACT_BOSS_START
 	ld   [wActSpawnId], a
 	
-	; ???
+	; Doesn't need to respawn and it's not gameplay anyway
 	xor  a
-	ld   [wActSpawnByte3], a		; wActSpawnByte3 = 0
+	ld   [wActSpawnLayoutPtr], a
 	
 	; Set the spawn position depending on the level id.
 	; HL = StageSel_BossActStartPosTbl[(wLvlId % 4) * 2]
@@ -8402,7 +9038,7 @@ Act_StageSelBoss_JumpUp:
 	ldh  [hActCur+iActTimer0C], a
 	
 	; Continue jump arc
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedUpY	; Reached the peak?
 	ret  c					; If not, return
 	
@@ -8413,8 +9049,8 @@ Act_StageSelBoss_JumpUp:
 ; Jump arc - downwards movement.
 Act_StageSelBoss_JumpDown:
 	; Continue jump arc
-	call ActS_ApplySpeedFwd
-	call ActS_ApplySpeedY
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedDownY
 	
 	; Wait for the timer to tick down before continuing
 	; iActTimer0C--
@@ -8642,7 +9278,7 @@ StageSel_MkEmptyPicTilemap:
 	inc  hl
 	ld   [hl], e		; byte1 - VRAM Address (low)
 	inc  hl
-	ld   a, BG_REPEAT|BG_MVDOWN|$04		; byte2 - Flags + Tile count
+	ld   a, BG_MVDOWN|BG_REPEAT|$04		; byte2 - Flags + Tile count
 	ldi  [hl], a
 	ld   a, $1F			; byte3 - Tile ID (gray blank tile)
 	ldi  [hl], a
@@ -8709,9 +9345,9 @@ L002FD3:;R
 	jp   WaitFrames
 L00300A:;C
 	ld   a, e
-	ld   [$CF7B], a
+	ld   [wGetWpnDestPtr_Low], a
 	ld   a, d
-	ld   [$CF7C], a
+	ld   [wGetWpnDestPtr_High], a
 L003012:;R
 	ldi  a, [hl]
 	ld   b, a
@@ -8721,13 +9357,13 @@ L003012:;R
 	jr   z, L003052
 	cp   $2F
 	jr   nz, L003033
-	ld   a, [$CF7B]
+	ld   a, [wGetWpnDestPtr_Low]
 	add  $20
-	ld   [$CF7B], a
+	ld   [wGetWpnDestPtr_Low], a
 	ld   e, a
-	ld   a, [$CF7C]
+	ld   a, [wGetWpnDestPtr_High]
 	adc  $00
-	ld   [$CF7C], a
+	ld   [wGetWpnDestPtr_High], a
 	ld   d, a
 	jr   L003012
 L003033:;R
@@ -9078,7 +9714,7 @@ L0031BE:;C
 	ldh  [hJoyKeys], a
 L0031C3:;R
 	call L002A97
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	or   a
 	jr   nz, L0031C3
 	ld   b, $3C
@@ -9102,7 +9738,7 @@ L0031D3:;R
 	ldh  [hJoyKeys], a
 L0031F1:;R
 	call L002A97
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	or   a
 	jr   nz, L0031F1
 	ld   a, $01
@@ -9114,7 +9750,7 @@ L003206:;R
 	push bc
 	xor  a
 	ldh  [hJoyKeys], a
-	ld   [$CF79], a
+	ld   [wUnk_CF79_FlipTimer], a
 	ld   b, $80
 L00320F:;R
 	call L00329F
@@ -9141,7 +9777,7 @@ L003231:;R
 	cp   $50
 	jr   c, L003231
 	ld   a, $0F
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   hl, $4F00
 	ld   de, $8500
 	ld   bc, $0B08
@@ -9150,7 +9786,7 @@ L003231:;R
 	ld   a, $7B
 	ld   [wActSpawnId], a
 	xor  a
-	ld   [wActSpawnByte3], a
+	ld   [wActSpawnLayoutPtr], a
 	ld   a, $88
 	ld   [wActSpawnY], a
 	ld   a, $50
@@ -9175,11 +9811,11 @@ L003231:;R
 	ld   a, $01
 	ld   [wTilemapEv], a
 	xor  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   b, $08
 	jp   L002A90
 L00329F:;C
-	ld   a, [$CF79]
+	ld   a, [wUnk_CF79_FlipTimer]
 	and  $07
 	jr   nz, L0032B2
 	ld   h, $CD
@@ -9192,7 +9828,7 @@ L00329F:;C
 	inc  l
 	inc  [hl]
 L0032B2:;R
-	ld   hl, $CF79
+	ld   hl, wUnk_CF79_FlipTimer
 	inc  [hl]
 	ret
 L0032B7: db $9B
@@ -9280,59 +9916,164 @@ L00332B: db $0D
 L00332C: db $0E
 L00332D: db $0F
 L00332E: db $2F
-L00332F:;JC
+
+; =============== Lvl_GetBlockId ===============
+; Gets the block ID the sensor coordinates are pointing to and performs basic collision checks.
+; The sensors are typically the player's coordinates offset by a particular value.
+;
+; IN
+; - wTargetRelX: X sensor position, relative to the screen's position
+; - wTargetRelY: Y sensor position, relative to the screen's position
+; OUT
+; - A: Block ID
+; - C Flag: If set, the block is not solid
+; - wPlYCeilMask: Ceiling collision mask
+Lvl_GetBlockId:
+
+	; Initialize the ceiling collision mask to the default value for fully solid blocks.
+	; This will be updated later on in case we're checking the lower half of a small platform.
+	; Note there's only one caller that actually uses this (the ceiling check while jumping).
 	ld   a, $F0
-	ld   [$CF1C], a
-	ldh  a, [hScrollXNybLow]
-	add  $18
+	ld   [wPlYCeilMask], a
+	
+	
+	;
+	; Build the offset to the level layout.
+	;
+	; These are mainly generated by dividing the target position by the block width/height.
+	;
+	; Because actor positions directly map to raw sprite positions, they don't account
+	; for the hardware offset, which needs to get subtracted here.
+	;
+	
+
+	;##
+	;
+	; X COMPONENT
+	;
+	; C = wLvlColL - 2 + ((wTargetRelX + (hScrollX % 16) + 32 - OBJ_OFFSET_X) / 16)
+	;     Absolute        Relative        Scroll offset within block
+	;
+	; This is offsetted by 2 blocks in an attempt to do a crude offscreen check that
+	; matches how the one for actors works.
+	;
+	; In practice it doesn't seem to have any effect, as the calling code does a better job
+	; with doing proper off-screen checks.
+	;
+	
+	;
+	; Calculate the relative block count first
+	;
+	
+	; The horizontal position, unlike the vertical one, can scroll, so it doesn't necessarily start from the start of the block.
+	; Since our target positions are relative to the screen, the scroll offset within the leftmost column must be accounted for.
+	ldh  a, [hScrollXNybLow]	; C = (hScrollX & $0F) + $18
+	add  $20-OBJ_OFFSET_X		; Account for HW offset, and the +2 for the offscreen check
 	ld   c, a
-	ld   a, [$CF0D]
-	add  c
-	and  $F0
-	cp   $F0
-	jr   nc, L003369
-	swap a
-	and  $0F
+	
+	ld   a, [wTargetRelX]		; A = (wTargetRelX + C) & $F0
+	add  c						; Add that to the target
+	
+	; At face value we're considering range $F0-$FF as off-screen.
+	; Due to the offset of 2 blocks, it's actually checking range $D0-$DF, which is the exact same offscreen range for actors.
+	and  $F0					
+	cp   $F0					; A >= $F0?
+	jr   nc, .solid				; if so, jump
+	
+	swap a						; Divide by block width to get the count
+	and  $0F					; (Not necessary, already did "and $F0" before the swap)
 	ld   b, a
-	ld   a, [wLvlColL]
-	sub  $02
-	add  b
-	ld   c, a
-	ld   a, [wPl_Unk_Alt_Y]
-	sub  $10
-	cp   $80
-	jr   nc, L00336C
-	swap a
+	
+	;
+	; Then calculate the absolute block count.
+	;
+	ld   a, [wLvlColL]			; Get absolute block count for the leftmost column
+	sub  $02					; -2 to counterbalance the +2 from the relative block count
+	add  b						; Add the relative one, fixed for partial scroll
+	ld   c, a					; To C
+	
+	;##
+	
+	;
+	; Y COMPONENT (high byte)
+	;
+	; B = (wTargetRelY - OBJ_OFFSET_Y) / BLOCK_H
+	;
+	; This is simpler since levels are only 8 blocks tall and there's no way to scroll the screen vertically 
+	;
+	
+	ld   a, [wTargetRelY]		; A = wTargetRelY - $10
+	sub  OBJ_OFFSET_Y
+	; Also performs its own off-screen check, which is more useful.
+	; In practice, anything below or above the level is treated as empty.
+	cp   $80					; A >= $80?
+	jr   nc, .empty				; If so, jump
+	
+	swap a						; Divide by block height to get the count
 	and  $0F
-	ld   b, a
-	ld   hl, $C000
+	ld   b, a					; Now BC has the full wLvlLayout offset
+	
+	;##
+	
+	; Read the block off the level layout
+	ld   hl, wLvlLayout
 	add  hl, bc
 	ld   a, [hl]
-	cp   $3C
-	jr   nc, L00336F
-	cp   $22
+	
+	;
+	; BLOCK ID CHECK
+	;
+	; Determine if the block is solid and store it to the C flag.
+	; There's not much to it, all blocks before $22 are empty, the rest are solid.
+	;
+	; Typically the caller performs more exhaustive block ID checks as needed (ie: for water blocks, ladders).
+	; The only special blocks we do check for are the half-solid platforms (see below).
+	;
+	;
+
+	cp   BLOCKID_HALF_START		; A >= $3C?
+	jr   nc, .chkHalfSolid		; If so, it's an half-solid platform
+								; Otherwise, it's fully solid or empty
+.std:
+	cp   BLOCKID_SOLID_START	; Set < result to C flag
 	ret
-L003369:;R
-	ld   a, $22
+	
+.solid:
+	ld   a, BLOCKID_SOLID_START	; A = Block ID
+	ret							; C Flag = Always clear when we get here
+	
+.empty:
+	xor  a ;BLOCKID_EMPTY_START	; A = Block ID
+	scf							; C Flag = Always set
 	ret
-L00336C:;R
-	xor  a
-	scf  
+	
+.chkHalfSolid:
+	;
+	; For half-solid blocks, the upper half is solid, while the bottom half is empty.
+	;
+	; Given the target Y position is always relative to the top of the screen,
+	; the Y position within a block is simply wTargetRelY % 16.
+	; If that is >= 8, we're pointing to the empty bottom half, otherwise it's the solid top half.
+	;
+	ld   a, [wTargetRelY]		; Get Y position on screen
+	and  $0F					; Get Y position within block
+	cp   $08					; Pointing to the lower half?
+	jr   nc, .halfEmpty			; If so, jump (empty)
+	
+.halfSolid:
+	ld   a, $F8					; Otherwise, use half-height solid collision.
+	ld   [wPlYCeilMask], a		; This only affects the ceiling check while jumping.
+	ld   a, [hl]				; A = Block ID
+	cp   BLOCKID_SOLID_START	; C Flag = Always clear
 	ret
-L00336F:;R
-	ld   a, [wPl_Unk_Alt_Y]
-	and  $0F
-	cp   $08
-	jr   nc, L003381
-	ld   a, $F8
-	ld   [$CF1C], a
-	ld   a, [hl]
-	cp   $22
+	
+.halfEmpty:
+	ld   a, [hl]				; A = Block ID
+	scf  						; C Flag = Always set
 	ret
-L003381:;R
-	ld   a, [hl]
-	scf  
-	ret
+	
+; =============== Wpn_DoActColi ===============
+; Checks a shot for collision against all actors.
 L003384:;C
 	xor  a
 L003385:;R
@@ -9343,7 +10084,7 @@ L003385:;R
 	or   a
 	jr   z, L0033CF
 	and  $7F
-	ld   [$CF62], a
+	ld   [wTmpColiActId], a
 	ld   h, $CE
 	ld   l, e
 	ld   a, e
@@ -9417,7 +10158,7 @@ L0033F1:;R
 	ld   a, [wWpnSel]
 	cp   $0C
 	jr   nz, L003406
-	ld   a, [$CF6C]
+	ld   a, [wWpnSGRide]
 	or   a
 	jr   z, L00340A
 	ld   a, $0C
@@ -9428,7 +10169,7 @@ L00340A:;X
 	xor  a
 L00340B:;R
 	ld   e, a
-	ld   a, [$CF62]
+	ld   a, [wTmpColiActId]
 	ld   c, a
 	swap a
 	and  $0F
@@ -9447,14 +10188,14 @@ L00340B:;R
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   a, [hl]
-	ld   [$CFEE], a
+	ld   [wWpnActDmg], a
 	push af
 	ldh  a, [hRomBankLast]
 	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	pop  hl
-	ld   a, [$CFEE]
+	ld   a, [wWpnActDmg]
 	or   a
 	jp   z, L003508
 	ld   b, a
@@ -9462,20 +10203,20 @@ L00340B:;R
 	cp   $09
 	jr   nz, L003455
 	ld   a, $00
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, $02
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	ld   a, $02
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 L003455:;R
 	ld   a, [hl]
 	sub  b
 	jr   z, L00349F
 	jr   c, L00349F
 	ldi  [hl], a
-	ld   [$CF61], a
+	ld   [wBossHealth], a
 	push hl
-	ld   a, [$CFEF]
+	ld   a, [wWpnPierceLvl]
 	cp   $02
 	jr   nc, L00346A
 	xor  a
@@ -9488,10 +10229,10 @@ L00346A:;R
 	ld   [hl], $0C
 	ld   a, $03
 	ldh  [hSFXSet], a
-	ld   a, [$CF45]
+	ld   a, [wBossDmgEna]
 	or   a
 	ret  z
-	ld   a, [$CF62]
+	ld   a, [wTmpColiActId]
 	cp   $50
 	ret  c
 	cp   $54
@@ -9502,16 +10243,16 @@ L00346A:;R
 	ret  nc
 L00348E:;R
 	ld   [hl], $1E
-	ld   a, [$CF61]
+	ld   a, [wBossHealth]
 	add  a
 	add  a
 	add  a
-	ld   [$CF73], a
-	ld   hl, $CF70
+	ld   [wBossHealthBar], a
+	ld   hl, wStatusBarRedraw
 	set  2, [hl]
 	ret
 L00349F:;R
-	ld   a, [$CFEF]
+	ld   a, [wWpnPierceLvl]
 	cp   $01
 	jr   nc, L0034A9
 	xor  a
@@ -9535,10 +10276,10 @@ L0034A9:;R
 	inc  l
 	xor  a
 	ld   [hl], a
-	ld   a, [$CF45]
+	ld   a, [wBossDmgEna]
 	or   a
 	jp   z, L001E25
-	ld   a, [$CF62]
+	ld   a, [wTmpColiActId]
 	cp   $50
 	ret  c
 	cp   $54
@@ -9548,7 +10289,7 @@ L0034A9:;R
 	cp   $70
 	ret  nc
 L0034DE:;R
-	ld   a, [$CF60]
+	ld   a, [wLvlEnd]
 	cp   $01
 	jr   z, L0034FE
 	ld   h, $CD
@@ -9556,18 +10297,18 @@ L0034DE:;R
 	add  $05
 	ld   l, a
 	ld   a, [hl]
-	ld   [$CF63], a
+	ld   [wExplodeOrgX], a
 	inc  l
 	inc  l
 	ld   a, [hl]
 	sub  $0C
-	ld   [$CF64], a
+	ld   [wExplodeOrgY], a
 	ld   a, $02
-	ld   [$CF60], a
+	ld   [wLvlEnd], a
 L0034FE:;X
 	xor  a
-	ld   [$CF73], a
-	ld   hl, $CF70
+	ld   [wBossHealthBar], a
+	ld   hl, wStatusBarRedraw
 	set  2, [hl]
 	ret
 L003508:;J
@@ -9587,46 +10328,48 @@ L003514:;R
 	ldh  [hActCur+iActRtnId], a
 	ret
 L003522:;R
-	ld   a, [$CF6C]
+	ld   a, [wWpnSGRide]
 	or   a
 	jr   z, L00353C
 	ld   a, $00
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	ld   a, $02
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	ld   a, $02
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   a, $05
 	ldh  [hSFXSet], a
 	ret
 L00353C:;R
 	xor  a
 	ldh  [hActCur+iActRtnId], a
-	ldh  a, [hActCur+iAct_Unk_UnkTblPtr]
+	ldh  a, [hActCur+iActLayoutPtr]
 	or   $80
-	ldh  [hActCur+iAct_Unk_UnkTblPtr], a
+	ldh  [hActCur+iActLayoutPtr], a
 	ld   a, $05
 	ldh  [hSFXSet], a
 	ret
+; =============== Pl_DoActColi ===============
+; Checks for player collision against all actors.
 L00354A:;C
-	ld   a, [$CF6B]
-	ld   [$CF24], a
+	ld   a, [wCF6B_Unk_ActCurSlotPtrCopy]
+	ld   [wPl_Unk_ActCurSlotPtrCopyOfCopy], a
 	ld   a, $FF
-	ld   [$CF5D], a
-	ld   [$CF4A], a
-	ld   [$CF6B], a
-	ld   [$CF6A], a
+	ld   [wCF5D_Unk_ActTargetSlot], a
+	ld   [wCF4A_Unk_ActTargetSlot], a
+	ld   [wCF6B_Unk_ActCurSlotPtrCopy], a
+	ld   [wCF6A_Unk_ActTargetSlot], a
 	ld   b, $0C
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	cp   $10
 	jr   nz, L003569
 	srl  b
 L003569:;R
 	ld   a, b
-	ld   [$CF7D], a
+	ld   [wPlColiBoxV], a
 	ld   a, [wPlRelY]
 	sub  b
-	ld   [$CF7E], a
+	ld   [wPlCenterY], a
 	xor  a
 L003575:;R
 	ld   d, $CD
@@ -9656,9 +10399,9 @@ L003592:;R
 	jr   c, L0035B3
 	inc  e
 	inc  e
-	ld   a, [$CF7D]
+	ld   a, [wPlColiBoxV]
 	ld   c, a
-	ld   a, [$CF7E]
+	ld   a, [wPlCenterY]
 	ld   b, a
 	ld   a, [de]
 	sub  [hl]
@@ -9690,24 +10433,24 @@ L0035C6:;R
 	ldh  a, [hInvulnCheat]
 	or   a
 	ret  nz
-	ld   a, [$CF43]
+	ld   a, [wPlInvulnTimer]
 	or   a
 	ret  nz
 	ld   a, [wActCurSlotPtr]
-	ld   [$CF5D], a
+	ld   [wCF5D_Unk_ActTargetSlot], a
 	ld   a, $13
 	ldh  [hSFXSet], a
 	ld   a, $20
-	ld   [$CF42], a
+	ld   [wPlHurtTimer], a
 	ld   a, $3C
-	ld   [$CF43], a
-	ld   a, [$CF1D]
+	ld   [wPlInvulnTimer], a
+	ld   a, [wPlMode]
 	cp   $10
 	jr   z, L0035F2
 	cp   $11
 	jr   z, L0035F2
 	xor  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 L0035F2:;R
 	ld   h, $CE
 	ld   a, [wActCurSlotPtr]
@@ -9720,19 +10463,19 @@ L0035F2:;R
 L003601:;R
 	push af
 	ld   [wPlHealth], a
-	ld   [$CF71], a
-	ld   hl, $CF70
+	ld   [wPlHealthBar], a
+	ld   hl, wStatusBarRedraw
 	set  0, [hl]
 	pop  af
 	or   a
 	ret  nz
 	ld   a, [wPlRelX]
-	ld   [$CF63], a
+	ld   [wExplodeOrgX], a
 	ld   a, [wPlRelY]
 	sub  $0C
-	ld   [$CF64], a
+	ld   [wExplodeOrgY], a
 	ld   a, $01
-	ld   [$CF60], a
+	ld   [wLvlEnd], a
 	ret
 L003624:;R
 	cp   $04
@@ -9740,14 +10483,14 @@ L003624:;R
 	ldd  a, [hl]
 	or   a
 	jr   nz, L003636
-	ld   a, [$CF24]
+	ld   a, [wPl_Unk_ActCurSlotPtrCopyOfCopy]
 	cp   $FF
 	ret  nz
 	jp   L003689
 L003636:;R
 	cp   $01
 	jr   nz, L003656
-	ld   a, [$CF24]
+	ld   a, [wPl_Unk_ActCurSlotPtrCopyOfCopy]
 	cp   $FF
 	ret  nz
 	call L003689
@@ -9761,7 +10504,7 @@ L003636:;R
 	jp   L0018FE
 L003656:;R
 	ld   b, a
-	ld   a, [$CFF1]
+	ld   a, [wWpnItemWarp]
 	cp   $FF
 	ret  nz
 	ld   a, b
@@ -9770,7 +10513,7 @@ L003656:;R
 	call L003689
 	jr   nc, L00367C
 	ld   a, [wActCurSlotPtr]
-	ld   [$CF6B], a
+	ld   [wCF6B_Unk_ActCurSlotPtrCopy], a
 	ld   hl, wPlRelY
 	ldh  a, [hJoyKeys]
 	rla  
@@ -9782,52 +10525,52 @@ L003678:;R
 	jr   nc, L00367C
 	dec  [hl]
 L00367C:;R
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	cp   $03
 	ret  nz
 	ld   a, [wActCurSlotPtr]
-	ld   [$CF6A], a
+	ld   [wCF6A_Unk_ActTargetSlot], a
 	ret
 L003689:;JC
 	dec  l
 	ld   a, [hl]
-	ld   [wActCurSprFlagsRes], a
+	ld   [wTmpCF52], a
 	ld   b, a
 	ld   a, [de]
-	ld   [$CF53], a
+	ld   [wTmpCF53], a
 	sub  b
 	ld   b, a
 	ld   a, [wPlRelY]
 	cp   b
 	ret  nc
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	cp   $04
 	ret  nc
 	ld   a, [wPlRelY]
 	inc  a
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
 	sub  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $21
 	ret  nc
 	ld   a, [wPlRelX]
 	add  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $21
 	ret  nc
-	ld   a, [wActCurSprFlagsRes]
+	ld   a, [wTmpCF52]
 	ld   b, a
-	ld   a, [$CF53]
+	ld   a, [wTmpCF53]
 	sub  b
 	sub  b
 	inc  a
 	inc  a
 	ld   [wPlRelY], a
 	ld   a, [wActCurSlotPtr]
-	ld   [$CF4A], a
+	ld   [wCF4A_Unk_ActTargetSlot], a
 	scf  
 	ret
 L0036D9:;J
@@ -9876,36 +10619,36 @@ L00370F: db $37
 L003710: db $5B;X
 L003711: db $37;X
 L003712:;I
-	ld   a, [wLives]
+	ld   a, [wPlLives]
 	cp   $09
 	ret  nc
 	inc  a
-	ld   [wLives], a
-	ld   [$CF74], a
-	ld   hl, $CF70
+	ld   [wPlLives], a
+	ld   [wPlLivesView], a
+	ld   hl, wStatusBarRedraw
 	set  3, [hl]
 	ld   a, $09
 	ldh  [hSFXSet], a
 	ret
 L003729:;I
-	ld   a, [$CFF2]
+	ld   a, [wWpnAmmoInc]
 	add  $48
-	ld   [$CFF2], a
+	ld   [wWpnAmmoInc], a
 	ret
 L003732:;I
-	ld   a, [$CFF2]
+	ld   a, [wWpnAmmoInc]
 	add  $18
-	ld   [$CFF2], a
+	ld   [wWpnAmmoInc], a
 	ret
 L00373B:;I
-	ld   a, [$CFF3]
+	ld   a, [wPlHealthInc]
 	add  $48
-	ld   [$CFF3], a
+	ld   [wPlHealthInc], a
 	ret
 L003744:;I
-	ld   a, [$CFF3]
+	ld   a, [wPlHealthInc]
 	add  $18
-	ld   [$CFF3], a
+	ld   [wPlHealthInc], a
 	ret
 L00374D:;I
 	ld   a, [wETanks]
@@ -9995,10 +10738,10 @@ L0037D4:;R
 	rst  $10 ; Wait tilemap load
 	xor  a
 	ldh  [hWorkOAMPos], a
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	cp   $11
 	jr   z, L0037EA
-	ld   a, [$CF6C]
+	ld   a, [wWpnSGRide]
 	or   a
 	jr   nz, L0037EA
 	call L001AE9
@@ -10126,8 +10869,8 @@ L0038BA:;R
 L0038C2:;R
 	ld   [wPlHealth], a
 	ld   c, $00
-	call L003A25
-	rst  $18
+	call Game_AddBarDrawEv
+	rst  $18 ; Wait bar update
 	ld   de, wScrEvRows
 	call L003AD9
 	rst  $10 ; Wait tilemap load
@@ -10162,7 +10905,7 @@ L0038E0:;R
 	ld   [wWpnAmmoCur], a
 L00390B:;R
 	xor  a
-	ld   [wBarDrawQueued], a
+	ld   [wBarQueuePos], a
 	ld   a, [wWpnSel]
 	or   a
 	ld   a, [wWpnAmmoCur]
@@ -10170,9 +10913,9 @@ L00390B:;R
 	ld   a, $FF
 L00391A:;R
 	ld   c, $01
-	call L003A25
-	rst  $18
-	ld   hl, $CF70
+	call Game_AddBarDrawEv
+	rst  $18 ; Wait bar update
+	ld   hl, wStatusBarRedraw
 	res  1, [hl]
 	ld   a, [wWpnSel]
 	ld   b, a
@@ -10184,7 +10927,7 @@ L00391A:;R
 L003933:;R
 	ld   a, [wWpnSel]
 	ld   b, a
-	ld   a, [$CF6C]
+	ld   a, [wWpnSGRide]
 	add  b
 	ld   hl, $3992
 	ld   b, $00
@@ -10252,20 +10995,20 @@ L00399D: db $4E
 L00399E: db $4D
 L00399F: db $4C
 L0039A0:;C
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	cp   $11
 	jr   nz, L0039AB
 	xor  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 L0039AB:;R
 	xor  a
-	ld   [$CC60], a
-	ld   [$CC70], a
-	ld   [$CC80], a
-	ld   [$CC90], a
-	ld   [$CFE4], a
-	ld   [$CFEA], a
-	ld   [$CF6C], a
+	ld   [wShot0], a
+	ld   [wShot1], a
+	ld   [wShot2], a
+	ld   [wShot3], a
+	ld   [wWpnNePos], a
+	ld   [wWpnTpActive], a
+	ld   [wWpnSGRide], a
 	ret
 L0039C2:;C
 	ld   hl, wAct
@@ -10275,7 +11018,7 @@ L0039C5:;R
 	jr   c, L0039E7
 	cp   $E4
 	jr   nc, L0039E7
-	ld   a, [$CFF1]
+	ld   a, [wWpnItemWarp]
 	cp   $06
 	jr   z, L0039ED
 	cp   $07
@@ -10286,7 +11029,7 @@ L0039C5:;R
 	xor  a
 	ld   [hl], a
 	ld   a, $06
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	scf  
 	ret
 L0039E7:;R
@@ -10310,7 +11053,7 @@ L0039EF:;C
 	ret
 L003A00:;C
 	push bc
-	ld   a, [$CFF0]
+	ld   a, [wWpnShotCost]
 	ld   b, a
 	ld   a, [wWpnAmmoCur]
 	cp   b
@@ -10319,157 +11062,273 @@ L003A00:;C
 L003A0B:;JC
 	push hl
 	push bc
-	ld   a, [$CFF0]
+	ld   a, [wWpnShotCost]
 	ld   b, a
 	ld   a, [wWpnAmmoCur]
 	sub  b
 	jr   c, L003A22
 	ld   [wWpnAmmoCur], a
-	ld   [$CF72], a
-	ld   hl, $CF70
+	ld   [wWpnAmmoBar], a
+	ld   hl, wStatusBarRedraw
 	set  1, [hl]
 L003A22:;R
 	pop  bc
 	pop  hl
 	ret
-L003A25:;C
+	
+; =============== Game_AddBarDrawEv ===============
+; Appends an health/ammo bar redraw request to the buffer.
+;
+; Specifically, it generates two TilemapDef for redrawing the specified large gauge,
+; one for each row, and writes them into the buffer from the previous location.
+; This does *NOT* trigger the request, that has to be done manually.
+;
+; IN
+; - A: Value (<= BAR_MAX)
+; - C: Gauge ID (BARID_*), determines the position
+Game_AddBarDrawEv:
 	push af
 	push bc
 	push de
 	push hl
-	ld   [wWpnAmmoCurCopy], a
-	ld   b, $00
-	sla  c
-	ld   hl, $3A94
-	add  hl, bc
-	ld   e, l
-	ld   d, h
-	ld   h, $DE
-	ld   a, [wBarDrawQueued]
-	ld   l, a
-	ld   b, $64
-	call L003A52
-	inc  de
-	ld   b, $68
-	call L003A52
-	xor  a
-	ld   [hl], a
-	ld   a, l
-	ld   [wBarDrawQueued], a
+		; Save the value to draw for later
+		DEF tBarValue = wTmpCFE2
+		ld   [tBarValue], a		
+		
+		; Seek DE to the pair of tilemap pointers, indexed by gauge ID.
+		; DE = &Game_BarPosTbl[C * 2]
+		ld   b, $00					; BC = C * 2
+		sla  c						; 2 byte entries
+		ld   hl, Game_BarPosTbl		
+		add  hl, bc					; Seek to the entry
+		ld   e, l					; Move ptr to DE
+		ld   d, h
+		
+		; Seek HL to the current write buffer position.
+		; HL = wTilemapBarBuf + wBarQueuePos
+		ld   h, HIGH(wTilemapBarBuf)
+		ld   a, [wBarQueuePos]
+		ld   l, a
+		
+		; Write the top half of the gauge.
+		; This uses tile IDs $65-$68 to represent 1 to 4 vertical bars respectively.
+		; The base tile ID is relative to 0 through, so we pass in $64.
+		ld   b, $64
+		call Game_MkBarRowDrawEv
+		
+		; Write the bottom half.
+		inc  de			; Use the next dest pointer
+		ld   b, $68		; Tile IDs $69-$6C)
+		call Game_MkBarRowDrawEv
+		
+		;
+		; Write the event terminator, and set queue position at the current location.
+		;
+		; If another request is sent before the current one can be processed, it allows 
+		; them to be concatenated to the previous ones, as the terminator will be overwritten.
+		;
+		xor  a					; Write terminator
+		ld   [hl], a
+		ld   a, l				; Save current pos
+		ld   [wBarQueuePos], a
 	pop  hl
 	pop  de
 	pop  bc
 	pop  af
 	ret
-L003A52:;C
+	
+; =============== Game_MkBarRowDrawEv ===============
+; Writes a tilemap event for drawing a single row of a large gauge.
+; IN
+; - DE: Ptr to destination tilemap ptr
+; - A: Bar value
+; - B: Base tile ID
+Game_MkBarRowDrawEv:
 	push de
-	ld   a, $9C
-	ldi  [hl], a
-	ld   a, [de]
-	ldi  [hl], a
-	ld   a, $05
-	ldi  [hl], a
-	ld   c, $05
-	ld   a, [wWpnAmmoCurCopy]
-	cp   $99
-	jr   c, L003A68
-	ld   a, $5D
-	jr   L003A8E
-L003A68:;R
-	add  $07
-	srl  a
-	srl  a
-	srl  a
-	push af
-	srl  a
-	srl  a
-	jr   z, L003A80
-	ld   d, a
-	ld   a, b
-	add  $04
-L003A7B:;R
-	ldi  [hl], a
-	dec  c
-	dec  d
-	jr   nz, L003A7B
-L003A80:;R
-	pop  af
-	and  $03
-	jr   z, L003A88
-	add  b
-	ldi  [hl], a
-	dec  c
-L003A88:;R
-	ld   a, c
-	or   a
-	jr   z, L003A92
-	ld   a, $73
-L003A8E:;R
-	ldi  [hl], a
-	dec  c
-	jr   nz, L003A8E
-L003A92:;R
+	
+		;
+		; Write the TilemapDef header.
+		;
+
+		; bytes0-1: Destination pointer
+		ld   a, HIGH(WINDOWMap_Begin) ; Hardcoded to draw on the WINDOW
+		ldi  [hl], a
+		ld   a, [de]		; Read low byte of pointer from table
+		ldi  [hl], a
+		
+		; byte2: Writing mode + Number of bytes to write
+		ld   a, $05			; Gauge width of 5 tiles, all unique
+		ldi  [hl], a
+		
+		; byte3+: payload
+		
+		;
+		; The main event.
+		; Convert the numeric value we want to represent to the 5 tiles IDs.
+		;
+		; Each tile can represent 4 bars at most, with each bar representing 8 units of health/ammo.
+		; With BAR_MAX being $98, that means at most $98/$08 = 19 bars will be drawn, which
+		; fits into the limit of 5 tiles we have.
+		;
+		; As all gauges grow left to right, they are divided in three parts, in this order:
+		; - Fully filled (uses tile B+4)
+		; - Partially filled (may use any between B+1 - B+3)
+		; - Empty (uses tile $73)
+		;
+		
+		;
+		; There's also a special case: 
+		; If the bar value is set to anything over BAR_MAX, the gauge is wiped out with white tiles.
+		; Handled by skipping directly to the third part with altered parameters.
+		;
+		ld   c, $05			; C = Tiles left. This will be decremented for any tile we draw at any point.
+		ld   a, [tBarValue]
+		cp   BAR_MAX+1		; tBarValue <= $98?
+		jr   c, .calcBars	; If so, jump (draw normally)
+		ld   a, $5D			; Otherwise, use the tile ID of a blank tile
+		jr   .loopE			; and overwrite all 5 with it
+		
+	.calcBars:
+		
+		; As each bar represents 8 units, divide the value 8 before doing anything else.
+		; A = CEIL(A/8)
+		add  $07			; This is how the CEIL is accomplished.
+							; It guarantees that anything in the remainder ("partial bars") shows up as one extra bar.
+		srl  a				; >> 1 (/2)
+		srl  a				; >> 1 (/4)
+		srl  a				; >> 1 (/8)
+		
+	.stFill:
+		;
+		; FULLY FILLED TILES
+		;
+		; Now we're working with individual bars.
+		; Each tile can represent 4 bars at most, so BarCount/4 will give the number of filled tiles.
+		;
+		push af ; Save bar count
+			srl  a			; >> 1 (/2)
+			srl  a			; >> 1 (/4)
+			jr   z, .stPart ; Are there less than 4 bars left? If so, skip ahead
+			
+		.drawFill:
+			ld   d, a		; D = Fill tiles left
+			ld   a, b		; A = Fill tile ID
+			add  $04		;     (+4 compared to the base)
+		.loopF:
+			ldi  [hl], a	; Write the tile
+			dec  c			; TilesLeft--
+			dec  d			; FillLeft--
+			jr   nz, .loopF
+			
+	.stPart:
+		;
+		; PARTIALLY FILLED TILE
+		;
+		; Contains the remainder of the above, in a single tile.
+		; If that is 0, we skip ahead as it's not supported here.
+		;
+		pop  af 			; Restore bar count
+		and  $03			; Get remainder
+		jr   z, .stEmpty	; Is it 0? If so, skip ahead
+		add  b				; Otherwise, draw add the base tile ID
+		ldi  [hl], a		; and draw the single partial tile
+		dec  c				; TilesLeft--
+		
+	.stEmpty:
+	
+		;
+		; EMPTY TILES
+		;
+		; Keep drawing black tiles until TilesLeft elapses.
+		;
+		ld   a, c
+		or   a				; Is it already 0?
+		jr   z, .end		; If so, we're done
+		ld   a, $73			; A = Black tile ID
+	.loopE:
+		ldi  [hl], a		; Draw to tilemap
+		dec  c				; Are we done?
+		jr   nz, .loopE		; If not, loop
+.end:
 	pop  de
 	ret
-L003A94: db $07
-L003A95: db $27
-L003A96: db $00
-L003A97: db $20
-L003A98: db $0F
-L003A99: db $2F
-L003A9A:;C
+	
+; =============== Game_BarPosTbl ===============
+; Starting locations on the tilemap of the large gauges, as low bytes of the WINDOW pointers.
+Game_BarPosTbl: 
+	;  TOP  BOTTOM
+	db LOW($9C07), LOW($9C27) ; BARID_PL
+	db LOW($9C00), LOW($9C20) ; BARID_WPN
+	db LOW($9C0F), LOW($9C2F) ; BARID_BOSS
+
+; =============== Game_AddLivesDrawEv ===============
+; Appends a redraw request for the lives indicator to the buffer.
+; See also: Game_AddBarDrawEv
+; IN
+; - A: Number of lives (0-9)
+Game_AddLivesDrawEv:
 	push af
 	push de
 	push hl
-	add  a
-	ld   d, $00
-	ld   e, a
-	ld   hl, $3AC5
-	add  hl, de
-	ld   e, l
-	ld   d, h
-	ld   h, $DE
-	ld   a, [wBarDrawQueued]
-	ld   l, a
-	ld   a, $9C
-	ldi  [hl], a
-	ld   a, $0E
-	ldi  [hl], a
-	ld   a, $82
-	ldi  [hl], a
-	ld   a, [de]
-	ldi  [hl], a
-	inc  de
-	ld   a, [de]
-	ldi  [hl], a
-	xor  a
-	ld   [hl], a
-	ld   a, l
-	ld   [wBarDrawQueued], a
+	
+		; Index Game_LivesFontMaps by the number of lives passed in.
+		add  a						; 2 tiles in a 8x16 digit
+		ld   d, $00
+		ld   e, a
+		ld   hl, Game_LivesFontMaps
+		add  hl, de					; Game_LivesFontMaps[A*2]
+		ld   e, l					; DE will point to the entry
+		ld   d, h
+		
+		; Write from the previous buffer location
+		ld   h, HIGH(wTilemapBarBuf)
+		ld   a, [wBarQueuePos]
+		ld   l, a
+		
+		; bytes0-1: Destination pointer.
+		ld   a, HIGH($9C0E)
+		ldi  [hl], a
+		ld   a, LOW($9C0E)
+		ldi  [hl], a
+		
+		; byte2: Writing mode + Number of bytes to write
+		ld   a, BG_MVDOWN|$02		; 2 tiles, drawn vertically
+		ldi  [hl], a
+		
+		; Read out the two tile IDs from the table entry
+		ld   a, [de]				; byte0
+		ldi  [hl], a
+		inc  de
+		ld   a, [de]				; byte1
+		ldi  [hl], a
+		
+		; Write end terminator
+		xor  a
+		ld   [hl], a
+		
+		; Update buffer write location
+		ld   a, l
+		ld   [wBarQueuePos], a
 	pop  hl
 	pop  de
 	pop  af
 	ret
-L003AC5: db $5A
-L003AC6: db $5C
-L003AC7: db $51
-L003AC8: db $52
-L003AC9: db $53
-L003ACA: db $54
-L003ACB: db $53
-L003ACC: db $55
-L003ACD: db $56
-L003ACE: db $57
-L003ACF: db $58
-L003AD0: db $55
-L003AD1: db $58
-L003AD2: db $59
-L003AD3: db $5A
-L003AD4: db $52
-L003AD5: db $5B
-L003AD6: db $59
-L003AD7: db $5B
-L003AD8: db $55
+	
+; =============== Game_LivesFontMaps ===============
+; Tile IDs used by each 8x16 digit.
+Game_LivesFontMaps:
+	;  TOP  BOTTOM
+	db $5A, $5C ; 0
+	db $51, $52 ; 1
+	db $53, $54 ; 2
+	db $53, $55 ; 3
+	db $56, $57 ; 4
+	db $58, $55 ; 5
+	db $58, $59 ; 6
+	db $5A, $52 ; 7
+	db $5B, $59 ; 8
+	db $5B, $55 ; 9
+	
 L003AD9:;C
 	push bc
 	push hl
@@ -10750,7 +11609,7 @@ StageSel_LvlBitTbl:
 	db $00    ; LVL_CASTLE (unselectable)
 	db $00    ; LVL_STATION (unselectable)
 
-L003C24: db $E4
+Lvl_PalTbl: db $E4
 L003C25: db $E4
 L003C26: db $E4
 L003C27: db $E4
@@ -10770,16 +11629,21 @@ L003C34: db $E4
 L003C35: db $E4
 L003C36: db $E4
 L003C37: db $E4
-L003C38: db $0B
-L003C39: db $0D
-L003C3A: db $0E
-L003C3B: db $0F
-L003C3C: db $08
-L003C3D: db $0A
-L003C3E: db $0C
-L003C3F: db $09
-L003C40: db $11
-L003C41: db $01
+
+; =============== Lvl_BGMTbl ===============
+; Assigns music tracks to each level.
+Lvl_BGMTbl:
+	db BGM_HARDMAN    ; LVL_HARD   
+	db BGM_TOPMAN     ; LVL_TOP    
+	db BGM_MAGNETMAN  ; LVL_MAGNET 
+	db BGM_NEEDLEMAN  ; LVL_NEEDLE 
+	db BGM_CRASHMAN   ; LVL_CRASH  
+	db BGM_METALMAN   ; LVL_METAL  
+	db BGM_WOODMAN    ; LVL_WOOD   
+	db BGM_AIRMAN     ; LVL_AIR    
+	db BGM_WILYCASTLE ; LVL_CASTLE 
+	db BGM_TITLE      ; LVL_STATION
+	
 L003C42: db $01;X
 L003C43: db $0B;X
 L003C44: db $11;X
@@ -10820,7 +11684,7 @@ L003C66: db $01
 L003C67: db $0A
 L003C68: db $0A
 L003C69: db $16
-L003C6A: db $00
+Lvl_WaterFlagTbl: db $00
 L003C6B: db $01
 L003C6C: db $00
 L003C6D: db $00

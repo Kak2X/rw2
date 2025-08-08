@@ -1,15 +1,21 @@
 SECTION "Main Memory", WRAM0[$C000]
 wLvlLayout:            ds $800 ; $C000 ; Level layout
-wLvlUnkTblC800:        ds $100 ; $C800 ; Actor layout ??? and/or respawn table
-wLvlGFXReqTbl:         ds $100 ; $C900 ; GFX load request table for each column in the level
+wActLayoutFlags:       ds $100 ; $C800 ; Actor layout - Y position & respawn flag
+wActLayoutIds:         ds $100 ; $C900 ; Actor layout - IDs & GFX load request
 wLvlBlocks:            ds $100 ; $CA00 ; Table of tile IDs for every 16x16 block
-
-DEF wLvlLayout_End     EQU wLvlUnkTblC800
-
-SECTION "CC00", WRAM0[$CC00]
-ds $20
-wRoomTrsU:             ds $20 ; $CC20 ; Table of target room IDs when scrolling up, indexed by room ID.
-wRoomTrsD:             ds $20 ; $CC40 : See above, but when scrolling down.
+wLvlScrollLocks:       ds $100 ; $CB00 ; Scroll lock table (unpacked)
+DEF wLvlLayout_End        EQU wActLayoutFlags
+DEF wLvlLayoutDecode_End  EQU wLvlBlocks
+wLvlScrollLocksRaw:    ds $19 ; $CC00 ; Scroll lock table (raw, direct copy from ROM)
+ds $07
+wRoomTrsU:             ds $19 ; $CC20 ; Table of target room IDs when scrolling up, indexed by room ID.
+ds $07
+wRoomTrsD:             ds $19 ; $CC40 : See above, but when scrolling down.
+ds $07
+wShot0:                ds $10 ; $CC60 ; On-screen shots
+wShot1:                ds $10 ; $CC70 ;
+wShot2:                ds $10 ; $CC80 ;
+wShot3:                ds $10 ; $CC90 ;
 
 SECTION "CD00", WRAM0[$CD00]
 wAct:                  ds $100 ; $CD00 ; Currently loaded actors
@@ -35,51 +41,121 @@ wGfxEvSrcPtr_Low:      db ; $CF09 ; Source GFX ptr, low byte.
 wLvlId:                db ; $CF0A ; Level ID
 wLvlRoomId:            db ; $CF0B ; Room ID, only used in a few cases (ie: room transitions)
 wLvlColL:              db ; $CF0C ; Current column number in a level, ??? relative to the left edge of the screen.
-ds 1
-wPl_Unk_Alt_Y:         db ; $CF0E ; ??? Target pos?
+wTargetRelX:           db ; $CF0D ; Temporary relative X position, for targets
+wTargetRelY:           db ; $CF0E ; Temporary relative Y position, for targets
 wPl_Unk_Alt_X:         db ; $CF0F ; ??? Target pos?
 wLvl_Unk_CurCol:       db ; $CF10 ; ??? Current column number the player is on
-SECTION "CF12", WRAM0[$CF12]
+wPlSprMapId:           db ; $CF11 ; Player sprite mapping ID
 wPlDirH:               db ; $CF12 ; Direction the player faces (0: left, 1: right)
-ds 2
+wPlWalkAnimMode:       db ; $CF13 ; Timer capped to 7 which determines the animation type for the walk cycle (ie: inching vs walking)
+wPlAnimTimer:          db ; $CF14 ; Player animation timer
 wPlRelX:               db ; $CF15 ; Player X position, relative to the screen
 wPlRelY:               db ; $CF16 ; Player Y position, relative to the screen
-
-SECTION "CF20", WRAM0[$CF20]
+wPl_Unk_RelY_Copy:     db ; $CF17 ; ??? Copy of the above
+wPlSpdXSub:            db ; $CF18 ; Player horizontal speed (subpixels)
+wPlSpdX:               db ; $CF19 ; Player horizontal speed
+wPlSpdYSub:            db ; $CF1A ; Player vertical speed (subpixels)
+wPlSpdY:               db ; $CF1B ; Player vertical speed
+wPlYCeilMask:          db ; $CF1C ; Mask applied to the player's Y position when hitting the ceiling while jumping. Can be $F0 or $F8 depending on the type of ceiling hit.
+wPlMode:               db ; $CF1D ; Player action (PL_MODE_*)
+wPl_CF1E_DelayTimer:   db ; $CF1E ; ???
+wPlRelYSub:            db ; $CF1F ; Player Y subpixel position, used for a few actions such as climbing
 wScrollVDir:           db ; $CF20 ; Vertical scroll direction
-
-SECTION "CF2B", WRAM0[$CF2B]
+wPlBlinkChkDelay:      db ; $CF21 ; Delays the next dice roll to check if the player should blink
+wPlShootTimer:         db ; $CF22 ; How long the player sticks the arm out when shooting
+wPlShootType:          db ; $CF23 ; Determines the animation frame used when shooting (ie: normal, throw)
+wPl_Unk_ActCurSlotPtrCopyOfCopy: db ; $CF24 ; ??? Copy of wCF6B_Unk_ActCurSlotPtrCopy
+ds $01
+wColiGround:     db ; $CF26 ; ??? Delays falling when moving off a platform, by shifting
+wPlSlideDustTimer:     db ; $CF27 ; Timer for the dust particle after starting a slide.
+ds $02
+wPlSlideTimer:    db ; $CF2A ; Player slide timer, when it elapses the slide ends
 ; Parameters to ActS_Spawn for, well, spawning actors
-wActSpawnX:       db ; $CF2B ; X Position
-wActSpawnY:       db ; $CF2C ; Y Position
-wActSpawnId:      db ; $CF2D ; Actor ID
-wActSpawnByte3:   db ; $CF2E ; ???
-wActCurSlotPtr:   db ; $CF2F ; Low byte of the pointer to the currently processed actor slot. High byte will be from wAct or wActColi.
-wActOAMFull:      db ; $CF30 ; Marks if the OAM was filled
-
-SECTION "CF37", WRAM0[$CF37]
-wActNoProc:             db ; $CF37 ; ??? Disables actor processing
+wActSpawnX:             db ; $CF2B ; X Position
+wActSpawnY:             db ; $CF2C ; Y Position
+wActSpawnId:            db ; $CF2D ; Actor ID
+wActSpawnLayoutPtr:     db ; $CF2E ; Actor layout pointer
+wActCurSlotPtr:         db ; $CF2F ; Low byte of the pointer to the currently processed actor slot. High byte will be from wAct or wActColi.
+wActLastDrawSlotPtr:    db ; $CF30 ; Last actor slot that could be drawn the current frame (only if OAM is filled)
+wActScrollX:            db ; $CF31 ; Scroll offset for all actors, to account for the player scrolling the screen
+ds 3
+wPlSlideDustX:          db ; $CF35 ; Dust particle sprite - X position
+wPlSlideDustY:          db ; $CF36 ; Dust particle sprite - Y position
+wActStartEndSlotPtr:    db ; $CF37 ; First *AND* last actor slot processed. Stored in the same address since the first slot is at $CD00 and the end at $CE00 (same low byte)
 wActCurSprMapRelId:     db ; $CF38 ; Sprite mapping ID offset, relative to the one packed in iActSprMap
-SECTION "CF3D", WRAM0[$CF3D]
+wUnk_FrameStartTimer:   db ; $CF39 ; ??? Copy of hTimer taken at the start of the gameplay loop, lag-related likely
+wNoScroll:              db ; $CF3A ; Disables horizontal scrolling, used for boss rooms
+wPlColiBlockL:          db ; $CF3B ; Player collision, block ID on the left
+wPlColiBlockR:          db ; $CF3C ; Player collision, block ID on the right
 wShutterBGPtr_Low:      db ; $CF3D ; Target tilemap pointer when animating the shutter.
 wShutterBGPtr_High:     db ; $CF3E
-ds 2
+wShutterTimer:          db ; $CF3F ; Generic animation timer for the shutter
+wShutterRowsLeft:       db ; $CF40 ; Rows remaining to draw when animating the shutter
 wActGfxId:              db ; $CF41 ; Loaded art set for room actors
-
-SECTION "CF52", WRAM0[$CF52]
-wActCurSprFlagsRes:     db ; $CF52 ; Final OBJ flags for the current actor's sprite, calculated
-
-SECTION "CF56", WRAM0[$CF56]
+wPlHurtTimer:           db ; $CF42 ; Player is in the hurt/shock pose until it elapses
+wPlInvulnTimer:         db ; $CF43 ; Mercy invincibility timer
+wBossIntroHealth:       db ; $CF44 ; Boss health as displayed during the intro, when it fills up. Separate from the real health.
+wBossDmgEna:            db ; $CF45 ; Enables the checks associated with damaging a boss damage (updating health bar, triggering explosion, ...)
+wHardYShakeOrg:         db ; $CF46 ; Untouched copy of hScrollY taken before Hard Man's screen shake effect starts. Used as the origin and to restore hScrollY.
+wHardFistTargetX:       db ; $CF47 ; Target X location for Hard Man's fist attack
+wHardFistTargetY:       db ; $CF48 ; Target Y location for Hard Man's fist attack
+wShutterMode:           db ; $CF49 ; Boss shutter mode
+wCF4A_Unk_ActTargetSlot: db ; $CF4A ; ??? Target slot ID for something
+ds 1
+wGameTimeSub:           db ; $CF4C ; Gameplay timer (frames)
+wGameTime:              db ; $CF4D ; Gameplay timer (seconds)
+; Rectangle draw subroutine, used to draw large bosses
+w_Unk_RectCpDestPtrLow:  db ; $CF4E ; Rect copy - Tilemap destination pointer
+w_Unk_RectCpDestPtrHigh: db ; $CF4F ;
+w_Unk_RectCpColsLeft:   db ; $CF50 ; Rect copy - Columns left (inner loop) ??? Inner write loop
+w_Unk_RectCpRowsLeft:   db ; $CF51 ; Rect copy - Rows left (outer loop) ??? Outer write loop
+wTmpCF52:               db ; $CF52 ; Temporary location for position-related calculations (also final OBJ flags for the current actor's sprite, calculated)
+wTmpCF53:               db ; $CF53 ; Temporary location for position-related calculations
+wTmpColiBoxH:           db ; $CF54 ; Temporary location to store iActColiBoxH
+wTmpColiBoxV:           db ; $CF55 ; Temporary location to store iActColiBoxV
 wTmpTileIdUL:           db ; $CF56 ; Temporary location to store the four tile IDs from wLvlBlocks
 wTmpTileIdDL:           db ; $CF57
 wTmpTileIdUR:           db ; $CF58
 wTmpTileIdDR:           db ; $CF59
-
-SECTION "CF66", WRAM0[$CF66]
+w_CF5A_TblOffsetByAct:  db ; $CF5A ; ??? Used by one three actors using the same code to distinguish which one it is. Used to index a pointer table.
+w_CF5B_TblOffsetSec:    db ; $CF5B ; ??? Indexes the table the returned by the pointer above.
+w_CF5C_SpawnTimer:      db ; $CF5C ; ??? Used by an actor to times spawning sub-actors
+wCF5D_Unk_ActTargetSlot: db ; $CF5D ; ??? Target slot ID for something
+wWpnSGUseTimer:         db ; $CF5E ; Timer for Sakugarne's weapon usage
+wUnk_Unused_CF5F:       db ; $CF5F 
+wLvlEnd:                db ; $CF60 ; Marks how the level ended, either when someone has died (EXPL_*) or an instant stage warp if a stage ID is written to the upper nybble.
+wBossHealth:            db ; $CF61 ; Boss health (copied from the boss' iActColiHealth, to later update wBossHealthBar)
+wTmpColiActId:          db ; $CF62 ; Temporary location to store the actor ID during shot-actor collision checks.
+wExplodeOrgX:           db ; $CF63 ; X Origin of player/boss explosions
+wExplodeOrgY:           db ; $CF64 ; Y Origin of player/boss explosions
+wPlWarpSprMapRelId:     db ; $CF65 ; Relative sprite mapping ID used during the teleport animation
 wStageSelCursor:        db ; $CF66 ; Cursor location on the stage select
 wActCurSprFlags:        db ; $CF67 ; OBJ flags for the current actor
-
-SECTION "CF90", WRAM0[$CF90]
+wPlRmSpdYSub:           db ; $CF68 ; Rush Marine Y speed, calculated from wPlRmSpdU & wPlRmSpdD 
+wPlRmSpdY:              db ; $CF69 ; ( ??? for some reason, there's no X equivalent)
+wCF6A_Unk_ActTargetSlot:     db ; $CF6A ; ??? Target slot ID for something
+wCF6B_Unk_ActCurSlotPtrCopy: db ; $CF6B ; ??? Checked slot ID for something
+wWpnSGRide:             db ; $CF6C ; Sakugarne ride controls enabled
+wActUnk_CF6D_TimerInit: db ; $CF6D ; ??? An actor gets its timer initialized to this value
+wGameOverSel:           db ; $CF6E ; Selected action on the game over screen
+wLvlWater:              db ; $CF6F ; The level has water
+wStatusBarRedraw:       db ; $CF70 ; Marks which parts of the status bar should be redrawn
+wPlHealthBar:           db ; $CF71 ; Player health (as displayed in the bar, out of BAR_MAX)
+wWpnAmmoBar:            db ; $CF72 ; Weapon ammo (as displayed in the bar, out of BAR_MAX)
+wBossHealthBar:         db ; $CF73 ; Boss health (as displayed in the bar, out of BAR_MAX)
+wPlLivesView:           db ; $CF74 ; Lives remaining (status bar value)
+wPlRmSpdL:              db ; $CF75 ; Rush Marine speed/momentum - left 
+wPlRmSpdR:              db ; $CF76 ; Rush Marine speed/momentum - right 
+wPlRmSpdU:              db ; $CF77 ; Rush Marine speed/momentum - up 
+wPlRmSpdD:              db ; $CF78 ; Rush Marine speed/momentum - down 
+wUnk_CF79_FlipTimer:    db ; $CF79 ; Times the flip for ???
+wLvlWarpDest:           db ; $CF7A ; Selected teleport destination in Wily's Castle (same format as wLvlEnd)
+wGetWpnDestPtr_Low:     db ; $CF7B ; Tilemap pointer to the current row in the Get Weapon screen, keeps track of where to write text
+wGetWpnDestPtr_High:    db ; $CF7C ; ""
+wPlColiBoxV:            db ; $CF7D ; Player collision box, vertical radius
+wPlCenterY:             db ; $CF7E ; Vertical center of the player's collision box. (the "logical" origin)
+wPlRespawn:             db ; $CF7F ; If set, the level is being reloaded after the player has died.
+ds $10
 wStageSelStarfieldPos:  ds $30 ; $CF90 ; Table of coordinates for each star
 wPassSelTbl:            ds $10 ; $CFC0 ; Dots placed on the password screen ($00 or $FF)
 wPlHealth:              db ; $CFD0 ; Player's health
@@ -99,27 +175,35 @@ wWpnAmmoMG:             db ; $CFDB ; Magnet Missile
 wWpnAmmoSG:             db ; $CFDC ; Sakugarne
 DEF wWpnAmmo_Start EQU wWpnAmmoRC
 DEF wWpnAmmo_End   EQU wWpnAmmoSG + 1
-wWpnUnlock1:            db ; $CFDD ; Unlocked weapons / beaten stages (bitmask)
-wWpnUnlock0:            db ; $CFDE ;
+wWpnUnlock1:            db ; $CFDD ; Automatic weapon unlocks
+wWpnUnlock0:            db ; $CFDE ; Unlocked weapons / beaten stages (bitmask)
 wWpnSel:                db ; $CFDF ; Currently selected weapon
-
-
-SECTION "CFE1", WRAM0[$CFE0]
 wWpnAmmoCur:            db ; $CFE0 ; Active weapon ammo
-wBarDrawQueued:         db ; $CFE1 ; ??? Signals if a life/weapon bar has redraw queued up, important since only one can be update perr frame.
-UNION
-wWpnAmmoCurCopy:        db ; $CFE2 ; ???
-NEXTU
-wPassWpnError:          db ; $CFE2 ; Marks if there was an error while decoding unlocked weapons
-ENDU
-
-SECTION "CFE8", WRAM0[$CFE8]
-wLives:                 db ; $CFE8 ; Number of lives remaining
+wBarQueuePos:           db ; $CFE1 ; Index to current wTilemapBarBuf write position
+wTmpCFE2:               db ; $CFE2 ; Temporary location (copy of wWpnAmmoCur, password error marker) 
+wPlIdleDelay:           db ; $CFE3 ; If set, the player returns to the idle state when it elapses. Used by Hard Knuckle
+wWpnNePos:              db ; $CFE4 ; Timer used to alternate the vertical position of Needle Cannon shots
+wWpnWdUseAmmoOnThrow:   db ; $CFE5 ; Makes the Wood Shield use up ammo when fired. Not sure why it's a flag.
+wTmpCFE6:               db ; $CFE6 ; Temporary storage
+wTmpCFE7:               db ; $CFE7 ; Temporary storage
+wPlLives:               db ; $CFE8 ; Number of lives remaining
 wETanks:                db ; $CFE9 ; Number of E Tanks
-
-SECTION "CFF4", WRAM0[$CFF4]
+wWpnTpActive:           db ; $CFEA ; The player is spinning in the air, actively using Top Spin
+wWpn_Unused_ShotType:   db ; $CFEB ; ??? Identifies the current weapon's shot type, but is only written to
+wWpnColiH:              db ; $CFEC ; Weapon collision box - horizontal radius
+wWpnColiV:              db ; $CFED ; Weapon collision box - vertical radius
+wWpnActDmg:             db ; $CFEE ; Damage the current weapon dealt to the actor
+wWpnPierceLvl:          db ; $CFEF ; "Piercing level" of the current weapon (WPNPIERCE_*)
+wWpnShotCost:           db ; $CFF0 ; Ammo cost of the currently fired shot
+wWpnItemWarp:           db ; $CFF1 ; Teleport animation mode for the Rush/Sakugarne
+wWpnAmmoInc:            db ; $CFF2 ; Slowly increments the weapon ammo until it elapses. (weapon energy effect)
+wPlHealthInc:           db ; $CFF3 ; Slowly increments the player's health until it elapses. (life energy effect)
 wPassCursorX:           db ; $CFF4 ; Password cursor - X position
 wPassCursorY:           db ; $CFF5 ; Password cursor - Y position
+
+SECTION "DC00", WRAM0[$DC00]
+wActDespawnTbl:         ds $100 ; $DC00 ; Backup "nospawn" table for each of the wActLayoutFlags entries
+DEF wActDespawnTbl_End EQU wActDespawnTbl + $100
 
 SECTION "DD00", WRAM0[$DD00]
 ; Multipurpose scratch buffer for screen transfers
@@ -128,7 +212,7 @@ UNION
 wScrEvRows:            ds $40 ; $DD00 ; Tile IDs when vertical scrolling
 NEXTU
 wTilemapBuf:           ds $100 ; $DD00 ; TilemapDef tilemap buffer (Generic)
-wTilemapBarBuf:        ds $100 ; $DE00 ; TilemapDef tilemap buffer (Life/Weapon bars)
+wTilemapBarBuf:        ds $100 ; $DE00 ; TilemapDef tilemap buffer (Status bar)
 ENDU
 wWorkOAM:              ds OAM_SIZE ; $DF00 ; OAM Mirror
 wStack:                ds $60  ; $DFA0
@@ -177,6 +261,8 @@ hScrEvOffH:              db ; $FFB2 ; Target horizontal offset in grid
 hScrEvOffV:              db ; $FFB3 ; Target vertical offset in grid
 hScrEvVDestPtr_Low:      db ; $FFB4
 hScrEvVDestPtr_High:     db ; $FFB5
+hBGPAnim0:               db ; $FFB6 ; BG palette animation, 1st palette
+hBGPAnim1:               db ; $FFB7 ; BG palette animation, 2nd palette
 
 SECTION "FFF0", HRAM[$FFF0]
 ds 5
@@ -206,8 +292,8 @@ DEF iTilemapDefPayload  EQU $03
 ; wAct
 DEF iActId            EQU $00 ; Actor ID. Must be a multiple of two. If zero, the slot is free.
 DEF iActRtnId         EQU $01 ; Routine ID, actor-specific
-DEF iActSprMap        EQU $02 ; Sprite mapping ID + direction flags
-DEF iAct_Unk_UnkTblPtr            EQU $03 ; ???
+DEF iActSprMap        EQU $02 ; Sprite mapping ID + direction flags + animation timer
+DEF iActLayoutPtr     EQU $03 ; Actor layout pointer
 DEF iActXSub          EQU $04 ; X subpixel position
 DEF iActX             EQU $05 ; X position
 DEF iActYSub          EQU $06 ; Y subpixel position
@@ -216,7 +302,7 @@ DEF iActSpdXSub       EQU $08 ; Horizontal speed (subpixels)
 DEF iActSpdX          EQU $09 ; Horizontal speed
 DEF iActSpdYSub       EQU $0A ; Vertical speed (subpixels)
 DEF iActSpdY          EQU $0B ; Vertical speed
-DEF iActTimer0C            EQU $0C ; Actor-specific
+DEF iActTimer0C       EQU $0C ; Actor-specific
 DEF iAct0D            EQU $0D ; Actor-specific
 DEF iAct0E            EQU $0E ; Actor-specific
 DEF iAct0F            EQU $0F ; Actor-specific
@@ -230,10 +316,15 @@ DEF iBossIntroSprMap0 EQU iAct0D
 DEF iBossIntroSprMap1 EQU iAct0E
 DEF iBossIntroFrameLen EQU iAct0F
 
+; See ActS_InitCirclePath
+DEF iArcIdDir = iAct0D
+DEF iArcIdX = iAct0E
+DEF iArcIdY = iAct0F
+
 ; wActColi
-DEF iActColiBoxH EQU $00 ; Collision box width
-DEF iActColiBoxV EQU $01 ; Collision box height
-DEF iActColiType EQU $02 ; Collision type
+DEF iActColiBoxH EQU $00 ; Collision box, horizontal radius
+DEF iActColiBoxV EQU $01 ; Collision box, vertical radius (still half width, but the origin is at the bottom of the sprite)
+DEF iActColiType EQU $02 ; Collision type (ACTCOLI_*)
 DEF iActColiDamage EQU $03 ; Damage dealt
 DEF iActColiHealth EQU $04 ; Health (if <= $10, the actor is defeated)
 DEF iActColiInvulnTimer EQU $05 ; Invulnerability time
@@ -248,3 +339,7 @@ DEF iActColiD EQU $0D
 DEF iActColiE EQU $0E
 DEF iActColiF EQU $0F
 DEF iActColiEnd EQU $10
+
+; wShot
+DEF iShotId  EQU $00
+DEF iShotEnd EQU $10

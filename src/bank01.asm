@@ -11,9 +11,9 @@ L014000:;C
 	ldi  a, [hl]
 	ld   [$CFED], a
 	ldi  a, [hl]
-	ld   [$CFF0], a
+	ld   [wWpnShotCost], a
 	ld   a, [hl]
-	ld   [$CFEF], a
+	ld   [wWpnPierceLvl], a
 	ld   a, [wWpnSel]
 	rst  $00 ; DynJump
 L014020: db $60
@@ -43,42 +43,42 @@ L014037: db $43
 L014038: db $D5
 L014039: db $40
 L01403A:;J
-	ld   a, [$CF22]
+	ld   a, [wPlShootTimer]
 	or   a
 	ret  z
 	dec  a
-	ld   [$CF22], a
+	ld   [wPlShootTimer], a
 	ret  nz
-	ld   [$CF23], a
+	ld   [wPlShootType], a
 	ret
 L014048:;JR
 	ld   a, $0C
-	ld   [$CF22], a
+	ld   [wPlShootTimer], a
 	ld   hl, $4C9C
 	ld   a, [wWpnSel]
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ld   [$CF23], a
+	ld   [wPlShootType], a
 	ld   a, $02
 	ldh  [hSFXSet], a
 	ret
 L014060:;JI
 	xor  a
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
-	ld   hl, $CC60
+	ld   hl, wShot0
 	ld   a, [hl]
 	or   a
 	jr   z, L014081
-	ld   hl, $CC70
+	ld   hl, wShot1
 	ld   a, [hl]
 	or   a
 	jr   z, L014081
-	ld   hl, $CC80
+	ld   hl, wShot2
 	ld   a, [hl]
 	or   a
 	jp   nz, L01403A
@@ -112,36 +112,36 @@ L014095:;R
 	jr   L014048
 L0140A8:;I
 	xor  a
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ld   a, $60
 	ld   [wActSpawnId], a
 	call L014112
 	jp   L014060
 L0140B7:;I
 	xor  a
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ld   a, $61
 	ld   [wActSpawnId], a
 	call L014112
 	jp   L014060
 L0140C6:;I
 	xor  a
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ld   a, $62
 	ld   [wActSpawnId], a
 	call L014112
 	jp   L014060
 L0140D5:;I
 	xor  a
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ld   a, $63
 	ld   [wActSpawnId], a
 	call L014112
-	ld   a, [$CF6C]
+	ld   a, [wWpnSGRide]
 	or   a
 	jp   z, L014060
-	ld   hl, $CC90
-	ld   a, [$CF1D]
+	ld   hl, wShot3
+	ld   a, [wPlMode]
 	cp   $03
 	jr   z, L0140F5
 	xor  a
@@ -176,11 +176,11 @@ L014112:;C
 	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	ret  z
-	ld   a, [$CFF1]
+	ld   a, [wWpnItemWarp]
 	or   a
 	ret  nz
 	xor  a
-	ld   [wActSpawnByte3], a
+	ld   [wActSpawnLayoutPtr], a
 	ld   a, $0F
 	ld   [wActSpawnY], a
 	ld   b, $18
@@ -195,27 +195,27 @@ L014134:;R
 	call ActS_Spawn
 	ret  c
 	ld   a, $01
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	ret
 L014145:;I
 	ld   a, $01
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	or   a
 	jp   z, L01403A
 	cp   $04
 	jp   nc, L01403A
-	ld   a, [$CFEA]
+	ld   a, [wWpnTpActive]
 	or   a
 	jp   nz, L01403A
 	call L003A00
 	jp   c, L01403A
-	ld   hl, $CC60
+	ld   hl, wShot0
 	ld   a, $84
-	ld   [$CFEA], a
+	ld   [wWpnTpActive], a
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
@@ -236,21 +236,21 @@ L014145:;I
 	jp   L014048
 L01418F:;I
 	ld   a, $02
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
-	ld   hl, $CC60
+	ld   hl, wShot0
 	ld   a, [hl]
-	ld   hl, $CC70
+	ld   hl, wShot1
 	or   [hl]
-	ld   hl, $CC80
+	ld   hl, wShot2
 	or   [hl]
 	jp   nz, L01403A
 	call L003A0B
 	jp   c, L01403A
 	ld   c, $03
-	ld   hl, $CC60
+	ld   hl, wShot0
 L0141B5:;R
 	ld   a, $85
 	ldi  [hl], a
@@ -285,25 +285,25 @@ L0141C7:;R
 	jp   L014048
 L0141E5:;I
 	ld   a, $04
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
-	ld   hl, $CC60
+	ld   hl, wShot0
 	ld   a, [hl]
-	ld   hl, $CC70
+	ld   hl, wShot1
 	or   [hl]
-	ld   hl, $CC80
+	ld   hl, wShot2
 	or   [hl]
-	ld   hl, $CC90
+	ld   hl, wShot3
 	or   [hl]
 	jp   nz, L01403A
 	call L003A00
 	jp   c, L01403A
 	ld   a, $01
-	ld   [$CFE5], a
+	ld   [wWpnWdUseAmmoOnThrow], a
 	ld   c, $04
-	ld   hl, $CC60
+	ld   hl, wShot0
 L014214:;R
 	ld   a, $86
 	ldi  [hl], a
@@ -331,19 +331,19 @@ L014214:;R
 	jp   L014048
 L014238:;I
 	ld   a, $08
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
-	ld   hl, $CC60
+	ld   hl, wShot0
 	ld   a, [hl]
 	or   a
 	jr   z, L01425A
-	ld   hl, $CC70
+	ld   hl, wShot1
 	ld   a, [hl]
 	or   a
 	jr   z, L01425A
-	ld   hl, $CC80
+	ld   hl, wShot2
 	ld   a, [hl]
 	or   a
 	jp   nz, L01403A
@@ -417,17 +417,17 @@ L014296:;R
 	ldi  [hl], a
 	ld   [hl], $05
 	ld   a, $0C
-	ld   [$CF22], a
+	ld   [wPlShootTimer], a
 	ld   a, $10
-	ld   [$CF23], a
+	ld   [wPlShootType], a
 	ret
 L0142C9:;I
 	ld   a, $10
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
-	ld   hl, $CC60
+	ld   hl, wShot0
 	ld   a, [hl]
 	or   a
 	jp   nz, L01403A
@@ -438,24 +438,24 @@ L0142C9:;I
 	jp   L014085
 L0142EA:;I
 	ld   a, $20
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ldh  a, [hJoyKeys]
 	bit  1, a
 	jp   z, L01403A
-	ld   hl, $CC60
+	ld   hl, wShot0
 	ld   a, [hl]
 	or   a
 	jr   z, L01430C
-	ld   hl, $CC70
+	ld   hl, wShot1
 	ld   a, [hl]
 	or   a
 	jr   z, L01430C
-	ld   hl, $CC80
+	ld   hl, wShot2
 	ld   a, [hl]
 	or   a
 	jp   nz, L01403A
 L01430C:;R
-	ld   de, $CC60
+	ld   de, wShot0
 	ld   b, $03
 L014311:;R
 	ld   a, [de]
@@ -494,9 +494,9 @@ L01433C:;X
 	ldi  [hl], a
 	xor  a
 	ldi  [hl], a
-	ld   a, [$CFE4]
+	ld   a, [wWpnNePos]
 	xor  $01
-	ld   [$CFE4], a
+	ld   [wWpnNePos], a
 	rra  
 	ld   a, [wPlRelY]
 	jr   c, L014358
@@ -511,30 +511,30 @@ L01435A:;R
 	jp   L014048
 L014361:;I
 	ld   a, $40
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
-	ld   hl, $CC60
+	ld   hl, wShot0
 	ld   a, [hl]
 	or   a
 	jp   nz, L01403A
 	call L003A0B
 	jp   c, L01403A
 	ld   a, $0F
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   a, $10
-	ld   [$CFE3], a
+	ld   [wPlIdleDelay], a
 	ld   a, $8A
 	ld   c, $14
 	jp   L014085
 L01438C:;I
 	ld   a, $80
-	ld   [$CFEB], a
+	ld   [wWpn_Unused_ShotType], a
 	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	jp   z, L01403A
-	ld   hl, $CC60
+	ld   hl, wShot0
 	ld   a, [hl]
 	or   a
 	jr   z, L0143A7
@@ -553,27 +553,27 @@ L0143A7:;R
 	ld   c, $15
 	jp   L014085
 L0143B4:;C
-	ld   a, [$CFE3]
+	ld   a, [wPlIdleDelay]
 	or   a
 	jr   z, L0143C3
 	dec  a
-	ld   [$CFE3], a
+	ld   [wPlIdleDelay], a
 	jr   nz, L0143C3
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 L0143C3:;R
-	ld   hl, $CC60
+	ld   hl, wShot0
 	ld   a, [hl]
 	or   a
 	call nz, L0143E4
-	ld   hl, $CC70
+	ld   hl, wShot1
 	ld   a, [hl]
 	or   a
 	call nz, L0143E4
-	ld   hl, $CC80
+	ld   hl, wShot2
 	ld   a, [hl]
 	or   a
 	call nz, L0143E4
-	ld   hl, $CC90
+	ld   hl, wShot3
 	ld   a, [hl]
 	or   a
 	call nz, L0143E4
@@ -589,7 +589,7 @@ L0143EA:;R
 	dec  b
 	jr   nz, L0143EA
 	call L014407
-	ldh  a, [hActCur+iAct_Unk_UnkTblPtr]
+	ldh  a, [hActCur+iActLayoutPtr]
 	bit  7, a
 	call z, L003384
 	pop  de
@@ -603,7 +603,7 @@ L014400:;R
 	jr   nz, L014400
 	ret
 L014407:;C
-	ldh  a, [hActCur+iAct_Unk_UnkTblPtr]
+	ldh  a, [hActCur+iActLayoutPtr]
 	bit  7, a
 	jr   nz, L01442C
 	ldh  a, [hActCur+iActId]
@@ -680,12 +680,12 @@ L014472:;R
 	inc  [hl]
 	jp   L0147B2
 L014477:;I
-	ld   a, [$CF42]
+	ld   a, [wPlHurtTimer]
 	or   a
 	jr   z, L014484
 	xor  a
 	ldh  [hActCur+iActId], a
-	ld   [$CFEA], a
+	ld   [wWpnTpActive], a
 	ret
 L014484:;R
 	ld   a, [wPlDirH]
@@ -882,7 +882,7 @@ L0145A9:;R
 	ldh  a, [hActCur+iActRtnId]
 	or   $40
 	ldh  [hActCur+iActRtnId], a
-	ld   hl, $CFE5
+	ld   hl, wWpnWdUseAmmoOnThrow
 	dec  [hl]
 	call z, L003A0B
 L0145B9:;R
@@ -1004,7 +1004,7 @@ L014651:;I
 	or   a
 	jr   nz, L014670
 	ldh  a, [hActCur+iActY]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   hl, hActCur+iActX
 	ldh  a, [hActCur+iActSprMap]
 	or   a
@@ -1078,10 +1078,10 @@ L0146BF:;C
 	ld   a, [hl]
 	add  b
 	ld   [hl], a
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	push bc
 	push hl
-	call L00332F
+	call Lvl_GetBlockId
 	pop  hl
 	pop  bc
 	ret
@@ -1243,7 +1243,7 @@ L0147A9:;R
 	ldh  [hActCur+iActSpdXSub], a
 	jp   L0147B2
 L0147B2:;J
-	ld   a, [$CF31]
+	ld   a, [wActScrollX]
 	ld   b, a
 	ldh  a, [hActCur+iActX]
 	add  b
@@ -2858,11 +2858,12 @@ Module_Password:
 	;
 	; Then, process the four groups in a loop, with BC keeping track of the index
 	; to this structure.
-	; If this loop ends successfully, wPassWpnError will still be 0 and wWpnUnlock0
+	; If this loop ends successfully, tPassWpnError will still be 0 and wWpnUnlock0
 	; will have received all 8 bits.
 	;
+	DEF tPassWpnError = wTmpCFE2
 	xor  a					; A = 0
-	ld   [wPassWpnError], a	; ErrorFlag = 0
+	ld   [tPassWpnError], a	; ErrorFlag = 0
 	ld   b, a				; GroupNum = 0
 	ld   c, a
 
@@ -2933,7 +2934,7 @@ Module_Password:
 		dec  b					; Checked all matches?
 		jr   nz, .wpnChkLoop	; If not, loop
 		ld   a, $FF				; Otherwise, the password is invalid
-		ld   [wPassWpnError], a
+		ld   [tPassWpnError], a
 		jr   .chkErr
 	.wpnOk:
 		; Convert the remaining matches to the table index for the matched entry
@@ -2955,7 +2956,7 @@ Module_Password:
 	pop  bc ; Restore GroupNum
 	
 	; If any matching failed, abort
-	ld   a, [wPassWpnError]
+	ld   a, [tPassWpnError]
 	and  a
 	jr   nz, .passErr
 	
@@ -3919,9 +3920,9 @@ L01525D:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $6275
 	ld   a, $02
 	call L015A39
@@ -3935,7 +3936,7 @@ L01525D:;R
 	ld   hl, $CCF6
 	add  [hl]
 	ld   [hl], a
-	ld   hl, $2612
+	ld   hl, ActS_ArcPathTbl
 	ld   a, [$CCF6]
 	ld   b, $00
 	ld   c, a
@@ -3992,15 +3993,15 @@ L0152E8:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $6275
 	ld   a, $02
 	call L015A39
 	call OAM_ClearRest
 	rst  $08 ; Wait Frame
-	ld   hl, $2612
+	ld   hl, ActS_ArcPathTbl
 	ld   a, [$CCF6]
 	ld   b, $00
 	ld   c, a
@@ -4022,9 +4023,9 @@ L015329:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $6275
 	ld   a, $02
 	call L015A39
@@ -4034,7 +4035,7 @@ L015329:;R
 	dec  [hl]
 	dec  [hl]
 	ld   a, [hl]
-	ld   hl, $2612
+	ld   hl, ActS_ArcPathTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
@@ -4056,15 +4057,15 @@ L01536E:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $6275
 	ld   a, $02
 	call L015A39
 	call OAM_ClearRest
 	rst  $08 ; Wait Frame
-	ld   hl, $2612
+	ld   hl, ActS_ArcPathTbl
 	ld   a, [$CCF6]
 	ld   b, $00
 	ld   c, a
@@ -4095,15 +4096,15 @@ L0153BA:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $6275
 	ld   a, $02
 	call L015A39
 	call OAM_ClearRest
 	rst  $08 ; Wait Frame
-	ld   hl, $2612
+	ld   hl, ActS_ArcPathTbl
 	ld   a, [$CCF6]
 	ld   b, $00
 	ld   c, a
@@ -4130,9 +4131,9 @@ L0153BA:;R
 	ldh  [hScrollX], a
 	call StartLCDOperation
 	ld   a, $80
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, $00
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 L01541E:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
@@ -4141,15 +4142,15 @@ L01541E:;R
 	call L015A39
 	call OAM_ClearRest
 	rst  $08 ; Wait Frame
-	ld   a, [$CF0D]
+	ld   a, [wTargetRelX]
 	inc  a
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	cp   $40
 	jr   nz, L01541E
 	ld   hl, $CCEE
-	ld   a, [wPl_Unk_Alt_Y]
+	ld   a, [wTargetRelY]
 	ldi  [hl], a
-	ld   a, [$CF0D]
+	ld   a, [wTargetRelX]
 	ldi  [hl], a
 	ld   a, $88
 	ldi  [hl], a
@@ -4159,16 +4160,16 @@ L015448:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEE]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCEF]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $627D
 	xor  a
 	call L015A39
 	ld   a, [$CCF0]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $6289
 	xor  a
 	call L015A39
@@ -4185,16 +4186,16 @@ L015483:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEE]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCEF]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $627D
 	xor  a
 	call L015A39
 	ld   a, [$CCF0]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $6289
 	xor  a
 	call L015A39
@@ -4213,16 +4214,16 @@ L0154C5:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEE]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCEF]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $627D
 	xor  a
 	call L015A39
 	ld   a, [$CCF0]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $6289
 	xor  a
 	call L015A39
@@ -4436,9 +4437,9 @@ L015684:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, [$CD06]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CD07]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   a, [$CCFE]
 	add  a
 	add  a
@@ -4454,9 +4455,9 @@ L015684:;R
 L0156AE:;R
 	push bc
 	ldi  a, [hl]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ldi  a, [hl]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ldi  a, [hl]
 	inc  hl
 	push hl
@@ -4509,16 +4510,16 @@ L0156CE:;R
 	ldi  [hl], a
 	ldi  [hl], a
 	ld   a, $40
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, $A0
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	xor  a
 	ld   [$CCFE], a
 L01571A:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   hl, $6291
-	ld   a, [wPl_Unk_Alt_Y]
+	ld   a, [wTargetRelY]
 	rrca 
 	rrca 
 	and  $01
@@ -4526,11 +4527,11 @@ L01571A:;R
 	call OAM_ClearRest
 	rst  $08 ; Wait Frame
 	rst  $08 ; Wait Frame
-	ld   hl, wPl_Unk_Alt_Y
+	ld   hl, wTargetRelY
 	inc  [hl]
-	ld   hl, $CF0D
+	ld   hl, wTargetRelX
 	dec  [hl]
-	ld   a, [wPl_Unk_Alt_Y]
+	ld   a, [wTargetRelY]
 	cp   $90
 	jr   nz, L01571A
 	xor  a
@@ -4579,9 +4580,9 @@ L01578D:;C
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, [$CCEF]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $627D
 	ld   a, [$CCFF]
 	rrca 
@@ -4592,9 +4593,9 @@ L01578D:;C
 	add  b
 	call L015A39
 	ld   a, [$CCF7]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCF9]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $6289
 	ld   a, [$CCFF]
 	rrca 
@@ -4670,7 +4671,7 @@ L015836:;JR
 	rst  $08 ; Wait Frame
 	rst  $08 ; Wait Frame
 	rst  $08 ; Wait Frame
-	ld   hl, wPl_Unk_Alt_Y
+	ld   hl, wTargetRelY
 	inc  [hl]
 	xor  a
 	ldh  [hWorkOAMPos], a
@@ -4726,23 +4727,23 @@ L0158A1:;R
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	call ActS_ReqLoadGFXForRoom.tryLoadBySetId
+	call ActS_ReqLoadRoomGFX.tryLoadBySetId
 	ld   b, $20
 	call L0159B9
 L0158B4:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, $50
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, $88
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $62B1
 	xor  a
 	call L015A39
 	ld   a, [$CCF6]
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [$CCF7]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $65CC
 	ld   a, [$CCEE]
 	call L015A39
@@ -4906,9 +4907,9 @@ L0159EB:;C
 	xor  a
 	ldh  [hWorkOAMPos], a
 	ld   a, $50
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, $88
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ld   hl, $62B1
 	xor  a
 	call L015A39
@@ -4971,12 +4972,12 @@ L015A39:;C
 	ld   b, [hl]
 	inc  hl
 L015A50:;R
-	ld   a, [wPl_Unk_Alt_Y]
+	ld   a, [wTargetRelY]
 	add  [hl]
 	ld   [de], a
 	inc  hl
 	inc  de
-	ld   a, [$CF0D]
+	ld   a, [wTargetRelX]
 	add  [hl]
 	ld   [de], a
 	inc  hl

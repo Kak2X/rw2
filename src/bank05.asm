@@ -1,4 +1,4 @@
-L054000: db $80
+Lvl_LayoutPtrTbl: db $80
 L054001: db $44
 L054002: db $84
 L054003: db $49
@@ -30,7 +30,7 @@ L05401C: db $00;X
 L05401D: db $00;X
 L05401E: db $00;X
 L05401F: db $00;X
-L054020: db $00
+Lvl_ScreenLockTbl: db $00
 L054021: db $01
 L054022: db $03
 L054023: db $03
@@ -382,7 +382,7 @@ L05417C: db $00;X
 L05417D: db $00;X
 L05417E: db $00;X
 L05417F: db $00;X
-L054180: db $00
+Lvl_RoomTrsUTbl: db $00
 L054181: db $00
 L054182: db $00
 L054183: db $00
@@ -766,7 +766,7 @@ L0542FC: db $00;X
 L0542FD: db $00;X
 L0542FE: db $00;X
 L0542FF: db $00;X
-L054300: db $00
+Lvl_RoomTrsDTbl: db $00
 L054301: db $00
 L054302: db $00
 L054303: db $00
@@ -13822,7 +13822,7 @@ L0575FC: db $00;X
 L0575FD: db $00;X
 L0575FE: db $00;X
 L0575FF: db $00;X
-L057600: db $73
+Lvl_BlockTbl: db $73
 L057601: db $73
 L057602: db $73
 L057603: db $73

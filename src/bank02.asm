@@ -1,6 +1,6 @@
 L024000:;C
 	ld   h, $CD
-	ld   a, [wActNoProc]
+	ld   a, [wActStartEndSlotPtr]
 L024005:;R
 	ld   [wActCurSlotPtr], a
 	ld   l, a
@@ -19,7 +19,7 @@ L024014:;R
 	jr   nz, L024014
 	ld   a, $00
 	ld   [wActCurSprMapRelId], a
-	call L002421
+	call ActS_MoveByScrollX
 	ldh  a, [hActCur+iActId]
 	bit  7, a
 	jr   z, L024038
@@ -42,17 +42,25 @@ L02403E:;R
 	jr   nz, L02403E
 	pop  hl
 L024045:;R
-	ld   a, [wActNoProc]
-	ld   b, a
-	ld   a, l
+	ld   a, [wActStartEndSlotPtr]
+	ld   b, a			; B = End Slot
+	ld   a, l			; A = Current Slot + SLOT_SIZE
 	add  $10
-	cp   b
-	jr   nz, L024005
+	cp   b				; Do they match?
+	jr   nz, L024005	; If not, loop
+	
+	; If we filled OAM, chances are not all actors could be drawn.
+	; As the processing order and draw order are one and the same, "shuffle"
+	; it by starting processing actors from after the last drawn one.
+
 	ldh  a, [hWorkOAMPos]
-	cp   $A0
-	ret  nz
-	ld   a, [wActOAMFull]
-	ld   [wActNoProc], a
+	cp   $A0			; Did we fill up OAM?
+	ret  nz				; If not, return
+	
+	; Note that this value doesn't need to be reset to 0 at any time, since
+	; it can wrap around just fine.
+	ld   a, [wActLastDrawSlotPtr]
+	ld   [wActStartEndSlotPtr], a
 	ret
 L02405B:;C
 	ldh  a, [hActCur+iActId]
@@ -364,7 +372,7 @@ L0241A1: db $16
 L0241A2: db $42
 L0241A3:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ret
 L0241A9:;I
 	ld   h, $CE
@@ -375,15 +383,15 @@ L0241A9:;I
 	sub  [hl]
 	ldh  [hActCur+iActY], a
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ld   bc, $0300
 	call ActS_SetSpeedY
 	ld   b, $00
-	call L001F16
+	call ActS_SetColiType
 	jp   ActS_IncRtnId
 L0241C8:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActSpdYSub]
 	ld   c, a
 	ldh  a, [hActCur+iActSpdY]
@@ -395,27 +403,27 @@ L0241C8:;I
 	and  $F0
 	cp   $00
 	jr   z, L0241E3
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 L0241E3:;R
 	ld   b, $06
-	call L001F16
+	call ActS_SetColiType
 	jp   ActS_IncRtnId
 L0241EB:;I
 	ld   c, $01
-	call L001F43
-	call L0023A8
+	call ActS_Anim2
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0241F7:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ld   a, $B4
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L024203:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -425,7 +433,7 @@ L024203:;I
 	jp   ActS_IncRtnId
 L024216:;I
 	ld   bc, $0302
-	call L001F5F
+	call ActS_AnimCustom
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -441,15 +449,15 @@ L02422B: db $42
 L02422C: db $39
 L02422D: db $42
 L02422E:;I
-	ld   a, [$CF60]
+	ld   a, [wLvlEnd]
 	cp   $01
-	call nz, L0020D8
+	call nz, ActS_DoubleSpd
 	jp   ActS_IncRtnId
 L024239:;I
 	ld   bc, $0301
-	call L001F5F
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_AnimCustom
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L024246:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -478,7 +486,7 @@ L024264:;I
 	call L001DE4
 	ret  c
 	ld   c, $02
-	call L001F43
+	call ActS_Anim2
 	call ActS_FacePl
 	ld   bc, $0200
 	call ActS_SetSpeedX
@@ -497,8 +505,8 @@ L02428C:;I
 	call L001DE4
 	ret  c
 	ld   c, $02
-	call L001F43
-	call ActS_ApplySpeedFwd
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActX]
 	and  $F0
 	ld   b, a
@@ -514,21 +522,21 @@ L0242AD:;I
 	call L001DE4
 	ret  c
 	ld   c, $02
-	call L001F43
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
 	cp   $14
 	ret  nz
-	call ActS_Unk_FlipV
+	call ActS_FlipV
 	jp   ActS_IncRtnId
 L0242C8:;I
 	call L001DE4
 	ret  c
 	ld   c, $02
-	call L001F43
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -538,8 +546,8 @@ L0242C8:;I
 	jp   ActS_IncRtnId
 L0242E3:;I
 	ld   c, $02
-	call L001F43
-	call ActS_ApplySpeedFwd
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
 	ret
 L0242EC:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -570,7 +578,7 @@ L024312:;R
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L024318:;I
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActX]
 	and  $F0
 	ld   b, a
@@ -582,16 +590,16 @@ L024318:;I
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L02432D:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
 	cp   $14
 	ret  nz
-	call ActS_Unk_FlipV
+	call ActS_FlipV
 	jp   ActS_IncRtnId
 L02433F:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -604,7 +612,7 @@ L02433F:;I
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
 L024356:;I
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	xor  a
 	ldh  [hActCur+iActId], a
@@ -653,26 +661,26 @@ L0243A9:;I
 	ld   a, $03
 	ld   [wActCurSprMapRelId], a
 	ld   c, $02
-	call L001F43
-	call L001FB9
-	ld   a, [wActCurSprFlagsRes]
+	call ActS_Anim2
+	call ActS_AngleToPl
+	ld   a, [wTmpCF52]
 	ld   b, a
-	ld   a, [$CF53]
+	ld   a, [wTmpCF53]
 	or   b
 	cp   $10
 	jr   c, L0243CC
-	call L0020CB
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_HalfSpdSub
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L0243CC:;R
-	call L002038
+	call ActS_InitCirclePath
 	jp   ActS_IncRtnId
 L0243D2:;I
 	ld   a, $03
 	ld   [wActCurSprMapRelId], a
 	ld   c, $02
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -682,10 +690,10 @@ L0243D2:;I
 	ldh  [hActCur+iActRtnId], a
 L0243EA:;R
 	ld   a, $02
-	call L002047
-	call L0020CB
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplyCirclePath
+	call ActS_HalfSpdSub
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L0243F9:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -702,7 +710,7 @@ L024404: db $60
 L024405: db $44
 L024406:;I
 	ld   b, $00
-	call L001F16
+	call ActS_SetColiType
 	ldh  a, [hActCur+iActX]
 	add  $08
 	ldh  [hActCur+iActX], a
@@ -729,24 +737,24 @@ L02442F:;I
 	ld   a, $01
 	call ActS_SetSprMapId
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L024447:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	ld   a, $02
 	call ActS_SetSprMapId
-	call ActS_Unk_FlipV
+	call ActS_FlipV
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L024460:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -754,8 +762,8 @@ L024460:;I
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   b, $00
-	call L001F16
-	call ActS_Unk_FlipV
+	call ActS_SetColiType
+	call ActS_FlipV
 	ld   a, $01
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -787,7 +795,7 @@ L0244A0:;I
 	call L001DE4
 	ret  c
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	call ActS_FacePl
 	ld   h, $CD
 	ldh  a, [hActCur+iAct0D]
@@ -814,7 +822,7 @@ L0244A0:;I
 	ld   b, $02
 L0244D4:;R
 	ld   b, b
-	call L001F16
+	call ActS_SetColiType
 	ret
 L0244D9:;R
 	ld   a, $00
@@ -838,7 +846,7 @@ L0244EC:;I
 	cp   $3C
 	ret  nz
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -853,7 +861,7 @@ L02450F: db $44
 L024510: db $45
 L024511:;I
 	ld   c, $02
-	call L001F51
+	call ActS_Anim4
 	ret
 L024517:;I
 	ld   a, $00
@@ -861,7 +869,7 @@ L024517:;I
 	ld   a, $04
 	ld   [wActCurSprMapRelId], a
 	ld   b, $02
-	call L001F16
+	call ActS_SetColiType
 	ldh  a, [hActCur+iActY]
 	add  $12
 	ldh  [hActCur+iActY], a
@@ -879,10 +887,10 @@ L02453B:;R
 	jp   ActS_IncRtnId
 L024544:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ld   a, $04
 	ld   [wActCurSprMapRelId], a
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ret
 L024552:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -903,7 +911,7 @@ L024561: db $E4
 L024562: db $45
 L024563:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	call ActS_FacePl
 	call ActS_GetPlDistanceX
 	cp   $40
@@ -913,20 +921,20 @@ L024563:;I
 	jp   ActS_IncRtnId
 L02457A:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	call ActS_FacePl
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ldh  a, [hActCur+iActY]
 	sub  $18
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ret  c
 	jp   ActS_IncRtnId
 L024598:;I
 	ld   c, $01
-	call L001F51
+	call ActS_Anim4
 	ld   a, $02
 	ld   [wActCurSprMapRelId], a
 	call ActS_FacePl
@@ -941,7 +949,7 @@ L024598:;I
 L0245B6:;I
 	ld   a, $06
 	ld   [wActCurSprMapRelId], a
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0245C2:;I
@@ -954,15 +962,15 @@ L0245C2:;I
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
 L0245D7:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0245E4:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $04
 	ldh  [hActCur+iActRtnId], a
@@ -990,7 +998,7 @@ L024606:;I
 	ld   bc, $0080
 	call ActS_SetSpeedX
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $3C
@@ -1020,7 +1028,7 @@ L02463C:;I
 	ld   a, $02
 	call ActS_SetSprMapId
 	ld   b, $02
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $14
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
@@ -1053,11 +1061,11 @@ L024680:;R
 	ld   a, $03
 	ld   [wActCurSprMapRelId], a
 	ld   c, $01
-	call L001F43
-	call L002180
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdXColi
 	jp   nc, ActS_FlipH
-	call L002117
-	ld   a, [$CF26]
+	call ActS_GetGroundColi
+	ld   a, [wColiGround]
 	cp   $03
 	ret  nz
 	xor  a
@@ -1065,7 +1073,7 @@ L024680:;R
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
 L0246A1:;I
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
@@ -1085,10 +1093,10 @@ L0246B3:;I
 	jp   ActS_IncRtnId
 L0246BC:;I
 	ld   c, $01
-	call L001F43
-	call L002180
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdXColi
 	jp   nc, ActS_FlipH
-	call L0020F1
+	call ActS_GetBlockIdFwdGround
 	jp   c, ActS_FlipH
 	call Rand
 	cp   $08
@@ -1098,7 +1106,7 @@ L0246BC:;I
 	jp   ActS_IncRtnId
 L0246DA:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -1131,7 +1139,7 @@ L024702:;I
 	ld   bc, $0300
 	call ActS_SetSpeedY
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $3C
@@ -1139,13 +1147,13 @@ L024702:;I
 	jp   ActS_IncRtnId
 L02471F:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	ld   b, $02
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $02
 	call ActS_SetSprMapId
 	ld   a, $14
@@ -1161,15 +1169,15 @@ L02473C:;I
 	call ActS_FacePl
 	jp   ActS_IncRtnId
 L02474E:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L02475B:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
@@ -1195,13 +1203,13 @@ L024777:;I
 	jp   ActS_IncRtnId
 L024783:;I
 	ld   c, $02
-	call L001F43
+	call ActS_Anim2
 	ld   a, $3C
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L02478F:;I
 	ld   c, $02
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -1249,17 +1257,17 @@ L0247D5:;I
 	jp   ActS_IncRtnId
 L0247E2:;I
 	ld   c, $02
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	jr   nz, L0247F2
 	jp   L001E11
 L0247F2:;R
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L002117
-	ld   a, [$CF26]
+	call ActS_GetGroundColi
+	ld   a, [wColiGround]
 	cp   $03
 	ret  nz
 	xor  a
@@ -1268,8 +1276,8 @@ L0247F2:;R
 	jp   ActS_IncRtnId
 L024809:;I
 	ld   c, $02
-	call L001F43
-	call L0023A8
+	call ActS_Anim2
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $01
 	ldh  [hActCur+iActRtnId], a
@@ -1299,15 +1307,15 @@ L024824:;I
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L02483F:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L02484C:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $00
 	call ActS_SetSprMapId
@@ -1347,8 +1355,8 @@ L02488D:;I
 	jp   ActS_IncRtnId
 L024896:;I
 	ld   c, $04
-	call L001F51
-	call L00220A
+	call ActS_Anim4
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActY]
 	cp   $10
 	ret  nz
@@ -1365,12 +1373,12 @@ L0248AE: db $48
 L0248AF:;I
 	ld   bc, $0080
 	call ActS_SetSpeedY
-	call ActS_Unk_FlipV
+	call ActS_FlipV
 	jp   ActS_IncRtnId
 L0248BB:;I
 	ld   c, $04
-	call L001F51
-	call L00220A
+	call ActS_Anim4
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActY]
 	cp   $9F
 	ret  nz
@@ -1405,7 +1413,7 @@ L0248EC:;I
 	call L027E55
 	ret  c
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ld   a, $18
 	call L001E63
 	ld   a, b
@@ -1428,7 +1436,7 @@ L024916:;I
 	call L027E55
 	ret  c
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -1442,7 +1450,7 @@ L02492D:;I
 	ld   a, $02
 	ld   [wActCurSprMapRelId], a
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -1457,7 +1465,7 @@ L024951:;I
 	call L027E55
 	ret  c
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ld   a, $02
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -1482,15 +1490,15 @@ L024976:;I
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
 L02497F:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L02498C:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $01
 	ldh  [hActCur+iActRtnId], a
@@ -1512,18 +1520,18 @@ L0249A6:;I
 	call ActS_FacePl
 	jp   ActS_IncRtnId
 L0249B1:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0249BE:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   bc, $0303
-	call L001F0C
+	call ActS_SetColiBox
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $3C
@@ -1535,7 +1543,7 @@ L0249DA:;I
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	ld   bc, $0305
-	call L001F0C
+	call ActS_SetColiBox
 	ld   bc, $0080
 	call ActS_SetSpeedX
 	ld   bc, $0300
@@ -1556,14 +1564,14 @@ L0249FF:;I
 	jp   ActS_IncRtnId
 L024A08:;I
 	ld   c, $01
-	call L001F43
-	call ActS_ApplySpeedFwd
-	ld   a, [$CF42]
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
+	ld   a, [wPlHurtTimer]
 	ld   b, a
-	ld   a, [$CF43]
+	ld   a, [wPlInvulnTimer]
 	or   b
 	ret  nz
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	cp   $04
 	ret  nc
 	ldh  a, [hActCur+iActX]
@@ -1587,11 +1595,11 @@ L024A2C:;R
 	cp   b
 	ret  c
 	xor  a
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	inc  a
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	inc  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ret
 L024A4E:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -1632,9 +1640,9 @@ L024A73:;R
 	ldh  [hActCur+iActRtnId], a
 	ret
 L024A8A:;R
-	call L002180
-	call L002117
-	ld   a, [$CF26]
+	call ActS_ApplySpeedFwdXColi
+	call ActS_GetGroundColi
+	ld   a, [wColiGround]
 	cp   $03
 	ret  nz
 L024A96: db $AF;X
@@ -1671,7 +1679,7 @@ L024AC0:;I
 	ld   a, $02
 	ld   [wActCurSprMapRelId], a
 	ld   c, $01
-	call L001F51
+	call ActS_Anim4
 	call ActS_GetPlDistanceX
 	cp   $20
 	ret  c
@@ -1700,7 +1708,7 @@ L024AE5:;I
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
 L024AF7:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -1739,9 +1747,9 @@ L024B2C:;I
 	ldh  [hActCur+iActTimer0C], a
 L024B3B:;J
 	ld   a, $02
-	call L002047
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplyCirclePath
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActSpdXSub]
 	cp   $FF
 	ret  nz
@@ -1768,7 +1776,7 @@ L024B60:;R
 	ldh  a, [hActCur+iActSprMap]
 	bit  7, a
 	ret  nz
-	call L001FB9
+	call ActS_AngleToPl
 	jp   ActS_IncRtnId
 L024B77:;R
 	ldh  a, [hActCur+iActSprMap]
@@ -1781,8 +1789,8 @@ L024B7F: db $C3;X
 L024B80: db $B1;X
 L024B81: db $1E;X
 L024B82:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L024B89:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -1800,11 +1808,11 @@ L024B92:;I
 	jp   ActS_IncRtnId
 L024B9E:;I
 	ld   bc, $0602
-	call L001F5F
-	call L002180
+	call ActS_AnimCustom
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L002117
-	ld   a, [$CF26]
+	call ActS_GetGroundColi
+	ld   a, [wColiGround]
 	cp   $03
 	ret  nz
 	xor  a
@@ -1813,8 +1821,8 @@ L024B9E:;I
 	jp   ActS_IncRtnId
 L024BBB:;I
 	ld   bc, $0602
-	call L001F5F
-	call L0023A8
+	call ActS_AnimCustom
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $01
 	ldh  [hActCur+iActRtnId], a
@@ -1836,7 +1844,7 @@ L024BD1:;I
 	jp   ActS_IncRtnId
 L024BE0:;I
 	ld   bc, $0301
-	call L001F5F
+	call ActS_AnimCustom
 	ret
 L024BE7: db $C3;X
 L024BE8: db $25;X
@@ -1858,10 +1866,10 @@ L024BF7: db $68
 L024BF8: db $4C
 L024BF9:;I
 	ld   b, $00
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $00
 	call ActS_SetSprMapId
-	ld   a, [$CF4D]
+	ld   a, [wGameTime]
 	and  $03
 	ld   b, a
 	ldh  a, [hActCur+iActId]
@@ -1880,7 +1888,7 @@ L024C18:;I
 	ld   a, $10
 	ldh  [hSFXSet], a
 	ld   b, $04
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $0A
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
@@ -1951,13 +1959,13 @@ L024C90:;I
 	xor  a
 	ldh  [hActCur+iActSprMap], a
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ld   a, $3C
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L024C9F:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hTimer]
 	bit  7, a
 	jr   z, L024CD9
@@ -1989,13 +1997,13 @@ L024CD9:;R
 	jp   ActS_IncRtnId
 L024CE3:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ld   a, $1E
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L024CEF:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -2014,7 +2022,7 @@ L024D15:;X
 	jp   ActS_IncRtnId
 L024D18:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -2043,16 +2051,16 @@ L024D40: db $6F
 L024D41: db $4D
 L024D42:;I
 	ld   b, $00
-	call L001F16
+	call ActS_SetColiType
 	ld   hl, hActCur+iActX
 	inc  [hl]
-	ld   a, [$CF6D]
+	ld   a, [wActUnk_CF6D_TimerInit]
 	xor  $01
-	ld   [$CF6D], a
+	ld   [wActUnk_CF6D_TimerInit], a
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L024D58:;I
-	ld   a, [$CF4D]
+	ld   a, [wGameTime]
 	and  $01
 	ld   b, a
 	ldh  a, [hActCur+iActTimer0C]
@@ -2090,7 +2098,7 @@ L024D82:;R
 	add  hl, bc
 	ld   c, [hl]
 	ld   b, $03
-	call L001F0C
+	call ActS_SetColiBox
 	pop  hl
 	push hl
 	ld   b, $03
@@ -2099,7 +2107,7 @@ L024D82:;R
 	jr   nz, L024DA2
 	ld   b, $00
 L024DA2:;R
-	call L001F16
+	call ActS_SetColiType
 	pop  hl
 	ldi  a, [hl]
 	sla  a
@@ -2171,7 +2179,7 @@ L024DEF:;I
 	jp   ActS_IncRtnId
 L024DFE:;I
 	ld   c, $02
-	call L001F43
+	call ActS_Anim2
 	call ActS_FacePl
 	call ActS_GetPlDistanceX
 	cp   $30
@@ -2179,8 +2187,8 @@ L024DFE:;I
 	jp   ActS_IncRtnId
 L024E0F:;I
 	ld   c, $02
-	call L001F43
-	call ActS_ApplySpeedFwd
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
 	call ActS_GetPlDistanceX
 	and  $F0
 	or   a
@@ -2188,8 +2196,8 @@ L024E0F:;I
 	jp   ActS_IncRtnId
 L024E21:;I
 	ld   c, $02
-	call L001F43
-	call ActS_ApplySpeedFwd
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
 	call ActS_GetPlDistanceX
 	cp   $30
 	ret  c
@@ -2198,7 +2206,7 @@ L024E21:;I
 	jp   ActS_IncRtnId
 L024E36:;I
 	ld   c, $02
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -2210,8 +2218,8 @@ L024E36:;I
 	jp   ActS_IncRtnId
 L024E4E:;I
 	ld   c, $02
-	call L001F43
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdY
 	call ActS_GetPlDistanceY
 	and  $F0
 	swap a
@@ -2222,7 +2230,7 @@ L024E4E:;I
 	jp   ActS_IncRtnId
 L024E66:;I
 	ld   c, $02
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -2230,8 +2238,8 @@ L024E66:;I
 	jp   ActS_IncRtnId
 L024E75:;I
 	ld   c, $02
-	call L001F43
-	call ActS_ApplySpeedFwd
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
 	ret
 L024E7E:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -2256,7 +2264,7 @@ L024E91: db $2A
 L024E92: db $4F
 L024E93:;I
 	ld   b, $02
-	call L001F16
+	call ActS_SetColiType
 	ld   bc, $0180
 	call ActS_SetSpeedX
 	ld   a, $78
@@ -2303,28 +2311,28 @@ L024EE8:;I
 	ld   a, $5A
 	ldh  [hActCur+iActTimer0C], a
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	call ActS_FacePl
 	jp   ActS_IncRtnId
 L024EF7:;I
 	ld   a, $02
 	ld   [wActCurSprMapRelId], a
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	jr   nz, L024F13
 	ld   b, $02
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $02
 	ldh  [hActCur+iActRtnId], a
 	ret
 L024F13:;R
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L002117
-	ld   a, [$CF26]
+	call ActS_GetGroundColi
+	ld   a, [wColiGround]
 	cp   $03
 	ret  nz
 	xor  a
@@ -2335,15 +2343,15 @@ L024F2A:;I
 	ld   a, $02
 	ld   [wActCurSprMapRelId], a
 	ld   c, $01
-	call L001F43
-	call L0023A8
+	call ActS_Anim2
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $07
 	ldh  [hActCur+iActRtnId], a
 	ret
 L024F3D:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L024F44:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -2383,7 +2391,7 @@ L024F70:;I
 	ld   a, $03
 	ld   [wActCurSprMapRelId], a
 	ld   b, $02
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
@@ -2435,7 +2443,7 @@ L024FD8:;I
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $3C
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
@@ -2464,15 +2472,15 @@ L025012: db $50
 L025013: db $22
 L025014: db $50
 L025015:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L025022:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	jp   L001E11
 L02502F:;I
@@ -2531,7 +2539,7 @@ L02507D:;I
 	ldh  a, [hActCur+iActId]
 	and  $7F
 	sub  $2C
-	ld   [$CF5A], a
+	ld   [w_CF5A_TblOffsetByAct], a
 	jp   ActS_IncRtnId
 L025089:;I
 	ldh  a, [hActCur+iActX]
@@ -2541,7 +2549,7 @@ L025089:;I
 	sub  $04
 	ldh  [hActCur+iActY], a
 	xor  a
-	ld   [$CF5B], a
+	ld   [w_CF5B_TblOffsetSec], a
 	ld   bc, $0080
 	call ActS_SetSpeedX
 	ld   bc, $0080
@@ -2549,7 +2557,7 @@ L025089:;I
 	jp   ActS_IncRtnId
 L0250A8:;RI
 	ld   hl, $5118
-	ld   a, [$CF5A]
+	ld   a, [w_CF5A_TblOffsetByAct]
 	add  a
 	ld   b, $00
 	ld   c, a
@@ -2559,7 +2567,7 @@ L0250A8:;RI
 	ld   d, [hl]
 	ld   l, e
 	ld   h, d
-	ld   a, [$CF5B]
+	ld   a, [w_CF5B_TblOffsetSec]
 	add  a
 	ld   b, $00
 	ld   c, a
@@ -2568,7 +2576,7 @@ L0250A8:;RI
 	cp   $FF
 	jr   nz, L0250CB
 	xor  a
-	ld   [$CF5B], a
+	ld   [w_CF5B_TblOffsetSec], a
 	jr   L0250A8
 L0250CB:;R
 	push af
@@ -2581,7 +2589,7 @@ L0250CB:;R
 	ld   a, [hl]
 	ld   a, a
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, $CF5B
+	ld   hl, w_CF5B_TblOffsetSec
 	inc  [hl]
 	pop  af
 	rrca 
@@ -2590,10 +2598,10 @@ L0250CB:;R
 	ldh  [hActCur+iActRtnId], a
 	ret
 L0250E8:;I
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ld   a, [wActCurSlotPtr]
 	ld   b, a
-	ld   a, [$CF4A]
+	ld   a, [wCF4A_Unk_ActTargetSlot]
 	cp   b
 	jr   nz, L0250FD
 	ldh  a, [hActCur+iActSprMap]
@@ -2608,7 +2616,7 @@ L0250FD:;R
 	ldh  [hActCur+iActRtnId], a
 	ret
 L025109:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -2750,7 +2758,7 @@ L025178:;I
 	ldh  a, [hActCur+iActY]
 	ldi  [hl], a
 	ld   b, $02
-	call L001F16
+	call ActS_SetColiType
 	jp   ActS_IncRtnId
 L0251C9:;I
 	ldh  a, [hActCur+iAct0D]
@@ -2762,7 +2770,7 @@ L0251C9:;I
 	ld   [wActCurSprMapRelId], a
 	call L0252CF
 	call L0252A2
-	call L001F2A
+	call ActS_GetHealth
 	cp   $11
 	ret  nc
 	ld   hl, $CCD0
@@ -2772,15 +2780,15 @@ L0251C9:;I
 	ld   a, $01
 	call ActS_SetSprMapId
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	ld   b, $11
-	call L001F20
+	call ActS_SetHealth
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
 L025201:;I
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
@@ -2846,7 +2854,7 @@ L02526E:;I
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   b, $02
-	call L001F16
+	call ActS_SetColiType
 	ld   hl, $CCD0
 	inc  [hl]
 	jp   ActS_IncRtnId
@@ -2870,7 +2878,7 @@ L0252A2:;C
 	ld   hl, hActCur+iAct0E
 	add  [hl]
 	ldh  [hActCur+iActY], a
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iAct0D]
 	and  $10
 	rrca 
@@ -2896,16 +2904,16 @@ L0252A2:;C
 L0252CF:;C
 	ldh  a, [hActCur+iActX]
 	sub  $07
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ldh  a, [hActCur+iActY]
 	add  $20
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ret  nc
 	ldh  a, [hActCur+iActX]
 	add  $07
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	ret  nc
 	ld   hl, $CCD2
 	inc  [hl]
@@ -2959,13 +2967,13 @@ L025308:;I
 	call ActS_FacePl
 	jp   ActS_IncRtnId
 L025335:;I
-	call L002180
-	call L002328
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L02533F:;I
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ldh  a, [hActCur+iAct0F]
 	and  a
@@ -3018,7 +3026,7 @@ L02537C:;I
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L025395:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -3074,8 +3082,8 @@ L0253CF:;I
 	jp   ActS_IncRtnId
 L0253F4:;I
 	ld   c, $01
-	call L001F43
-	call ActS_ApplySpeedFwd
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
 	call L001E03
 	ret  nc
 	ld   a, $33
@@ -3116,7 +3124,7 @@ L02541E:;I
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L02543D:;I
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -3126,7 +3134,7 @@ L02543D:;I
 	ret  z
 	jp   L001E11
 L025450:;I
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	call ActS_GetPlDistanceX
 	cp   $30
 	jp   c, ActS_IncRtnId
@@ -3135,11 +3143,11 @@ L025450:;I
 	ret  z
 	jp   L001E11
 L025462:;I
-	call L00223A
+	call ActS_ApplySpeedFwdYColi
 	ldh  a, [hActCur+iActY]
 	cp   $9C
 	jp   nc, L0254A2
-	call L00332F
+	call Lvl_GetBlockId
 	ret  c
 	ld   de, $54A6
 	ld   b, $06
@@ -3221,20 +3229,20 @@ L0254C7:;I
 	jp   ActS_IncRtnId
 L0254CE:;I
 	ld   c, $01
-	call L001F43
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	call L001FB9
+	call ActS_AngleToPl
 	jp   ActS_IncRtnId
 L0254E6:;I
 	ld   c, $01
-	call L001F43
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L0254F2:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -3360,15 +3368,15 @@ L0255B2:;I
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
 L0255C5:;I
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L0255D3:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -3380,8 +3388,8 @@ L0255D3:;I
 	jp   ActS_IncRtnId
 L0255EC:;I
 	ld   c, $01
-	call L001F43
-	call L00223A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdYColi
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -3391,16 +3399,16 @@ L0255EC:;I
 	ld   c, a
 	ld   b, $00
 	call ActS_SetSpeedX
-	call L0020D8
-	call L0020D8
+	call ActS_DoubleSpd
+	call ActS_DoubleSpd
 	ld   bc, $0200
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
 L025616:;I
 	ld   c, $01
-	call L001F43
-	call L002180
-	call L002328
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	ld   a, $01
 	ldh  [hActCur+iActRtnId], a
@@ -3468,9 +3476,9 @@ L02566D:;I
 L025681:;I
 	call L025709
 	jp   c, L025700
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	jp   nc, ActS_IncRtnId
-	call L0020F1
+	call ActS_GetBlockIdFwdGround
 	jp   c, ActS_IncRtnId
 	call ActS_GetPlDistanceY
 	and  a
@@ -3488,9 +3496,9 @@ L0256A3:;I
 L0256AC:;I
 	call L025709
 	jp   c, L025700
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	jp   nc, ActS_IncRtnId
-	call L0020F1
+	call ActS_GetBlockIdFwdGround
 	jp   c, ActS_IncRtnId
 	call ActS_GetPlDistanceY
 	and  a
@@ -3559,7 +3567,7 @@ L025722: db $C5
 L025723: db $57
 L025724:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	xor  a
 	ldh  [hActCur+iAct0F], a
 	ld   a, $40
@@ -3567,7 +3575,7 @@ L025724:;I
 	jp   ActS_IncRtnId
 L025733:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -3619,7 +3627,7 @@ L02576C:;I
 L02578C:;I
 	call L0257D4
 	call L0257EB
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	call ActS_FacePl
 	ld   bc, $00C0
@@ -3627,15 +3635,15 @@ L02578C:;I
 	jp   ActS_IncRtnId
 L0257A2:;I
 	call L0257D4
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	jp   nc, ActS_IncRtnId
-	call L002117
-	ld   a, [$CF26]
+	call ActS_GetGroundColi
+	ld   a, [wColiGround]
 	cp   $03
 	ret  nz
 	ld   bc, $0100
 	call ActS_SetSpeedX
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
@@ -3649,7 +3657,7 @@ L0257C5:;I
 	jp   ActS_DecRtnId
 L0257D4:;C
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	call L001E03
 	ret  nc
 	pop  hl
@@ -3705,7 +3713,7 @@ L025816:;I
 	jp   ActS_IncRtnId
 L025821:;I
 	call L025868
-	call ActS_ApplySpeedY
+	call ActS_ApplySpeedDownY
 	ldh  a, [hActCur+iAct0D]
 	ld   hl, hActCur+iActY
 	cp   [hl]
@@ -3716,7 +3724,7 @@ L025821:;I
 	jp   ActS_IncRtnId
 L025838:;I
 	call L025868
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_DecRtnId
 L025842:;I
@@ -3740,11 +3748,11 @@ L025856:;I
 	jp   ActS_IncRtnId
 L025861:;I
 	call L025868
-	call ActS_ApplySpeedY
+	call ActS_ApplySpeedDownY
 	ret
 L025868:;C
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	call L001E03
 	ret  nc
 	pop  bc
@@ -3835,25 +3843,25 @@ L0258EF:;I
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
 L0258FD:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ret
 L025901:;C
 	ldh  a, [hActCur+iAct0D]
 	ld   [wActCurSprMapRelId], a
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ldh  a, [hActCur+iActY]
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ld   a, $00
 	adc  a
 	ld   b, a
-	ld   a, [wPl_Unk_Alt_Y]
+	ld   a, [wTargetRelY]
 	sub  $0E
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	push bc
-	call L00332F
+	call Lvl_GetBlockId
 	ld   a, $00
 	adc  a
 	add  a
@@ -3939,7 +3947,7 @@ L025997:;I
 	ret  nc
 	jp   ActS_IncRtnId
 L0259A0:;I
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   bc, $0040
 	call ActS_SetSpeedY
@@ -3948,7 +3956,7 @@ L0259A0:;I
 	ldh  [hActCur+iActSprMap], a
 	jp   ActS_IncRtnId
 L0259B3:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActY]
 	ld   b, a
 	ldh  a, [hActCur+iAct0D]
@@ -3988,13 +3996,13 @@ L0259DD:;I
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
 L0259F4:;I
-	call L002180
-	call L002328
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0259FE:;I
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $03
 	ldh  [hActCur+iAct0D], a
@@ -4034,11 +4042,11 @@ L025A43: db $5A
 L025A44: db $4C
 L025A45: db $5A
 L025A46:;I
-	call L001FB9
+	call ActS_AngleToPl
 	jp   ActS_IncRtnId
 L025A4C:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L025A53:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -4062,10 +4070,10 @@ L025A5E:;I
 	jp   ActS_IncRtnId
 L025A70:;I
 	ld   c, $01
-	call L001F51
-	call ActS_ApplySpeedFwd
-	call L002117
-	ld   a, [$CF26]
+	call ActS_Anim4
+	call ActS_ApplySpeedFwdX
+	call ActS_GetGroundColi
+	ld   a, [wColiGround]
 	cp   $03
 	jp   z, ActS_IncRtnId
 	ldh  a, [hActCur+iActTimer0C]
@@ -4086,8 +4094,8 @@ L025A9B:;I
 	ldh  [hActCur+iActSprMap], a
 	ld   a, $01
 	ld   [wActCurSprMapRelId], a
-	call ActS_ApplySpeedFwd
-	call L0023A8
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
@@ -4098,8 +4106,8 @@ L025AB4:;I
 	ldh  [hActCur+iActSprMap], a
 	ld   a, $01
 	ld   [wActCurSprMapRelId], a
-	call ActS_ApplySpeedFwd
-	call L002328
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_DecRtnId
 L025AC9:;I
@@ -4177,10 +4185,10 @@ L025B26:;I
 	ldh  [hActCur+iAct0D], a
 	cp   $05
 	ret  nz
-	call L001FB9
-	call L0020CB
+	call ActS_AngleToPl
+	call ActS_HalfSpdSub
 	ld   b, $02
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $08
 	ldh  [hActCur+iAct0E], a
 	ld   a, $10
@@ -4188,9 +4196,9 @@ L025B26:;I
 	jp   ActS_IncRtnId
 L025B54:;I
 	call L025BC6
-	call ActS_ApplySpeedFwd
-	call L00220A
-	ld   a, [$CF5D]
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
+	ld   a, [wCF5D_Unk_ActTargetSlot]
 	ld   b, a
 	ld   a, [wActCurSlotPtr]
 	cp   b
@@ -4199,8 +4207,8 @@ L025B54:;I
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	call L001FB9
-	call L0020CB
+	call ActS_AngleToPl
+	call ActS_HalfSpdSub
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	ret
@@ -4215,17 +4223,17 @@ L025B7A:;I
 	jp   ActS_IncRtnId
 L025B8D:;I
 	call L025BC6
-	call L00223A
+	call ActS_ApplySpeedFwdYColi
 	jp   nc, ActS_IncRtnId
 	ldh  a, [hActCur+iActY]
 	sub  $08
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	and  $F0
 	cp   $10
 	jp   z, ActS_IncRtnId
 	ldh  a, [hActCur+iActX]
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	cp   $03
 	jp   z, ActS_IncRtnId
 	cp   $04
@@ -4235,7 +4243,7 @@ L025B8D:;I
 	ret
 L025BBC:;I
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -4327,7 +4335,7 @@ L025C59:;I
 	call L027E61
 	ret  c
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -4354,8 +4362,8 @@ L025C79:;I
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
 L025C8E:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActSpdYSub]
 	ld   l, a
 	ldh  a, [hActCur+iActSpdY]
@@ -4387,7 +4395,7 @@ L025CB0:;I
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L025CC2:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -4408,7 +4416,7 @@ L025CD3:;I
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L025CEC:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -4519,7 +4527,7 @@ L025DAA: db $5D
 L025DAB:;I
 	ld   bc, $1000
 	call ActS_SetSpeedX
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ld   bc, $0040
 	call ActS_SetSpeedX
 	ld   a, $40
@@ -4527,8 +4535,8 @@ L025DAB:;I
 	jp   ActS_IncRtnId
 L025DC1:;I
 	ld   c, $01
-	call L001F43
-	call ActS_ApplySpeedFwd
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -4540,30 +4548,30 @@ L025DC1:;I
 	jp   ActS_IncRtnId
 L025DDD:;I
 	ld   c, $01
-	call L001F43
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	call L001FB9
-	call L0020CB
-	call L0020CB
+	call ActS_AngleToPl
+	call ActS_HalfSpdSub
+	call ActS_HalfSpdSub
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L025DFC:;I
 	ld   c, $01
-	call L001F43
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	call L001FB9
-	call L0020CB
-	call L0020CB
+	call ActS_AngleToPl
+	call ActS_HalfSpdSub
+	call ActS_HalfSpdSub
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	ret
@@ -4635,14 +4643,14 @@ L025E5C:;I
 	jp   ActS_IncRtnId
 L025E85:;I
 	call L025EB0
-	call L002180
-	call L002328
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L025E92:;I
 	call L025EB0
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
@@ -4736,7 +4744,7 @@ L025F28:;I
 	jp   ActS_IncRtnId
 L025F33:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	call L025F71
 	call ActS_FacePl
 	ldh  a, [hActCur+iActTimer0C]
@@ -4783,7 +4791,7 @@ L025F84: db $5F
 L025F85: db $A3
 L025F86: db $5F
 L025F87:;I
-	call L002038
+	call ActS_InitCirclePath
 	ld   a, $40
 	ldh  [hActCur+iActSprMap], a
 	ld   a, $4B
@@ -4802,13 +4810,13 @@ L025FA3:;I
 	and  $01
 	ld   [wActCurSprMapRelId], a
 	ld   a, $01
-	call L002047
-	call L0020CB
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplyCirclePath
+	call ActS_HalfSpdSub
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ld   a, [wActCurSlotPtr]
 	ld   b, a
-	ld   a, [$CF4A]
+	ld   a, [wCF4A_Unk_ActTargetSlot]
 	cp   b
 	ret  nz
 	ldh  a, [hActCur+iActSpdXSub]
@@ -4830,7 +4838,7 @@ L025FD7:;I
 	call ActS_FacePl
 	ld   bc, $0800
 	call ActS_SetSpeedX
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ld   bc, $0100
 	call ActS_SetSpeedX
 	ld   bc, $0200
@@ -4838,16 +4846,16 @@ L025FD7:;I
 	jp   ActS_IncRtnId
 L025FF2:;I
 	ld   c, $02
-	call L001F43
-	call ActS_ApplySpeedFwd
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedUpY
 	ret  c
 	jp   ActS_IncRtnId
 L026001:;I
 	ld   c, $02
-	call L001F43
-	call ActS_ApplySpeedFwd
-	call ActS_ApplySpeedY
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedDownY
 	ret
 L02600D:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -4858,25 +4866,25 @@ L026012: db $2A
 L026013: db $60
 L026014:;I
 	ld   bc, $0601
-	call L001F5F
-	call L001FB9
-	call L0020CB
-	call L0020CB
+	call ActS_AnimCustom
+	call ActS_AngleToPl
+	call ActS_HalfSpdSub
+	call ActS_HalfSpdSub
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L02602A:;I
 	ld   bc, $0601
-	call L001F5F
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_AnimCustom
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	call L001FB9
-	call L0020CB
-	call L0020CB
+	call ActS_AngleToPl
+	call ActS_HalfSpdSub
+	call ActS_HalfSpdSub
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	ret
@@ -4961,16 +4969,16 @@ L0260BA:;I
 	call L0261A3
 	ld   a, $01
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L002328
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0260CC:;I
 	call L0261A3
 	ld   a, $00
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $58
 	ld   bc, $0000
@@ -5078,7 +5086,7 @@ L026181:;C
 	pop  hl
 	ret
 L0261A3:;C
-	call L001F2A
+	call ActS_GetHealth
 	cp   $08
 	ret  nc
 	ld   a, $FF
@@ -5090,7 +5098,7 @@ L0261A3:;C
 	ldh  a, [hActCur+iActX]
 	ld   [wActSpawnX], a
 	ld   [$CCEF], a
-	call L001C8D
+	call ActS_SpawnLargeExpl
 	ld   a, $06
 	ldh  [hSFXSet], a
 	pop  hl
@@ -5116,7 +5124,7 @@ L0261DC: db $91;X
 L0261DD: db $62;X
 L0261DE:;I
 	ld   b, $F4
-	call L001F16
+	call ActS_SetColiType
 	call L0262D3
 	ld   a, $02
 	ldh  [hActCur+iAct0D], a
@@ -5142,7 +5150,7 @@ L0261F1:;I
 	jp   ActS_IncRtnId
 L026214:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	call L0262D3
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
@@ -5155,9 +5163,9 @@ L026214:;I
 	jp   ActS_IncRtnId
 L026230:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	call L0262D3
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -5174,7 +5182,7 @@ L026257:;I
 	call L0262B1
 	call L0262D3
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -5184,9 +5192,9 @@ L026257:;I
 	jp   ActS_IncRtnId
 L026270:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	call L0262D3
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -5259,7 +5267,7 @@ L0262D0: db $07;X
 L0262D1: db $E1;X
 L0262D2: db $C9;X
 L0262D3:;C
-	call L001F2A
+	call ActS_GetHealth
 	cp   $08
 	ret  nc
 	ld   a, $FF
@@ -5271,7 +5279,7 @@ L0262D3:;C
 	ldh  a, [hActCur+iActX]
 	ld   [wActSpawnX], a
 	ld   [$CCEF], a
-	call L001C8D
+	call ActS_SpawnLargeExpl
 	ld   a, $06
 	ldh  [hSFXSet], a
 	pop  hl
@@ -5297,7 +5305,7 @@ L02630C:;I
 	ret
 L02630D:;I
 	ld   b, $F0
-	call L001F16
+	call ActS_SetColiType
 	ld   hl, hActCur+iActSprMap
 	res  7, [hl]
 	xor  a
@@ -5403,7 +5411,7 @@ L0263CB:;I
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	call ActS_FacePl
 	ld   a, $80
 	ldh  [hActCur+iActTimer0C], a
@@ -5412,7 +5420,7 @@ L0263CB:;I
 	ret
 L0263E1:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -5428,8 +5436,8 @@ L0263E1:;I
 	ret
 L026403:;I
 	ld   c, $01
-	call L001F43
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActY]
 	cp   $38
 	ret  nz
@@ -5440,10 +5448,10 @@ L026403:;I
 	ret
 L02641A:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActX]
 	cp   $90
-	jp   c, ActS_ApplySpeedFwd
+	jp   c, ActS_ApplySpeedFwdX
 	ld   hl, hActCur+iActSprMap
 	set  6, [hl]
 	ld   a, $80
@@ -5453,7 +5461,7 @@ L02641A:;I
 	ret
 L026434:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ld   hl, hActCur+iActXSub
 	ldh  a, [hActCur+iActSpdXSub]
 	add  [hl]
@@ -5471,8 +5479,8 @@ L026434:;I
 	ret
 L026456:;I
 	ld   c, $01
-	call L001F43
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActY]
 	cp   $70
 	ret  nz
@@ -5565,7 +5573,7 @@ L0264C7:;I
 L0264DE:;I
 	ld   a, $04
 	ld   [wActCurSprMapRelId], a
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	ld   bc, $0000
 	call ActS_SetSpeedX
@@ -5575,8 +5583,8 @@ L0264F0:;I
 	ret  c
 	ld   a, $05
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
@@ -5662,14 +5670,14 @@ L0265A2:;I
 	ret  c
 	ld   a, $05
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L002328
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	ld   a, $04
 	ldh  [hActCur+iActRtnId], a
 	ret
 L0265B7:;I
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   de, $070A
 	ld   c, $04
@@ -5688,7 +5696,7 @@ L0265C6:;I
 L0265DC:;I
 	ld   a, $0B
 	ld   [wActCurSprMapRelId], a
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActY]
 	cp   $18
 	ret  nc
@@ -5696,11 +5704,11 @@ L0265DC:;I
 	ldh  [hActCur+iActY], a
 	jp   ActS_IncRtnId
 L0265EF:;I
-	ld   a, [$CF1D]
+	ld   a, [wPlMode]
 	or   a
 	ret  nz
 	ld   a, $15
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   a, $3C
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
@@ -5710,10 +5718,10 @@ L026600:;I
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	ld   a, $02
-	ld   [$CF60], a
+	ld   [wLvlEnd], a
 	ret
 L02660D:;C
-	call L001F2A
+	call ActS_GetHealth
 	cp   $11
 	ret  nc
 	ld   a, $09
@@ -5781,7 +5789,7 @@ L026669:;I
 	res  7, [hl]
 	jp   ActS_IncRtnId
 L026677:;I
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActX]
 	cp   $90
 	ret  nz
@@ -5809,7 +5817,7 @@ L026692:;I
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
 L02669A:;I
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $04
 	ldh  [hActCur+iActTimer0C], a
@@ -5831,13 +5839,13 @@ L0266A5:;I
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
 L0266C9:;I
-	call ActS_ApplySpeedFwd
-	call L002328
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0266D3:;I
-	call ActS_ApplySpeedFwd
-	call L0023A8
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedDownYColi
 	ldh  a, [hActCur+iActX]
 	cp   $90
 	ret  c
@@ -5912,13 +5920,13 @@ L026746:;I
 	ldh  [hActCur+iActSprMap], a
 	jp   ActS_IncRtnId
 L02675D:;I
-	call ActS_ApplySpeedFwd
-	call L002328
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L026767:;I
-	call ActS_ApplySpeedFwd
-	call L0023A8
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	jp   L001E11
 L026771:;I
@@ -5938,13 +5946,13 @@ L02677A:;I
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
 L02678C:;I
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedUpY
 	ret  c
 	jp   ActS_IncRtnId
 L026796:;I
-	call ActS_ApplySpeedFwd
-	call L0023A8
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   bc, $0300
 	call ActS_SetSpeedY
@@ -5962,7 +5970,7 @@ L0267AD:;I
 	call ActS_SetSpeedX
 	jp   ActS_IncRtnId
 L0267B9:;I
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ret
 L0267BD:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -5983,13 +5991,13 @@ L0267CA:;I
 	call ActS_SetSpeedX
 	jp   ActS_IncRtnId
 L0267D6:;I
-	call ActS_ApplySpeedFwd
-	call L002328
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0267E0:;I
-	call ActS_ApplySpeedFwd
-	call L0023A8
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   bc, $0380
 	call ActS_SetSpeedY
@@ -6021,8 +6029,8 @@ L026812:;I
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
 L026826:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L02682D:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -6032,12 +6040,12 @@ L026831: db $68
 L026832: db $3D
 L026833: db $68
 L026834:;I
-	call L001FB9
-	call L0020D8
+	call ActS_AngleToPl
+	call ActS_DoubleSpd
 	jp   ActS_IncRtnId
 L02683D:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L026844:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -6053,17 +6061,17 @@ L02684D:;I
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L026854:;I
-	call L001FB9
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_AngleToPl
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	jp   ActS_IncRtnId
 L026867:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L02686E:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -6080,15 +6088,15 @@ L026877:;I
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
 L026883:;I
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedUpY
 	ret  c
 	jp   ActS_IncRtnId
 L02688D:;I
 	ld   a, $01
 	ld   [wActCurSprMapRelId], a
-	call ActS_ApplySpeedFwd
-	call ActS_ApplySpeedY
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedDownY
 	ret
 L026899:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -6115,7 +6123,7 @@ L0268AE: db $F9
 L0268AF: db $69
 L0268B0:;I
 	ld   b, $00
-	call L001F16
+	call ActS_SetColiType
 	xor  a
 	ld   [$CCFD], a
 	ld   a, $98
@@ -6140,7 +6148,7 @@ L0268CE:;I
 	ld   a, [$CCEF]
 	ldh  [hActCur+iActX], a
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	xor  a
 	ldh  [hActCur+iAct0D], a
 	jp   ActS_IncRtnId
@@ -6176,9 +6184,9 @@ L026913:;I
 	ld   a, $98
 	ldh  [hActCur+iActY], a
 	ld   b, $00
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $02
-	ld   [$CF3A], a
+	ld   [wNoScroll], a
 	ld   a, $51
 	ld   bc, $00E8
 	call ActS_SpawnRel
@@ -6196,7 +6204,7 @@ L02693C:;I
 	ld   a, [$CCEF]
 	ldh  [hActCur+iActX], a
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	xor  a
 	ldh  [hActCur+iAct0D], a
 	ld   bc, $0B80
@@ -6214,8 +6222,8 @@ L02696B:;I
 	jp   ActS_IncRtnId
 L02697A:;I
 	ld   c, $01
-	call L001F43
-	call ActS_ApplySpeedFwd
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -6275,7 +6283,7 @@ L0269DD:;R
 	ld   h, $CD
 	ld   [hl], $01
 	ld   a, $02
-	ld   [$CF3A], a
+	ld   [wNoScroll], a
 	jp   ActS_IncRtnId
 L0269F9:;I
 	xor  a
@@ -6315,10 +6323,10 @@ L026A17:;I
 	or   a
 	jr   nz, L026A35
 	ld   a, $06
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	jp   ActS_DecRtnId
 L026A35:;R
-	ld   a, [$CF6A]
+	ld   a, [wCF6A_Unk_ActTargetSlot]
 	ld   b, a
 	ld   a, [wActCurSlotPtr]
 	cp   b
@@ -6329,11 +6337,11 @@ L026A35:;R
 	or   $08
 	ldh  [hActCur+iActSprMap], a
 	ld   a, $02
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   a, $04
-	ld   [$CF1A], a
+	ld   [wPlSpdYSub], a
 	ld   a, $80
-	ld   [$CF1B], a
+	ld   [wPlSpdY], a
 	jp   L003A0B
 L026A59:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -6347,14 +6355,14 @@ L026A61: db $6A
 L026A62: db $E3
 L026A63: db $6A
 L026A64:;I
-	ld   a, [$CF6F]
+	ld   a, [wLvlWater]
 	or   a
 	jr   z, L026A93
 	ldh  a, [hActCur+iActX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ldh  a, [hActCur+iActY]
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	cp   $10
 	jr   z, L026A7F
 	cp   $18
@@ -6362,8 +6370,8 @@ L026A64:;I
 L026A7F:;R
 	ldh  a, [hActCur+iActY]
 	sub  $0F
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	cp   $10
 	jp   z, ActS_IncRtnId
 L026A8E: db $FE;X
@@ -6373,7 +6381,7 @@ L026A91: db $B1;X
 L026A92: db $1E;X
 L026A93:;R
 	ld   a, $06
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	jp   ActS_DecRtnId
 L026A9B:;I
 	ldh  a, [hActCur+iActTimer0C]
@@ -6389,32 +6397,32 @@ L026A9B:;I
 	or   a
 	jr   nz, L026ABB
 	ld   a, $06
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
 L026ABB:;R
-	ld   a, [$CF6A]
+	ld   a, [wCF6A_Unk_ActTargetSlot]
 	ld   b, a
 	ld   a, [wActCurSlotPtr]
 	cp   b
 	ret  nz
 	xor  a
-	ld   [$CF75], a
-	ld   [$CF76], a
-	ld   [$CF77], a
-	ld   [$CF78], a
+	ld   [wPlRmSpdL], a
+	ld   [wPlRmSpdR], a
+	ld   [wPlRmSpdU], a
+	ld   [wPlRmSpdD], a
 	ld   a, [wPlRelX]
 	ldh  [hActCur+iActX], a
 	ldh  a, [hActCur+iActY]
 	ld   [wPlRelY], a
 	ld   a, $11
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	jp   ActS_IncRtnId
 L026AE3:;I
 	ld   c, $01
-	call L001F43
-	ld   a, [$CF42]
+	call ActS_Anim2
+	ld   a, [wPlHurtTimer]
 	or   a
 	jr   z, L026AF6
 	ldh  a, [hTimer]
@@ -6422,7 +6430,7 @@ L026AE3:;I
 	add  $0A
 	jr   L026B06
 L026AF6:;R
-	ld   a, [$CF43]
+	ld   a, [wPlInvulnTimer]
 	or   a
 	jr   z, L026B04
 	ldh  a, [hTimer]
@@ -6445,17 +6453,17 @@ L026B06:;R
 	and  $7F
 	or   b
 	ldh  [hActCur+iActSprMap], a
-	ld   a, [$CF5E]
+	ld   a, [wWpnSGUseTimer]
 	sub  $10
-	ld   [$CF5E], a
+	ld   [wWpnSGUseTimer], a
 	call c, L003A0B
 	ld   a, [wWpnAmmoCur]
 	or   a
 	ret  nz
 	xor  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   a, $06
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -6471,14 +6479,14 @@ L026B47: db $6B
 L026B48: db $A8
 L026B49: db $6B
 L026B4A:;I
-	ld   a, [$CF6F]
+	ld   a, [wLvlWater]
 	or   a
 	jr   z, L026B65
 	ldh  a, [hActCur+iActX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ldh  a, [hActCur+iActY]
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	cp   $10
 	jr   z, L026B68
 	cp   $18
@@ -6487,7 +6495,7 @@ L026B65:;R
 	jp   ActS_IncRtnId
 L026B68:;R
 	ld   a, $06
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	jp   ActS_DecRtnId
 L026B70:;I
 	ldh  a, [hActCur+iActTimer0C]
@@ -6520,7 +6528,7 @@ L026B8F: db $C9;X
 L026B90:;R
 	ld   a, [wActCurSlotPtr]
 	ld   b, a
-	ld   a, [$CF6A]
+	ld   a, [wCF6A_Unk_ActTargetSlot]
 	cp   b
 	ret  nz
 	ld   bc, $0100
@@ -6533,11 +6541,11 @@ L026BA8:;I
 	or   a
 	jr   z, L026BB4
 	call ActS_FacePl
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 L026BB4:;R
 	ld   a, [wActCurSlotPtr]
 	ld   b, a
-	ld   a, [$CF4A]
+	ld   a, [wCF4A_Unk_ActTargetSlot]
 	cp   b
 	ret  nz
 	ldh  a, [hJoyKeys]
@@ -6546,15 +6554,15 @@ L026BB4:;R
 	ldh  a, [hActCur+iActY]
 	cp   $90
 	jr   nc, L026C31
-	ld   a, [$CF6F]
+	ld   a, [wLvlWater]
 	or   a
 	jr   z, L026BE4
 	ldh  a, [hActCur+iActX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ldh  a, [hActCur+iActY]
 	inc  a
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	cp   $10
 	jr   z, L026C21
 	cp   $18
@@ -6563,7 +6571,7 @@ L026BE4:;R
 	ldh  a, [hActCur+iActSprMap]
 	or   $40
 	ldh  [hActCur+iActSprMap], a
-	call L00223A
+	call ActS_ApplySpeedFwdYColi
 	jr   L026C21
 L026BEF:;R
 	rla  
@@ -6572,32 +6580,32 @@ L026BEF:;R
 	cp   $18
 	jr   c, L026C21
 	sub  $18
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
 	sub  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	jr   nc, L026C21
 	ld   a, [wPlRelX]
 	add  $06
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	jr   nc, L026C21
 	ldh  a, [hActCur+iActSprMap]
 	and  $BF
 	ldh  [hActCur+iActSprMap], a
-	call L00220A
+	call ActS_ApplySpeedFwdY
 L026C21:;R
-	ld   a, [$CF5E]
+	ld   a, [wWpnSGUseTimer]
 	sub  $20
-	ld   [$CF5E], a
+	ld   [wWpnSGUseTimer], a
 	call c, L003A0B
 	ld   a, [wWpnAmmoCur]
 	or   a
 	ret  nz
 L026C31:;R
 	ld   a, $06
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -6626,10 +6634,10 @@ L026C46:;I
 	or   a
 	jr   nz, L026C64
 	ld   a, $06
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	jp   ActS_DecRtnId
 L026C64:;R
-	ld   a, [$CF6A]
+	ld   a, [wCF6A_Unk_ActTargetSlot]
 	ld   b, a
 	ld   a, [wActCurSlotPtr]
 	cp   b
@@ -6653,9 +6661,9 @@ L026C85:;I
 	ldh  a, [hActCur+iActY]
 	ld   [wPlRelY], a
 	xor  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	inc  a
-	ld   [$CF6C], a
+	ld   [wWpnSGRide], a
 	jp   ActS_IncRtnId
 L026CA1:;I
 	ld   a, [wPlRelX]
@@ -6664,24 +6672,24 @@ L026CA1:;I
 	ldh  [hActCur+iActY], a
 	cp   $90
 	jr   nc, L026CBF
-	ld   a, [$CF5E]
+	ld   a, [wWpnSGUseTimer]
 	sub  $40
-	ld   [$CF5E], a
+	ld   [wWpnSGUseTimer], a
 	call c, L003A0B
 	ld   a, [wWpnAmmoCur]
 	or   a
 	ret  nz
 L026CBF:;R
 	xor  a
-	ld   [$CF1D], a
-	ld   [$CF6C], a
+	ld   [wPlMode], a
+	ld   [wWpnSGRide], a
 	ld   a, $06
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
 L026CD0:;I
-	ld   a, [$CFF1]
+	ld   a, [wWpnItemWarp]
 	dec  a
 	rst  $00 ; DynJump
 L026CD5: db $E5
@@ -6706,7 +6714,7 @@ L026CE5:;I
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
-	ld   hl, $CFF1
+	ld   hl, wWpnItemWarp
 	inc  [hl]
 	ld   a, [wWpnSel]
 	cp   $0C
@@ -6716,14 +6724,14 @@ L026CE5:;I
 	ld   bc, $0B08
 	jp   GfxCopy_Req
 L026D05:;I
-	call ActS_ApplySpeedY
+	call ActS_ApplySpeedDownY
 	ldh  a, [hActCur+iActY]
 	ld   b, a
 	ld   a, [wPlRelY]
 	sub  $18
 	cp   b
 	ret  nc
-	ld   hl, $CFF1
+	ld   hl, wWpnItemWarp
 	inc  [hl]
 	ret
 L026D17:;I
@@ -6731,23 +6739,23 @@ L026D17:;I
 	cp   $90
 	jr   c, L026D23
 	ld   a, $06
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	ret
 L026D23:;R
 	ld   a, [wWpnSel]
 	cp   $01
 	jr   nz, L026D37
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, $CFF1
+	ld   hl, wWpnItemWarp
 	inc  [hl]
 	ret
 L026D37:;R
 	cp   $02
 	jr   nz, L026D51
-	call ActS_ApplySpeedY
+	call ActS_ApplySpeedDownY
 	ldh  a, [hActCur+iActY]
 	ld   b, a
 	ld   a, [wPlRelY]
@@ -6756,13 +6764,13 @@ L026D37:;R
 	ldh  [hActCur+iActY], a
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, $CFF1
+	ld   hl, wWpnItemWarp
 	inc  [hl]
 	ret
 L026D51:;R
 	cp   $03
 	jr   nz, L026D6B
-	call ActS_ApplySpeedY
+	call ActS_ApplySpeedDownY
 	ldh  a, [hActCur+iActY]
 	ld   b, a
 	ld   a, [wPlRelY]
@@ -6771,15 +6779,15 @@ L026D51:;R
 	ldh  [hActCur+iActY], a
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, $CFF1
+	ld   hl, wWpnItemWarp
 	inc  [hl]
 	ret
 L026D6B:;R
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, $CFF1
+	ld   hl, wWpnItemWarp
 	inc  [hl]
 	ret
 L026D78:;I
@@ -6790,7 +6798,7 @@ L026D78:;I
 	ld   [wActCurSprMapRelId], a
 	cp   $05
 	ret  nz
-	ld   hl, $CFF1
+	ld   hl, wWpnItemWarp
 	inc  [hl]
 	ret
 L026D8B:;I
@@ -6798,30 +6806,30 @@ L026D8B:;I
 	ld   [wActCurSprMapRelId], a
 	ldh  a, [hActCur+iActY]
 	sub  $04
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ldh  a, [hActCur+iActX]
 	sub  $08
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	jr   nc, L026DCA
 	ldh  a, [hActCur+iActX]
 	add  $08
-	ld   [$CF0D], a
-	call L00332F
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId
 	jr   nc, L026DCA
 	ld   a, $00
 	call ActS_SetSprMapId
 	call ActS_FacePl
 	call ActS_FlipH
 	ld   a, $FF
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	ld   a, $0C
 	ldh  [hSFXSet], a
 	ld   a, $B4
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L026DCA:;R
-	ld   hl, $CFF1
+	ld   hl, wWpnItemWarp
 	inc  [hl]
 	ret
 L026DCF:;I
@@ -6831,7 +6839,7 @@ L026DCF:;I
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $05
 	ld   [wActCurSprMapRelId], a
-	ld   hl, $CFF1
+	ld   hl, wWpnItemWarp
 	inc  [hl]
 	ret
 L026DE2:;I
@@ -6851,17 +6859,17 @@ L026DE2:;I
 	call ActS_SetSpeedY
 	ld   a, $0D
 	ldh  [hSFXSet], a
-	ld   hl, $CFF1
+	ld   hl, wWpnItemWarp
 	inc  [hl]
 	ret
 L026E09:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActY]
 	cp   $10
 	ret  nc
 	xor  a
 	ldh  [hActCur+iActId], a
-	ld   [$CFF1], a
+	ld   [wWpnItemWarp], a
 	ret
 L026E18:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -6888,14 +6896,14 @@ L026E39:;I
 	ldh  [hActCur+iActTimer0C], a
 	and  $1F
 	call z, ActS_FlipH
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActX]
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ldh  a, [hActCur+iActY]
-	ld   [wPl_Unk_Alt_Y], a
-	call L00332F
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId
 	ret  nc
 	cp   $10
 	ret  z
@@ -6942,7 +6950,7 @@ L026E80:;I
 	call z, L026F16
 	jp   ActS_IncRtnId
 L026EAB:;I
-	ld   a, [$CF7A]
+	ld   a, [wLvlWarpDest]
 	or   a
 	ret  nz
 	ld   a, [wPlRelX]
@@ -6958,9 +6966,9 @@ L026EAB:;I
 	and  $40
 	ret  nz
 	ld   a, $10
-	ld   [$CF7A], a
+	ld   [wLvlWarpDest], a
 	ld   a, $19
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ret
 L026ED2:;R
 	ld   a, b
@@ -6970,9 +6978,9 @@ L026ED2:;R
 	and  $01
 	ret  nz
 	ld   a, $20
-	ld   [$CF7A], a
+	ld   [wLvlWarpDest], a
 	ld   a, $19
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ret
 L026EE7:;R
 	ld   a, c
@@ -6985,9 +6993,9 @@ L026EE7:;R
 	and  $80
 	ret  nz
 	ld   a, $30
-	ld   [$CF7A], a
+	ld   [wLvlWarpDest], a
 	ld   a, $19
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ret
 L026F01:;R
 	ld   a, b
@@ -6997,9 +7005,9 @@ L026F01:;R
 	and  $20
 	ret  nz
 	ld   a, $40
-	ld   [$CF7A], a
+	ld   [wLvlWarpDest], a
 	ld   a, $19
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ret
 L026F16:;C
 	ld   a, b
@@ -7013,7 +7021,7 @@ L026F16:;C
 	ld   a, [hl]
 	ld   [wActSpawnY], a
 	xor  a
-	ld   [wActSpawnByte3], a
+	ld   [wActSpawnLayoutPtr], a
 	ld   a, $67
 	ld   [wActSpawnId], a
 	jp   ActS_Spawn
@@ -7027,7 +7035,7 @@ L026F39: db $8C
 L026F3A: db $58
 L026F3B:;I
 	ld   c, $01
-	call L001F43
+	call ActS_Anim2
 	ret
 L026F41:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -7153,9 +7161,9 @@ L026FFA:;I
 	ldh  [hActCur+iActRtnId], a
 	ret
 L02700B:;R
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L027018:;I
@@ -7168,16 +7176,16 @@ L027018:;I
 	ldh  [hActCur+iActRtnId], a
 	ret
 L027029:;R
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $3C
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $0F
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ldh  a, [hScrollY]
-	ld   [$CF46], a
+	ld   [wHardYShakeOrg], a
 	ld   a, $0B
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -7193,14 +7201,14 @@ L027051:;I
 L027058:;I
 	ld   a, $09
 	ld   [wActCurSprMapRelId], a
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $3C
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $0F
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ldh  a, [hScrollY]
-	ld   [$CF46], a
+	ld   [wHardYShakeOrg], a
 	ld   a, $0B
 	ldh  [hActCur+iActRtnId], a
 L027073:;I
@@ -7211,7 +7219,7 @@ L027073:;I
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, [$CF46]
+	ld   a, [wHardYShakeOrg]
 	ldh  [hScrollY], a
 	jp   ActS_IncRtnId
 L02708A:;I
@@ -7223,16 +7231,16 @@ L02708A:;I
 L027098:;I
 	ld   a, $09
 	ld   [wActCurSprMapRelId], a
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0270A4:;I
 	ld   a, $08
 	ld   [wActCurSprMapRelId], a
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	xor  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	ld   a, $06
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
@@ -7251,7 +7259,7 @@ L0270C9:;C
 	and  $03
 	add  $FF
 	ld   b, a
-	ld   a, [$CF46]
+	ld   a, [wHardYShakeOrg]
 	add  b
 	ldh  [hScrollY], a
 	ret
@@ -7353,13 +7361,13 @@ L027154:;I
 	ld   a, $78
 	ldh  [hActCur+iActTimer0C], a
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	jp   ActS_IncRtnId
 L027167:;I
 	ld   a, $03
 	ld   [wActCurSprMapRelId], a
 	ld   c, $02
-	call L001F51
+	call ActS_Anim4
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -7371,8 +7379,8 @@ L027181:;I
 	ld   a, $03
 	ld   [wActCurSprMapRelId], a
 	ld   c, $02
-	call L001F51
-	call ActS_ApplySpeedFwd
+	call ActS_Anim4
+	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActSprMap]
 	bit  7, a
 	jr   nz, L02719B
@@ -7386,7 +7394,7 @@ L02719B:;R
 	ret  c
 L0271A0:;R
 	ld   b, $02
-	call L001F16
+	call ActS_SetColiType
 	call ActS_FlipH
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
@@ -7445,13 +7453,13 @@ L0271D6:;I
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
 L0271F2:;I
-	call L002180
-	call L002328
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0271FC:;I
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $06
 	ldh  [hActCur+iActTimer0C], a
@@ -7486,7 +7494,7 @@ L027242:;R
 	bit  7, a
 	jr   nz, L02722E
 	ld   b, $03
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $03
 	call ActS_SetSprMapId
 	ld   a, $B4
@@ -7547,7 +7555,7 @@ L0272AC:;I
 	xor  $80
 	ld   bc, $0080
 	call L0018B9
-	ld   a, [$CF42]
+	ld   a, [wPlHurtTimer]
 	or   a
 	jr   nz, L0272D3
 	ldh  a, [hActCur+iActTimer0C]
@@ -7562,7 +7570,7 @@ L0272AC:;I
 	ret  nz
 L0272D3:;X
 	ld   b, $02
-	call L001F16
+	call ActS_SetColiType
 	ld   a, $10
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -7648,7 +7656,7 @@ L027346:;I
 	add  hl, bc
 	ld   b, [hl]
 	ld   c, $0B
-	call L001F0C
+	call ActS_SetColiBox
 	call Act_Boss_PlayIntro
 	ret  z
 	ld   de, $0508
@@ -7663,11 +7671,11 @@ L027364:;I
 	add  hl, bc
 	ld   b, [hl]
 	ld   c, $0B
-	call L001F0C
+	call ActS_SetColiBox
 	call Act_Boss_PlayIntro
 	ret  z
 	ld   bc, $0B0B
-	call L001F0C
+	call ActS_SetColiBox
 	ld   a, $01
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -7688,15 +7696,15 @@ L027393:;I
 L0273A2:;I
 	ld   a, $09
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L002328
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0273B1:;I
 	ld   a, $09
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $01
 	ldh  [hActCur+iActRtnId], a
@@ -7708,26 +7716,26 @@ L0273C2:;I
 L0273CB:;I
 	ld   a, $09
 	ld   [wActCurSprMapRelId], a
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	xor  a
-	ld   [$CF5C], a
+	ld   [w_CF5C_SpawnTimer], a
 	jp   ActS_IncRtnId
 L0273DB:;I
 	ld   a, $09
 	ld   [wActCurSprMapRelId], a
 	call ActS_FacePl
-	ld   a, [$CF5C]
+	ld   a, [w_CF5C_SpawnTimer]
 	cp   $20
 	jr   nc, L0273F6
 	inc  a
-	ld   [$CF5C], a
+	ld   [w_CF5C_SpawnTimer], a
 	dec  a
 	and  $07
 	jr   nz, L0273F6
 	jp   ActS_IncRtnId
 L0273F6:;R
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $01
 	ldh  [hActCur+iActRtnId], a
@@ -7794,14 +7802,14 @@ L027447:;I
 	and  $03
 	add  $03
 	ld   [wActCurSprMapRelId], a
-	ld   a, [$CC60]
+	ld   a, [wShot0]
 	add  a
 	jp   c, ActS_IncRtnId
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	jp   z, ActS_IncRtnId
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	ret  c
 	ld   hl, hActCur+iActSprMap
 	ld   a, $80
@@ -7825,8 +7833,8 @@ L027472:;I
 L02748C:;I
 	ld   a, $07
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L002328
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
@@ -7834,8 +7842,8 @@ L02748C:;I
 L02749F:;I
 	ld   a, $08
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -7855,8 +7863,8 @@ L0274C2:;R
 L0274C9:;I
 	ld   a, $09
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -7867,8 +7875,8 @@ L0274C9:;I
 L0274E2:;I
 	ld   a, $07
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
@@ -7919,7 +7927,7 @@ L027518:;I
 	call ActS_GetPlDistanceX
 	cp   $20
 	jp   c, L0275E5
-	ld   a, [$CC60]
+	ld   a, [wShot0]
 	add  a
 	ret  nc
 	ld   bc, $0400
@@ -7928,7 +7936,7 @@ L027518:;I
 L02753D:;I
 	ld   a, $07
 	ld   [wActCurSprMapRelId], a
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	ld   a, $04
 	ldh  [hActCur+iActTimer0C], a
@@ -7936,7 +7944,7 @@ L02753D:;I
 L02754D:;I
 	ld   a, $08
 	ld   [wActCurSprMapRelId], a
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	jp   nc, L0275E0
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
@@ -7951,7 +7959,7 @@ L02754D:;I
 L02756E:;I
 	ld   a, $09
 	ld   [wActCurSprMapRelId], a
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	jp   nc, L0275E0
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
@@ -8006,15 +8014,15 @@ L0275AB:;I
 L0275BD:;I
 	ld   a, $07
 	ld   [wActCurSprMapRelId], a
-	call ActS_ApplySpeedFwd
-	call L002328
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0275CC:;I
 	ld   a, $07
 	ld   [wActCurSprMapRelId], a
-	call ActS_ApplySpeedFwd
-	call L0023A8
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	call ActS_FacePl
 	ld   a, $02
@@ -8161,15 +8169,15 @@ L0276A6:;I
 L0276EB:;I
 	ld   a, $08
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L002328
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L0276FA:;I
 	ld   a, $08
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	jp   ActS_IncRtnId
 L027709:;I
@@ -8323,15 +8331,15 @@ L0277EF:;I
 L0277F8:;I
 	ld   a, $07
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L002328
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L027807:;I
 	ld   a, $07
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   bc, $0300
 	call ActS_SetSpeedY
@@ -8339,15 +8347,15 @@ L027807:;I
 L02781C:;I
 	ld   a, $07
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L002328
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L02782B:;I
 	ld   a, $07
 	ld   [wActCurSprMapRelId], a
-	call L002180
-	call L0023A8
+	call ActS_ApplySpeedFwdXColi
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	ldh  a, [hActCur+iActSprMap]
 	xor  $80
@@ -8438,16 +8446,16 @@ L027894: db $FC
 L027895: db $78
 L027896:;I
 	ld   a, [wPlRelX]
-	ld   [$CF47], a
+	ld   [wHardFistTargetX], a
 	ld   a, [wPlRelY]
-	ld   [$CF48], a
-	call L001FB9
-	call L0020D8
+	ld   [wHardFistTargetY], a
+	call ActS_AngleToPl
+	call ActS_DoubleSpd
 	jp   ActS_IncRtnId
 L0278AB:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
-	ld   a, [$CF47]
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
+	ld   a, [wHardFistTargetX]
 	ld   b, a
 	ldh  a, [hActCur+iActX]
 	sub  b
@@ -8458,7 +8466,7 @@ L0278AB:;I
 L0278BE:;R
 	and  $F0
 	ret  nz
-	ld   a, [$CF48]
+	ld   a, [wHardFistTargetY]
 	ld   b, a
 	ldh  a, [hActCur+iActY]
 	sub  b
@@ -8473,14 +8481,14 @@ L0278CE:;R
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L0278D8:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	call L001FB9
-	call L0020D8
+	call ActS_AngleToPl
+	call ActS_DoubleSpd
 	ld   a, $06
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
@@ -8491,8 +8499,8 @@ L0278F2:;I
 	ret  nz
 	jp   ActS_IncRtnId
 L0278FC:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L027903:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -8507,15 +8515,15 @@ L02790C: db $48
 L02790D: db $79
 L02790E:;I
 	ld   c, $03
-	call L001F43
+	call ActS_Anim2
 	ld   a, $30
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L02791A:;I
 	ld   c, $03
-	call L001F43
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -8525,19 +8533,19 @@ L02791A:;I
 	jp   ActS_IncRtnId
 L027933:;I
 	ld   c, $03
-	call L001F43
+	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	call L001FB9
-	call L0020D8
+	call ActS_AngleToPl
+	call ActS_DoubleSpd
 	jp   ActS_IncRtnId
 L027948:;I
 	ld   c, $03
-	call L001F43
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L027954:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -8557,7 +8565,7 @@ L02795F:;I
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L02796C:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	jr   nc, L02799A
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
@@ -8565,7 +8573,7 @@ L02796C:;I
 	ret  nz
 	jp   ActS_IncRtnId
 L02797B:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	jr   nc, L02799A
 	call ActS_GetPlDistanceX
 	cp   $04
@@ -8576,7 +8584,7 @@ L02797B:;I
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
 L027994:;I
-	call L00223A
+	call ActS_ApplySpeedFwdYColi
 	jr   nc, L02799A
 	ret
 L02799A:;R
@@ -8589,12 +8597,12 @@ L0279A1: db $79
 L0279A2: db $AD
 L0279A3: db $79
 L0279A4:;I
-	call L001FB9
-	call L0020D8
+	call ActS_AngleToPl
+	call ActS_DoubleSpd
 	jp   ActS_IncRtnId
 L0279AD:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L0279B4:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -8610,13 +8618,13 @@ L0279BE: db $79
 L0279BF: db $E8
 L0279C0: db $79
 L0279C1:;I
-	call L001FB9
-	call L0020D8
+	call ActS_AngleToPl
+	call ActS_DoubleSpd
 	jp   ActS_IncRtnId
 L0279CA:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	jp   nc, ActS_IncRtnId
-	call L00223A
+	call ActS_ApplySpeedFwdYColi
 	jp   nc, ActS_IncRtnId
 	ret
 L0279D7:;I
@@ -8643,14 +8651,14 @@ L0279F8: db $05
 L0279F9: db $7A
 L0279FA:;I
 	ld   b, $00
-	call L001FBB
-	call L0020D8
+	call ActS_AngleToPlCustom
+	call ActS_DoubleSpd
 	jp   ActS_IncRtnId
 L027A05:;I
 	ld   c, $01
-	call L001F43
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_Anim2
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L027A11:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -8684,9 +8692,9 @@ L027A1C:;I
 	jp   ActS_IncRtnId
 L027A3A:;I
 	ld   bc, $0301
-	call L001F5F
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_AnimCustom
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -8696,7 +8704,7 @@ L027A3A:;I
 	jp   ActS_IncRtnId
 L027A54:;I
 	ld   bc, $0301
-	call L001F5F
+	call ActS_AnimCustom
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -8707,7 +8715,7 @@ L027A54:;I
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
 L027A70:;I
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	ret
 L027A74:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -8876,7 +8884,7 @@ L027B47:;I
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
 L027B56:;I
-	call L00220A
+	call ActS_ApplySpeedFwdY
 	ret
 L027B5A:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -8897,8 +8905,8 @@ L027B61:;I
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L027B7A:;I
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -8922,7 +8930,7 @@ L027B99:;I
 	jp   ActS_IncRtnId
 L027BA0:;I
 	ld   c, $01
-	call L001F51
+	call ActS_Anim4
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
@@ -8950,9 +8958,9 @@ L027BC5:;I
 	ret
 L027BCD:;I
 	ld   c, $01
-	call L001F51
-	call ActS_ApplySpeedFwd
-	call L00220A
+	call ActS_Anim4
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedFwdY
 	ret
 L027BD9:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -8962,15 +8970,15 @@ L027BDD: db $7B
 L027BDE: db $ED
 L027BDF: db $7B
 L027BE0:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L002328
+	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
 L027BED:;I
-	call L002180
+	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
-	call L0023A8
+	call ActS_ApplySpeedDownYColi
 	ret  c
 	jp   L001E11
 L027BFA:;I
@@ -8982,8 +8990,8 @@ L027BFA:;I
 	jp   ActS_IncRtnId
 L027C08:;R
 	ld   c, $01
-	call L001F51
-	call ActS_ApplySpeedFwd
+	call ActS_Anim4
+	call ActS_ApplySpeedFwdX
 	ret
 L027C11:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -8993,18 +9001,18 @@ L027C15: db $7C
 L027C16: db $22
 L027C17: db $7C
 L027C18:;I
-	call ActS_ApplySpeedFwd
+	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedUpY
 	ret  c
 	jp   ActS_IncRtnId
 L027C22:;I
-	call ActS_ApplySpeedFwd
-	call ActS_ApplySpeedY
+	call ActS_ApplySpeedFwdX
+	call ActS_ApplySpeedDownY
 	ret
 L027C29:;JC
-	ld   [$CFE6], a
+	ld   [wTmpCFE6], a
 	ld   a, d
-	ld   [$CFE7], a
+	ld   [wTmpCFE7], a
 	ld   a, e
 	call ActS_SpawnRel
 	ret  c
@@ -9019,10 +9027,10 @@ L027C29:;JC
 	ld   c, [hl]
 	inc  hl
 	ld   b, [hl]
-	ld   a, [$CFE7]
+	ld   a, [wTmpCFE7]
 	ld   d, a
 	ld   e, $00
-	ld   a, [$CFE6]
+	ld   a, [wTmpCFE6]
 	pop  hl
 	jp   L027D75
 L027C54: db $80
@@ -9048,19 +9056,19 @@ L027C64:;C
 	ret  c
 	ldh  a, [hActCur+iActSprMap]
 	and  $80
-	ld   [wActCurSprFlagsRes], a
+	ld   [wTmpCF52], a
 	ld   bc, $00B4
 	ld   de, $00B4
 	call L027D75
 	call ActS_Spawn
 	ret  c
-	ld   a, [wActCurSprFlagsRes]
+	ld   a, [wTmpCF52]
 	ld   bc, $00FF
 	ld   de, $0000
 	call L027D75
 	call ActS_Spawn
 	ret  c
-	ld   a, [wActCurSprFlagsRes]
+	ld   a, [wTmpCF52]
 	or   $40
 	ld   bc, $00B4
 	ld   de, $00B4
@@ -9072,19 +9080,19 @@ L027C9F:;J
 	ret  c
 	ldh  a, [hActCur+iActSprMap]
 	and  $80
-	ld   [wActCurSprFlagsRes], a
+	ld   [wTmpCF52], a
 	ld   bc, $00C0
 	ld   de, $0180
 	call L027D75
 	call ActS_Spawn
 	ret  c
-	ld   a, [wActCurSprFlagsRes]
+	ld   a, [wTmpCF52]
 	ld   bc, $0100
 	ld   de, $0200
 	call L027D75
 	call ActS_Spawn
 	ret  c
-	ld   a, [wActCurSprFlagsRes]
+	ld   a, [wTmpCF52]
 	ld   bc, $0140
 	ld   de, $0280
 	jp   L027D75
@@ -9136,19 +9144,19 @@ L027D3C:;C
 	ret  c
 	ldh  a, [hActCur+iActSprMap]
 	and  $80
-	ld   [wActCurSprFlagsRes], a
+	ld   [wTmpCF52], a
 	ld   bc, $00C0
 	ld   de, $00C0
 	call L027D75
 	call ActS_Spawn
 	ret  c
-	ld   a, [wActCurSprFlagsRes]
+	ld   a, [wTmpCF52]
 	ld   bc, $0120
 	ld   de, $0120
 	call L027D75
 	call ActS_Spawn
 	ret  c
-	ld   a, [wActCurSprFlagsRes]
+	ld   a, [wTmpCF52]
 	ld   bc, $0180
 	ld   de, $0180
 	jp   L027D75
@@ -9168,7 +9176,7 @@ L027D75:;JC
 	ld   [hl], d
 	ret
 L027D84:;I
-	ld   a, [$CF3A]
+	ld   a, [wNoScroll]
 	rst  $00 ; DynJump
 L027D88: db $A8;X
 L027D89: db $7D;X
@@ -9185,7 +9193,7 @@ L027D93: db $7E
 L027D94: db $2A
 L027D95: db $7E
 L027D96:;I
-	ld   a, [$CF3A]
+	ld   a, [wNoScroll]
 	rst  $00 ; DynJump
 L027D9A: db $A8;X
 L027D9B: db $7D;X
@@ -9205,15 +9213,15 @@ L027DA8:;I
 	ret
 L027DA9:;I
 	ld   a, $0F
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	xor  a
-	ld   [$CF44], a
-	ld   [$CF73], a
-	ld   hl, $CF70
+	ld   [wBossIntroHealth], a
+	ld   [wBossHealthBar], a
+	ld   hl, wStatusBarRedraw
 	set  2, [hl]
 	ld   a, $1E
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, $CF3A
+	ld   hl, wNoScroll
 	inc  [hl]
 	ld   a, $05
 	ldh  [hBGMSet], a
@@ -9226,7 +9234,7 @@ L027DC7:;I
 	ld   de, $0002
 	ld   c, $1E
 	call Act_Boss_InitIntro
-	ld   hl, $CF3A
+	ld   hl, wNoScroll
 	inc  [hl]
 	ret
 L027DDB:;I
@@ -9236,7 +9244,7 @@ L027DDB:;I
 	ret  nz
 	ld   a, $1E
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, $CF3A
+	ld   hl, wNoScroll
 	inc  [hl]
 	ret
 L027DEB:;I
@@ -9244,7 +9252,7 @@ L027DEB:;I
 	ret  z
 	ld   a, $01
 	call ActS_SetSprMapId
-	ld   hl, $CF3A
+	ld   hl, wNoScroll
 	inc  [hl]
 	ret
 L027DF9:;I
@@ -9252,44 +9260,44 @@ L027DF9:;I
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   hl, $CF3A
+	ld   hl, wNoScroll
 	inc  [hl]
 	ret
 L027E05:;I
-	ld   a, [$CF44]
+	ld   a, [wBossIntroHealth]
 	inc  a
-	ld   [$CF44], a
-	ld   [$CF73], a
-	ld   hl, $CF70
+	ld   [wBossIntroHealth], a
+	ld   [wBossHealthBar], a
+	ld   hl, wStatusBarRedraw
 	set  2, [hl]
-	ld   a, [$CF44]
+	ld   a, [wBossIntroHealth]
 	and  $07
 	jr   nz, L027E1F
 	ld   a, $0B
 	ldh  [hSFXSet], a
 L027E1F:;R
-	ld   a, [$CF44]
+	ld   a, [wBossIntroHealth]
 	cp   $98
 	ret  c
-	ld   hl, $CF3A
+	ld   hl, wNoScroll
 	inc  [hl]
 	ret
 L027E2A:;I
 	ld   a, $00
 	call ActS_SetSprMapId
 	xor  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	inc  a
-	ld   [$CF45], a
+	ld   [wBossDmgEna], a
 	ldh  [hActCur+iActRtnId], a
 	ret
 L027E3A:;I
 	ld   a, $00
 	call ActS_SetSprMapId
 	xor  a
-	ld   [$CF1D], a
+	ld   [wPlMode], a
 	inc  a
-	ld   [$CF45], a
+	ld   [wBossDmgEna], a
 	ld   hl, hActCur+iActRtnId
 	inc  [hl]
 	ret
@@ -9312,19 +9320,19 @@ L027E61:;C
 L027E6D:;C
 	ldh  a, [hActCur+iActX]
 	sub  $14
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ldh  a, [hActCur+iActY]
 	sub  $14
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, $06
-	ld   [$CF51], a
+	ld   [w_Unk_RectCpRowsLeft], a
 	ld   a, $06
-	ld   [$CF50], a
+	ld   [w_Unk_RectCpColsLeft], a
 	ld   de, $7F8D
 	call L027EDC
 	ldh  a, [hScrollXNybLow]
 	ld   b, a
-	ld   a, [$CF0D]
+	ld   a, [wTargetRelX]
 	sub  $08
 	add  b
 	swap a
@@ -9333,7 +9341,7 @@ L027E6D:;C
 	ld   a, [wLvlColL]
 	add  b
 	ld   c, a
-	ld   a, [wPl_Unk_Alt_Y]
+	ld   a, [wTargetRelY]
 	sub  $10
 	swap a
 	and  $0F
@@ -9363,60 +9371,60 @@ L027EB3:;R
 L027EC3:;C
 	ldh  a, [hActCur+iActX]
 	sub  $12
-	ld   [$CF0D], a
+	ld   [wTargetRelX], a
 	ldh  a, [hActCur+iActY]
 	sub  $1C
-	ld   [wPl_Unk_Alt_Y], a
+	ld   [wTargetRelY], a
 	ld   a, $05
-	ld   [$CF51], a
+	ld   [w_Unk_RectCpRowsLeft], a
 	ld   a, $04
-	ld   [$CF50], a
+	ld   [w_Unk_RectCpColsLeft], a
 	ret
 L027EDC:;JCR
 	ldh  a, [hScrollY]
 	ld   b, a
-	ld   a, [wPl_Unk_Alt_Y]
+	ld   a, [wTargetRelY]
 	sub  $10
 	add  b
 	swap a
 	and  $0F
 	sla  a
-	ld   hl, $3C74
+	ld   hl, ScrEv_BGStripTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ldi  a, [hl]
-	ld   [$CF4E], a
+	ld   [w_Unk_RectCpDestPtrLow], a
 	ld   a, [hl]
-	ld   [$CF4F], a
+	ld   [w_Unk_RectCpDestPtrHigh], a
 	ldh  a, [hScrollX]
 	ld   b, a
 	ldh  a, [hScrollXNybLow]
 	add  b
 	ld   b, a
-	ld   a, [$CF0D]
+	ld   a, [wTargetRelX]
 	sub  $08
 	add  b
 	swap a
 	and  $0F
 	sla  a
 	ld   b, a
-	ld   a, [$CF4E]
+	ld   a, [w_Unk_RectCpDestPtrLow]
 	add  b
-	ld   [$CF4E], a
+	ld   [w_Unk_RectCpDestPtrLow], a
 	ld   hl, wScrEvRows
-	ld   a, [$CF51]
+	ld   a, [w_Unk_RectCpRowsLeft]
 	ld   b, a
 L027F1C:;R
-	ld   a, [$CF4F]
+	ld   a, [w_Unk_RectCpDestPtrHigh]
 	ldi  [hl], a
-	ld   a, [$CF4E]
+	ld   a, [w_Unk_RectCpDestPtrLow]
 	ldi  [hl], a
-	ld   a, [$CF50]
+	ld   a, [w_Unk_RectCpColsLeft]
 	or   $80
 	ldi  [hl], a
 	push bc
-	ld   a, [$CF50]
+	ld   a, [w_Unk_RectCpColsLeft]
 	ld   b, a
 L027F2F:;R
 	ld   a, [de]
@@ -9425,14 +9433,14 @@ L027F2F:;R
 	dec  b
 	jr   nz, L027F2F
 	pop  bc
-	ld   a, [$CF4E]
+	ld   a, [w_Unk_RectCpDestPtrLow]
 	and  $E0
 	ld   c, a
-	ld   a, [$CF4E]
+	ld   a, [w_Unk_RectCpDestPtrLow]
 	inc  a
 	and  $1F
 	or   c
-	ld   [$CF4E], a
+	ld   [w_Unk_RectCpDestPtrLow], a
 	dec  b
 	jr   nz, L027F1C
 	xor  a
