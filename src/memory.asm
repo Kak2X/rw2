@@ -47,7 +47,7 @@ wPl_Unk_Alt_X:         db ; $CF0F ; ??? Target pos?
 wLvl_Unk_CurCol:       db ; $CF10 ; ??? Current column number the player is on
 wPlSprMapId:           db ; $CF11 ; Player sprite mapping ID
 wPlDirH:               db ; $CF12 ; Direction the player faces (0: left, 1: right)
-wPlWalkAnimMode:       db ; $CF13 ; Timer capped to 7 which determines the animation type for the walk cycle (ie: inching vs walking)
+wPlWalkAnimTimer:      db ; $CF13 ; Walk animation timer. Player will sidestep until it reaches 7 (purely visual) 
 wPlAnimTimer:          db ; $CF14 ; Player animation timer
 wPlRelX:               db ; $CF15 ; Player X position, relative to the screen
 wPlRelY:               db ; $CF16 ; Player Y position, relative to the screen
@@ -83,8 +83,8 @@ wPlSlideDustX:          db ; $CF35 ; Dust particle sprite - X position
 wPlSlideDustY:          db ; $CF36 ; Dust particle sprite - Y position
 wActStartEndSlotPtr:    db ; $CF37 ; First *AND* last actor slot processed. Stored in the same address since the first slot is at $CD00 and the end at $CE00 (same low byte)
 wActCurSprMapRelId:     db ; $CF38 ; Sprite mapping ID offset, relative to the one packed in iActSprMap
-wUnk_FrameStartTimer:   db ; $CF39 ; ??? Copy of hTimer taken at the start of the gameplay loop, lag-related likely
-wNoScroll:              db ; $CF3A ; Disables horizontal scrolling, used for boss rooms
+wStartTimer:            db ; $CF39 ; Copy of hTimer taken at the start of the gameplay loop. Used at the end of the loop to check for lag frames.
+wShutterNum:            db ; $CF3A ; Number of shutters went through. Disables horizontal scrolling, used for boss rooms
 wPlColiBlockL:          db ; $CF3B ; Player collision, block ID on the left
 wPlColiBlockR:          db ; $CF3C ; Player collision, block ID on the right
 wShutterBGPtr_Low:      db ; $CF3D ; Target tilemap pointer when animating the shutter.
@@ -130,7 +130,7 @@ wExplodeOrgX:           db ; $CF63 ; X Origin of player/boss explosions
 wExplodeOrgY:           db ; $CF64 ; Y Origin of player/boss explosions
 wPlWarpSprMapRelId:     db ; $CF65 ; Relative sprite mapping ID used during the teleport animation
 wStageSelCursor:        db ; $CF66 ; Cursor location on the stage select
-wActCurSprFlags:        db ; $CF67 ; OBJ flags for the current actor
+wPlSprFlags:            db ; $CF67 ; OBJ flags for the player
 wPlRmSpdYSub:           db ; $CF68 ; Rush Marine Y speed, calculated from wPlRmSpdU & wPlRmSpdD 
 wPlRmSpdY:              db ; $CF69 ; ( ??? for some reason, there's no X equivalent)
 wCF6A_Unk_ActTargetSlot:     db ; $CF6A ; ??? Target slot ID for something
@@ -158,9 +158,9 @@ wPlRespawn:             db ; $CF7F ; If set, the level is being reloaded after t
 ds $10
 wStageSelStarfieldPos:  ds $30 ; $CF90 ; Table of coordinates for each star
 wPassSelTbl:            ds $10 ; $CFC0 ; Dots placed on the password screen ($00 or $FF)
-wPlHealth:              db ; $CFD0 ; Player's health
-DEF wPassSelTbl_End EQU wPlHealth
 ; Ammo for...
+wPlHealth:              db ; $CFD0 ; Player's health ("Ammo for P")
+DEF wWpnAmmoTbl EQU wPlHealth
 wWpnAmmoRC:             db ; $CFD1 ; Rush Coil
 wWpnAmmoRM:             db ; $CFD2 ; Rush Marine
 wWpnAmmoRJ:             db ; $CFD3 ; Rush Jet
@@ -173,6 +173,7 @@ wWpnAmmoNE:             db ; $CFD9 ; Needle Cannon
 wWpnAmmoHA:             db ; $CFDA ; Hard Knuckle
 wWpnAmmoMG:             db ; $CFDB ; Magnet Missile
 wWpnAmmoSG:             db ; $CFDC ; Sakugarne
+DEF wPassSelTbl_End EQU wPlHealth
 DEF wWpnAmmo_Start EQU wWpnAmmoRC
 DEF wWpnAmmo_End   EQU wWpnAmmoSG + 1
 wWpnUnlock1:            db ; $CFDD ; Automatic weapon unlocks
@@ -195,7 +196,7 @@ wWpnColiV:              db ; $CFED ; Weapon collision box - vertical radius
 wWpnActDmg:             db ; $CFEE ; Damage the current weapon dealt to the actor
 wWpnPierceLvl:          db ; $CFEF ; "Piercing level" of the current weapon (WPNPIERCE_*)
 wWpnShotCost:           db ; $CFF0 ; Ammo cost of the currently fired shot
-wWpnItemWarp:           db ; $CFF1 ; Teleport animation mode for the Rush/Sakugarne
+wWpnHelperWarp:         db ; $CFF1 ; Teleport animation mode for the Rush/Sakugarne
 wWpnAmmoInc:            db ; $CFF2 ; Slowly increments the weapon ammo until it elapses. (weapon energy effect)
 wPlHealthInc:           db ; $CFF3 ; Slowly increments the player's health until it elapses. (life energy effect)
 wPassCursorX:           db ; $CFF4 ; Password cursor - X position

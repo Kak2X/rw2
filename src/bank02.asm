@@ -5490,7 +5490,7 @@ L026456:;I
 L026468: db $C9;X
 L026469:;C
 	push hl
-	call L000DDB
+	call Game_AutoScrollR_NoAct
 	pop  hl
 	ldh  a, [hActCur+iActX]
 	cp   $91
@@ -6186,7 +6186,7 @@ L026913:;I
 	ld   b, $00
 	call ActS_SetColiType
 	ld   a, $02
-	ld   [wNoScroll], a
+	ld   [wShutterNum], a
 	ld   a, $51
 	ld   bc, $00E8
 	call ActS_SpawnRel
@@ -6263,7 +6263,7 @@ L0269C9:;I
 	add  [hl]
 	ld   [hl], a
 	jr   nc, L0269DD
-	call L000DDB
+	call Game_AutoScrollR_NoAct
 	ldh  a, [hActCur+iAct0E]
 	sub  $08
 	ld   l, a
@@ -6283,7 +6283,7 @@ L0269DD:;R
 	ld   h, $CD
 	ld   [hl], $01
 	ld   a, $02
-	ld   [wNoScroll], a
+	ld   [wShutterNum], a
 	jp   ActS_IncRtnId
 L0269F9:;I
 	xor  a
@@ -6323,7 +6323,7 @@ L026A17:;I
 	or   a
 	jr   nz, L026A35
 	ld   a, $06
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	jp   ActS_DecRtnId
 L026A35:;R
 	ld   a, [wCF6A_Unk_ActTargetSlot]
@@ -6381,7 +6381,7 @@ L026A91: db $B1;X
 L026A92: db $1E;X
 L026A93:;R
 	ld   a, $06
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	jp   ActS_DecRtnId
 L026A9B:;I
 	ldh  a, [hActCur+iActTimer0C]
@@ -6397,7 +6397,7 @@ L026A9B:;I
 	or   a
 	jr   nz, L026ABB
 	ld   a, $06
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -6463,7 +6463,7 @@ L026B06:;R
 	xor  a
 	ld   [wPlMode], a
 	ld   a, $06
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -6495,7 +6495,7 @@ L026B65:;R
 	jp   ActS_IncRtnId
 L026B68:;R
 	ld   a, $06
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	jp   ActS_DecRtnId
 L026B70:;I
 	ldh  a, [hActCur+iActTimer0C]
@@ -6605,7 +6605,7 @@ L026C21:;R
 	ret  nz
 L026C31:;R
 	ld   a, $06
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -6634,7 +6634,7 @@ L026C46:;I
 	or   a
 	jr   nz, L026C64
 	ld   a, $06
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	jp   ActS_DecRtnId
 L026C64:;R
 	ld   a, [wCF6A_Unk_ActTargetSlot]
@@ -6684,12 +6684,12 @@ L026CBF:;R
 	ld   [wPlMode], a
 	ld   [wWpnSGRide], a
 	ld   a, $06
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
 L026CD0:;I
-	ld   a, [wWpnItemWarp]
+	ld   a, [wWpnHelperWarp]
 	dec  a
 	rst  $00 ; DynJump
 L026CD5: db $E5
@@ -6714,7 +6714,7 @@ L026CE5:;I
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
-	ld   hl, wWpnItemWarp
+	ld   hl, wWpnHelperWarp
 	inc  [hl]
 	ld   a, [wWpnSel]
 	cp   $0C
@@ -6731,7 +6731,7 @@ L026D05:;I
 	sub  $18
 	cp   b
 	ret  nc
-	ld   hl, wWpnItemWarp
+	ld   hl, wWpnHelperWarp
 	inc  [hl]
 	ret
 L026D17:;I
@@ -6739,7 +6739,7 @@ L026D17:;I
 	cp   $90
 	jr   c, L026D23
 	ld   a, $06
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	ret
 L026D23:;R
 	ld   a, [wWpnSel]
@@ -6749,7 +6749,7 @@ L026D23:;R
 	ret  c
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnItemWarp
+	ld   hl, wWpnHelperWarp
 	inc  [hl]
 	ret
 L026D37:;R
@@ -6764,7 +6764,7 @@ L026D37:;R
 	ldh  [hActCur+iActY], a
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnItemWarp
+	ld   hl, wWpnHelperWarp
 	inc  [hl]
 	ret
 L026D51:;R
@@ -6779,7 +6779,7 @@ L026D51:;R
 	ldh  [hActCur+iActY], a
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnItemWarp
+	ld   hl, wWpnHelperWarp
 	inc  [hl]
 	ret
 L026D6B:;R
@@ -6787,7 +6787,7 @@ L026D6B:;R
 	ret  c
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnItemWarp
+	ld   hl, wWpnHelperWarp
 	inc  [hl]
 	ret
 L026D78:;I
@@ -6798,7 +6798,7 @@ L026D78:;I
 	ld   [wActCurSprMapRelId], a
 	cp   $05
 	ret  nz
-	ld   hl, wWpnItemWarp
+	ld   hl, wWpnHelperWarp
 	inc  [hl]
 	ret
 L026D8B:;I
@@ -6822,14 +6822,14 @@ L026D8B:;I
 	call ActS_FacePl
 	call ActS_FlipH
 	ld   a, $FF
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	ld   a, $0C
 	ldh  [hSFXSet], a
 	ld   a, $B4
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L026DCA:;R
-	ld   hl, wWpnItemWarp
+	ld   hl, wWpnHelperWarp
 	inc  [hl]
 	ret
 L026DCF:;I
@@ -6839,7 +6839,7 @@ L026DCF:;I
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $05
 	ld   [wActCurSprMapRelId], a
-	ld   hl, wWpnItemWarp
+	ld   hl, wWpnHelperWarp
 	inc  [hl]
 	ret
 L026DE2:;I
@@ -6859,7 +6859,7 @@ L026DE2:;I
 	call ActS_SetSpeedY
 	ld   a, $0D
 	ldh  [hSFXSet], a
-	ld   hl, wWpnItemWarp
+	ld   hl, wWpnHelperWarp
 	inc  [hl]
 	ret
 L026E09:;I
@@ -6869,7 +6869,7 @@ L026E09:;I
 	ret  nc
 	xor  a
 	ldh  [hActCur+iActId], a
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	ret
 L026E18:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -9176,7 +9176,7 @@ L027D75:;JC
 	ld   [hl], d
 	ret
 L027D84:;I
-	ld   a, [wNoScroll]
+	ld   a, [wShutterNum]
 	rst  $00 ; DynJump
 L027D88: db $A8;X
 L027D89: db $7D;X
@@ -9193,7 +9193,7 @@ L027D93: db $7E
 L027D94: db $2A
 L027D95: db $7E
 L027D96:;I
-	ld   a, [wNoScroll]
+	ld   a, [wShutterNum]
 	rst  $00 ; DynJump
 L027D9A: db $A8;X
 L027D9B: db $7D;X
@@ -9221,7 +9221,7 @@ L027DA9:;I
 	set  2, [hl]
 	ld   a, $1E
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wNoScroll
+	ld   hl, wShutterNum
 	inc  [hl]
 	ld   a, $05
 	ldh  [hBGMSet], a
@@ -9234,7 +9234,7 @@ L027DC7:;I
 	ld   de, $0002
 	ld   c, $1E
 	call Act_Boss_InitIntro
-	ld   hl, wNoScroll
+	ld   hl, wShutterNum
 	inc  [hl]
 	ret
 L027DDB:;I
@@ -9244,7 +9244,7 @@ L027DDB:;I
 	ret  nz
 	ld   a, $1E
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wNoScroll
+	ld   hl, wShutterNum
 	inc  [hl]
 	ret
 L027DEB:;I
@@ -9252,7 +9252,7 @@ L027DEB:;I
 	ret  z
 	ld   a, $01
 	call ActS_SetSprMapId
-	ld   hl, wNoScroll
+	ld   hl, wShutterNum
 	inc  [hl]
 	ret
 L027DF9:;I
@@ -9260,7 +9260,7 @@ L027DF9:;I
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   hl, wNoScroll
+	ld   hl, wShutterNum
 	inc  [hl]
 	ret
 L027E05:;I
@@ -9279,7 +9279,7 @@ L027E1F:;R
 	ld   a, [wBossIntroHealth]
 	cp   $98
 	ret  c
-	ld   hl, wNoScroll
+	ld   hl, wShutterNum
 	inc  [hl]
 	ret
 L027E2A:;I

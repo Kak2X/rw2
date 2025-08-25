@@ -153,8 +153,9 @@ EntryPoint:
 .warmBoot:
 
 	; BANK $01 is the default switchable bank, so it gets put into hRomBankLast.
-	; With one exception, hRomBankLast will always contain that value, so when
-	; subroutines restore the last ROM bank loaded, they assume it will point there.
+	; Outside of actor processing, which temporarily repoints it to BANK $02,
+	; this will not be changed to anything else, so when subroutines restore
+	; the last ROM bank loaded, they assume it will point there.
 	push af
 		ld   a, $01
 		ldh  [hRomBankLast], a
@@ -323,6 +324,7 @@ VBlankHandler:
 	;
 	
 	; Don't even bother executing them unless there's enough time left.
+	; ??? Is there even any way for that to not be the case?
 	ldh  a, [rLY]
 	cp   LY_VBLANK		; rLY == $90?
 	jr   z, .chkEv		; If so, jump
@@ -418,6 +420,8 @@ VBlankHandler:
 	; of the shutter and pasting it over.
 	;
 	; This allows repeating patterns, like in Metal Man's stage, to look correct.
+	; Worth noting that the initial wShutterBGPtr is the bottom-left tile of block
+	; the player's origin was colliding with when the shutter was activated.
 	;
 
 	; Read 2x1 strip to the left of the tilemap.
@@ -476,7 +480,7 @@ VBlankHandler:
 
 	; Unlike .shutOpen, the tilemap pointer does point directly to where the shutter should be
 	; drawn, so there's no horizontal looping to handle. 
-	; Code at L000D5A already moved us 2 tiles to the right, but it did *not* move us
+	; Code at Shutter_MovePlR already moved us 2 tiles to the right, but it did *not* move us
 	; vertically, meaning we need to pre-increment this pointer.
 	; So, seek down by 1 row!
 	ld   a, [wShutterBGPtr_Low]
@@ -1934,7 +1938,7 @@ Lvl_InitSettings:
 	ld   b, SPR_BGPRIORITY
 .setBGPri:
 	ld   a, b
-	ld   [wActCurSprFlags], a
+	ld   [wPlSprFlags], a
 	
 	;
 	; WATER SUPPORT
@@ -1970,7 +1974,7 @@ Lvl_DrawFullScreen:
 	; 1) The position of the blocks within the grid (ScrEv_DrawLvlBlock)
 	; 2) Block IDs being used
 	; 3) Current level position, for collision (wLvlColL)
-	;    ??? This MUST point to the leftmost column currently visible (*not* the tilemap)
+	;    This MUST point to the leftmost column currently visible (*not* the tilemap)
 	;
 	; The screen is drawn starting from 2 blocks to the left of the current room,
 	; to account for the seam position when redrawing the screen during horizontal scrolling.
@@ -2077,58 +2081,165 @@ Lvl_DrawFullScreen:
 	ld   de, TilemapDef_StatusBar
 	jp   LoadTilemapDef
 	
-L00094C:;C
+	
+DEF EDGECOL = 2                                      ; Offscreen offset
+DEF EDGE_L = BLOCK_H * EDGECOL                       ; LvlScroll_DrawEdgeL
+DEF EDGE_R = SCREEN_GAME_H + BLOCK_H * (EDGECOL - 1) ; LvlScroll_DrawEdgeR | - 1 due to SCREEN_GAME_H contributing
+
+; =============== LvlScroll_DrawEdgeL ===============
+; Redraws the left seam of the screen when scrolling left.
+; Triggered when the viewport passes a block boundary (wLvlColL decremented).
+; It also spawns actors residing in the new column.
+; See also: LvlScroll_DrawEdgeR
+LvlScroll_DrawEdgeL:
+
+	;
+	; Determine the initial grid offset for the left edge of the screen.
+	;
+	; The seam is at the 2nd column before the left edge of the screen (-2).
+	; It's not the column immediately to the left (-1) as that would make the seam visible;
+	; this affects how subroutines that end up drawing a full screen (ie: Lvl_DrawFullScreen)
+	; as they need to draw 1 block off-screen in both directions due to the seam position.
+	;
+	; See also: ScrEv_LvlScrollH.
+	;
+	
+
+	; X GRID OFFSET
+	; hScrEvOffH = (hScrollX / 16) - 2
 	ldh  a, [hScrollX]
-	sub  $20
-	swap a
-	and  $0F
+	sub  EDGE_L				; 2 blocks to the left
+	swap a					; / $10
+	and  $0F				; ""
 	ldh  [hScrEvOffH], a
+	
+	; LEVEL LAYOUT PTR (low byte)
+	; Thanks to the fixed level width of $100 blocks, this is just the
+	; column number - 2.
 	ld   a, [wLvlColL]
-	sub  $02
+	sub  EDGECOL
 	ldh  [hScrEvLvlLayoutPtr_Low], a
-	ldh  a, [hScrollY]
-	swap a
-	and  $0F
+	
+	; Y GRID OFFSET
+	; hScrEvOffV = hScrollY / 16
+	ldh  a, [hScrollY]		; Just the top of the viewport
+	swap a					; / $10
+	and  $0F				; ""
 	ldh  [hScrEvOffV], a
-	ld   a, $C0
+	
+	; LEVEL LAYOUT PTR (high byte)
+	; Topmost row, so always at $C0xx.
+	ld   a, HIGH(wLvlLayout)
 	ldh  [hScrEvLvlLayoutPtr_High], a
+	
+	; Trigger event
 	ld   a, $01
 	ld   [wLvlScrollEvMode], a
+	
+	;
+	; Spawn the actor if one is defined on the new column.
+	;
+	
+	; The offset to the actor layout data is low byte of the level layout pointer.
+	; This is due to its format, where each column can only have one actor assigned
+	; to it, and levels always are $100 blocks in width, a convenient number.
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
 	ld   l, a
-	ld   b, $E8
-	call ActS_SpawnColEdge4
+	; Spawn the actor horizontally centered on the column (hence the +8)
+	ld   b, -EDGE_L + $08
+	call ActS_SpawnColEdge		; Try to spawn if one's in here
+	
+	;
+	; Spawn the actor coming from the other (right) side of the screen, if one is defined.
+	; This is from the same "main" column used by the other routine, LvlScroll_DrawEdgeR.
+	;
+	; The actor that would be spawned really is defined on the opposite column,
+	; but it only spawns when the screen is scrolled away due to actor being
+	; flagged with ACTLB_SPAWNBEHIND.
+	;
+	
+	; The base actor layout offset points to two columns behind the leftmost border.
+	; To seek to two columns *after* the *rightmost* border...
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
-	add  $0E
+	add  SCREEN_GAME_BLOCKCOUNT_H + EDGECOL * 2	; Width of the screen + (Left edge + Right edge)
 	ld   l, a
-	ld   b, $B8
-	jp   ActS_SpawnColEdge5
-L000980:;J
+	; The actor position is relative to the screen and not to the left edge,
+	; so it doesn't have to multiply EDGECOL by 2.
+	ld   b, (SCREEN_GAME_H + (EDGECOL * BLOCK_H)) - $08 ; Width of the screen + Right edge (centered to prev block)
+	jp   ActS_SpawnColEdgeBehind
+	
+; =============== LvlScroll_DrawEdgeR ===============
+; Redraws the right seam of the screen when scrolling right.
+; Triggered when the viewport passes a block boundary (wLvlColL incremented).
+; It also spawns actors residing in the new column.
+LvlScroll_DrawEdgeR:
+
+	;
+	; Determine the initial grid offset for the right edge of the screen.
+	;
+	; The seam is at the 2nd column after the right edge of the screen (11), for the same reason
+	; mentioned in LvlScroll_DrawEdgeL.
+	;
+	; Effectively this has the same offsets as LvlScroll_DrawEdgeL except the other way around,
+	; so it necessitates a few logic changes.
+	;
+	
+	; X GRID OFFSET
+	; hScrEvOffH = (hScrollX / 16) + 11
 	ldh  a, [hScrollX]
-	add  $B0
-	swap a
-	and  $0F
+	add  EDGE_R	; 2 blocks to the right of the right border
+	swap a							; / $10
+	and  $0F						; ""
 	ldh  [hScrEvOffH], a
+	
+	; LEVEL LAYOUT PTR (low byte)
+	; Thanks to the fixed level width of $100 blocks, this is just the
+	; column number + 11.
 	ld   a, [wLvlColL]
-	add  $0B
+	add  (SCREEN_GAME_BLOCKCOUNT_H - 1) + EDGECOL
 	ldh  [hScrEvLvlLayoutPtr_Low], a
-	ldh  a, [hScrollY]
-	swap a
-	and  $0F
+	
+	; Y GRID OFFSET
+	; hScrEvOffV = hScrollY / 16
+	ldh  a, [hScrollY]				; Just the top of the viewport
+	swap a							; / $10
+	and  $0F						; ""
 	ldh  [hScrEvOffV], a
-	ld   a, $C0
+	
+	; LEVEL LAYOUT PTR (high byte)
+	; Topmost row, so always at $C0xx.
+	ld   a, HIGH(wLvlLayout)
 	ldh  [hScrEvLvlLayoutPtr_High], a
+	
+	; Trigger event
 	ld   a, $01
 	ld   [wLvlScrollEvMode], a
+	
+	;
+	; Spawn the actor if one is defined on the new column.
+	;
+	
+	; Actor layout offset is the low byte of the level layout ptr, as is
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
 	ld   l, a
-	ld   b, $B8
-	call ActS_SpawnColEdge4
+	; Horizontally center on the column
+	ld   b, EDGE_R + $08
+	call ActS_SpawnColEdge
+	
+	;
+	; Spawn the actor coming from the other (left) side of the screen, if one is defined.
+	; This is from the same "main" column used by the other routine, LvlScroll_DrawEdgeL.
+	;
+	
+	; The base actor layout offset points to the 2nd column after the right border.
+	; To seek to two columns *before* the *leftmost* border...
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
-	sub  $0E
-	ld   l, a
-	ld   b, $E8
-	jp   ActS_SpawnColEdge5
+	sub  SCREEN_GAME_BLOCKCOUNT_H + EDGECOL * 2
+	; The actor position is relative to the screen and not to the left edge,
+	; so it doesn't have to multiply EDGECOL by 2.
+	ld   l, a	; L = NewCol - 14
+	ld   b, -(EDGECOL * BLOCK_H) + $08
+	jp   ActS_SpawnColEdgeBehind
 	
 ; =============== ScrEv_LvlScrollH ===============
 ; Updates the tilemap for horizontal scrolling during gameplay,
@@ -2347,7 +2458,6 @@ Game_Unk_StartRoomTrs:
 	; These are easily calculated from the current column & scroll positions.
 	;
 	
-	; ???
 	; The horizontal location is offset by -1, to draw one more column to the left of the screen,
 	; since columns that close aren't redrawn when scrolling left.
 	; This needs to affect both hScrEvLvlLayoutPtr_Low and hScrEvOffH to avoid inconsistencies between
@@ -2811,7 +2921,7 @@ Pl_RefillAllWpn:
 Game_Init:
 	
 	; Start by warping in
-	ld   a, PL_MODE_WARPIN
+	ld   a, PL_MODE_WARPININIT
 	ld   [wPlMode], a
 	
 	; ???
@@ -2830,12 +2940,12 @@ Game_Init:
 	ld   [wPlSpdX], a
 	ld   [wPlHurtTimer], a
 	ld   [wPlInvulnTimer], a
-	ld   [wNoScroll], a
+	ld   [wShutterNum], a
 	ld   [wBossDmgEna], a
 	ld   [wBossIntroHealth], a
 	ld   [wShutterMode], a
 	ld   [wWpnSel], a 			; Start with the buster always
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	ld   [wWpnSGUseTimer], a
 	ld   [wUnk_Unused_CF5F], a
 	ld   [wLvlWarpDest], a
@@ -2939,258 +3049,458 @@ Game_RunInitEv:
 	rst  $20 ; Wait GFX load
 	ret
 	
-L000CB0:;C
+; =============== Game_Do ===============
+; Main gameplay code.
+; Handles common actions to perform during gameplay, ending with handling the player's state.
+Game_Do:
+	; Reset these for later
 	xor  a
 	ld   [wActScrollX], a
 	ld   [wPlColiBlockL], a
 	ld   [$CF3C], a
+	; Fall-through
+	
+; =============== Game_Do_Shutter ===============
+; Handles the boss shutter effect.
+; This goes along with the shutter event executed during VBlank.
+Game_Do_Shutter:
 	ld   a, [wShutterMode]
-	or   a
-	jp   z, L000DEC
-	dec  a
+	or   a									; In the middle of a shutter effect?
+	jp   z, Game_Do_ChkSpawnWaterBubble		; If not, jump
+	dec  a									; Res = wShutterMode - 1
 	rst  $00 ; DynJump
-L000CC3: db $CD
-L000CC4: db $0C
-L000CC5: db $1A
-L000CC6: db $0D
-L000CC7: db $4E
-L000CC8: db $0D
-L000CC9: db $81
-L000CCA: db $0D
-L000CCB: db $BE
-L000CCC: db $0D
-L000CCD:;I
-	ld   a, [wNoScroll]
-	or   a
-	call nz, ActS_ReqLoadRoomGFX
+	dw Shutter_InitOpen
+	dw Shutter_Open
+	dw Shutter_MovePlR
+	dw Shutter_Close
+	dw Shutter_ScrollR
+	
+; =============== Shutter_InitOpen ===============
+; Sets up the shutter opening animation.
+; Mode $00
+Shutter_InitOpen:
+
+	;
+	; Scan the *current* "room" for any actor art sets to load.
+	; Used to request loading the boss graphics when going through
+	; the second shutter, which will happen over time.
+	;
+	
+	; As this is pointless to do when entering the boss corridor (1st shutter), it's skipped there.
+	ld   a, [wShutterNum]
+	or   a							; First one we went through?
+	call nz, ActS_ReqLoadRoomGFX	; If not, load the new room gfx
+	
+	;--
+	;
+	; Determine the tilemap origin point of the door animation and set it to wShutterBGPtr.
+	; This will be 2 tiles to the left of the bottom-leftmost tile of the shutter, as from
+	; this location a 16x8 strip tiles will be copied to the right to open the shutter.
+	;
+	; In practice, it uses the player's coordinates to determine the tilemap pointer
+	; to the bottom-left tile of the block the player's origin is overlapping with.
+	; As the player is forced to walk through shutters (no jumping) and the player's origin point
+	; doesn't sink through the ground, no adjustments are needed to the player position.
+	;
+		
+	;--
+	;
+	; POSITION OF BLOCKS
+	;
+	; Calculate to DE the tilemap grid offsets from the current player position.
+	; Effectively the scroll position with the player's position, divided by the block's width/height.
+	;
+	
+	; Y GRID OFFSET
+	; D = (hScrollY + wPlRelY - OBJ_OFFSET_Y) / $10
 	ld   a, [wPlRelY]
-	sub  $10
-	ld   b, a
-	ldh  a, [hScrollY]
-	add  b
-	swap a
-	and  $0F
+	sub  OBJ_OFFSET_Y		; Account for HW offset
+	ld   b, a				; to B
+	ldh  a, [hScrollY]		; Get Y scroll
+	add  b					; Add player pos
+	swap a					; / $10
+	and  $0F				; ""
 	ld   d, a
+	
+	; X GRID OFFSET
+	; E = (hScrollX + wPlRelX - OBJ_OFFSET_X) / $10
 	ld   a, [wPlRelX]
-	sub  $08
-	ld   b, a
-	ldh  a, [hScrollX]
-	add  b
-	swap a
-	and  $0F
+	sub  OBJ_OFFSET_X		; Account for HW offset
+	ld   b, a				; to B
+	ldh  a, [hScrollX]		; Get X scroll
+	add  b					; Add player pos
+	swap a					; / $10
+	and  $0F				; ""
 	ld   e, a
-	ld   hl, $3C74
-	ld   a, d
+	;--
+	
+	;
+	; TILEMAP STRIP POINTER
+	;
+	; Find the tilemap strip associated to the Y grid offset.
+	; This will give the pointer to the first tile of the block row.
+	;
+	ld   hl, ScrEv_BGStripTbl	; HL = ScrEv_BGStripTbl
+	ld   a, d					; BC = D * 2
 	sla  a
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ldi  a, [hl]
-	add  $20
+	add  hl, bc					; Index it
+	
+	;
+	; FINALIZED TILEMAP PTR
+	;
+	; Add the X grid offset over, then seek 1 tile down to get the bottom-left tile of the block.
+	;
+	
+	; C = byte0 + BG_TILECOUNT_H
+	ldi  a, [hl]			; Read low byte (top-left)
+	add  BG_TILECOUNT_H		; Move 1 tile down (bottom-left)
 	ld   c, a
-	ld   a, [hl]
+	;--
+	; Set the high byte, as-is (it won't be affected by anything).
+	; This could have been done after setting wShutterBGPtr_Low, for better org.
+	ld   a, [hl]				; wShutterBGPtr_High = byte1	
 	ld   [wShutterBGPtr_High], a
-	ld   a, e
-	sla  a
-	add  c
-	ld   [wShutterBGPtr_Low], a
-	ld   a, $06
+	;--
+	; wShutterBGPtr_Low = (E * 2) + C
+	ld   a, e					; Get grid offset	
+	sla  a						; *2 as blocks are 2 tiles in width
+	add  c						; Add the base row offset
+	ld   [wShutterBGPtr_Low], a	; Save back
+	
+	;
+	; Set the remaining settings and advance to the next mode.
+	;
+	DEF STEP_TIMER = $06 ; Frames between shutter anims
+	DEF ROWS_LEFT  = $06 ; Number of 16x8 strips to animate (shutters are 3 blocks tall, 3*2 = 6)
+	ld   a, STEP_TIMER			; 6 frame delay between steps
 	ld   [wShutterTimer], a
-	ld   a, $06
+	ld   a, ROWS_LEFT			; 6 step animation
 	ld   [wShutterRowsLeft], a
-	ld   hl, wShutterMode
+	ld   hl, wShutterMode		; Next mode
 	inc  [hl]
-	jp   L000E4C
-L000D1A:;I
+	jp   Pl_DoCtrl_NoMove		; Disable controls
+	
+; =============== Shutter_Open ===============
+; Shutter opens up.
+; Mode $01
+Shutter_Open:
+	; Wait if the delay is active.
+	; During this delay, the boss graphics may load, if set.
 	ld   a, [wShutterTimer]
-	or   a
-	jr   z, L000D27
-	dec  a
+	or   a					; Timer == 0?
+	jr   z, .chkDraw		; If so, jump
+	dec  a					; Otherwise, Timer--
 	ld   [wShutterTimer], a
-	jp   L000E4C
-L000D27:;R
+	
+	jp   Pl_DoCtrl_NoMove	; and wait
+	
+.chkDraw:
+	; If the shutter is fully opened, switch to the next mode
 	ld   a, [wShutterRowsLeft]
-	or   a
-	jr   z, L000D42
-	dec  a
+	or   a					; RowsLeft == 0?
+	jr   z, .nextMode		; If so, jump
+.draw:
+	dec  a					; RowsLeft--
 	ld   [wShutterRowsLeft], a
-	ld   a, $06
+	
+	; Trigger the shutter effect, which is at VBlankHandler.shutOpen
+	ld   a, STEP_TIMER		; Delay next anim by 6 frames
 	ld   [wShutterTimer], a
-	ld   a, $01
+	ld   a, SHUTTER_OPEN	; Open up by 1 strip
 	ld   [wShutterEvMode], a
-	ld   a, $0A
+	ld   a, SFX_SHUTTER		; Play shutter SFX
 	ldh  [hSFXSet], a
-	jp   L000E4C
-L000D42:;R
-	ld   a, $28
+	
+	jp   Pl_DoCtrl_NoMove
+
+.nextMode:
+	ld   a, $28				; Walk forward for $28 frames
 	ld   [wShutterTimer], a
-	ld   hl, wShutterMode
+	ld   hl, wShutterMode	; Next mode
 	inc  [hl]
-	jp   L000E4C
-L000D4E:;I
+	jp   Pl_DoCtrl_NoMove
+	
+; =============== Shutter_MovePlR ===============
+; Player moves right, through the door.
+; When it ends, it sets up the shutter closing animation.
+; Mode $02
+Shutter_MovePlR:
+
+	; For the first $28 frames, scroll the screen right while animating the walk cycle.
+	; The player will stay at the same relative X position, giving the illusion of walking forward.
 	ld   hl, wShutterTimer
-	dec  [hl]
-	jr   z, L000D5A
-	call L000DD7
-	jp   L001AAF
-L000D5A:;R
+	dec  [hl]				; Timer has elapsed? 
+	jr   z, .nextMode		; If so, jump
+	
+	call Game_AutoScrollR
+	jp   Pl_AnimWalk
+	
+.nextMode:
+	;--
+	;
+	; Seek the previously set tilemap pointer two tiles to the right to move over the closed shutter.
+	; The caveats about looping mentioned in VBlankHandler.shutOpen also apply here, as this is 
+	; basically the same code.
+	;
+	; This is done here to simplify the code executed in VBlankHandler.shutClose, so that it only
+	; needs to move down rather than deal with any looping.
+	;
+	
+	; Save the base row pointer elsewhere (no h offset)
 	ld   a, [wShutterBGPtr_Low]
-	and  $E0
+	and  $100-BG_TILECOUNT_H ; $E0
 	ld   b, a
+	; Seek 2 tiles right, looping the offset if needed
 	ld   a, [wShutterBGPtr_Low]
 	add  $02
-	and  $1F
+	and  BG_TILECOUNT_H-1 ; $1F
+	; Merge with base row pointer & save
 	or   b
 	ld   [wShutterBGPtr_Low], a
-	ld   a, $06
+	;--
+	
+	ld   a, STEP_TIMER			; 6 frame delay between steps
 	ld   [wShutterTimer], a
-	ld   a, $06
+	ld   a, ROWS_LEFT			; 6 step animation
 	ld   [wShutterRowsLeft], a
-	ld   hl, wShutterMode
+	ld   hl, wShutterMode		; Next mode
 	inc  [hl]
-	ld   a, $04
+	ld   a, $04					; Set standing frame
 	ld   [wPlSprMapId], a
-	jp   L000E4C
-L000D81:;I
+	jp   Pl_DoCtrl_NoMove
+	
+; =============== Shutter_Close ===============
+; Shutter closes down.
+; Mode $03
+Shutter_Close:
+	; Wait until the timer elapses on every step.
 	ld   a, [wShutterTimer]
 	or   a
-	jr   z, L000D8E
+	jr   z, .chkDraw
+.stepWait:
 	dec  a
 	ld   [wShutterTimer], a
-	jp   L000E4C
-L000D8E:;R
+	jp   Pl_DoCtrl_NoMove
+	
+.chkDraw:
+
+	; If the shutter is fully closed, switch to the next mode
 	ld   a, [wShutterRowsLeft]
 	or   a
-	jr   z, L000DA9
+	jr   z, .nextMode
+.reqDraw:
 	dec  a
 	ld   [wShutterRowsLeft], a
-	ld   a, $06
+	
+	; Otherwise, trigger the shutter effect, which is at VBlankHandler.shutClose
+	ld   a, STEP_TIMER		; Delay next anim by 6 frames
 	ld   [wShutterTimer], a
-	ld   a, $02
+	ld   a, SHUTTER_CLOSE	; Close down by 1 strip
 	ld   [wShutterEvMode], a
-	ld   a, $0A
+	ld   a, SFX_SHUTTER		; Play shutter SFX
 	ldh  [hSFXSet], a
-	jp   L000E4C
-L000DA9:;R
-	ld   b, $30
-	ld   a, [wNoScroll]
-	or   a
-	jr   z, L000DB3
-	ld   b, $68
-L000DB3:;R
-	ld   a, b
+	
+	jp   Pl_DoCtrl_NoMove
+	
+.nextMode:
+	;
+	; Determine how much to scroll the screen right the next mode.
+	; Because the scrolling isn't locked to the right when going through the first shutter,
+	; it needs its own different value.
+	;
+	ld   b, $30				; B = Scroll amount the 1st time
+	ld   a, [wShutterNum]
+	or   a					; 1st shutter we go through?
+	jr   z, .setTimer		; If so, skip
+	; [BUG] Off by one, this should have been $69.
+	ld   b, $68				; B = Scroll amount the 2nd time
+.setTimer:
+	ld   a, b				; Set that to the timer
 	ld   [wShutterTimer], a
+	
 	ld   hl, wShutterMode
-	inc  [hl]
-	jp   L000E4C
-L000DBE:;I
-	call L000DD7
+	inc  [hl]				; Next mode
+	jp   Pl_DoCtrl_NoMove
+
+; =============== Shutter_ScrollR ===============
+; Screen scrolls to the right.
+; Mode $04
+Shutter_ScrollR:
+	; Make the screen scroll to the right
+	call Game_AutoScrollR
+	; Make the player move to the left, to compensate
 	ld   hl, wPlRelX
-	dec  [hl]
+	dec  [hl]					; since it's relative to the screen
+	
+	; Wait until the timer elapses before continuing
 	ld   hl, wShutterTimer
-	dec  [hl]
-	jp   nz, L000E4C
-	ld   hl, wNoScroll
+	dec  [hl]					; Timer elapsed?
+	jp   nz, Pl_DoCtrl_NoMove	; If not, jump
+	
+.end:
+	; Otherwise, increment the count of shutters went through.
+	; This is effectively used as a boolean flag to determine if it's the first time
+	; the player goes through a door.
+	; In particular, other than affecting this shutter subroutine, if non-zero it 
+	; also prevents the screen from scrolling horizontally, which is what fixes the
+	; camera in boss corridors and boss rooms.
+	ld   hl, wShutterNum		; wShutterNum++
 	inc  [hl]
-	xor  a
+	xor  a						; End shutter effect
 	ld   [wShutterMode], a
-	jp   L000E4C
-L000DD7:;C
+	jp   Pl_DoCtrl_NoMove		; Don't move for one last time
+	
+; =============== Game_AutoScrollR ===============
+; Scrolls the screen right by one pixel.
+; Used during autoscrolling (ie: shutters, final boss) for movement
+; independent from the player's position. 
+Game_AutoScrollR:
+	; Move all actors left
 	ld   hl, wActScrollX
 	dec  [hl]
-L000DDB:;C
+	
+; =============== Game_AutoScrollR_NoAct ===============
+; Version of the above used by the final boss between phases, 
+; to avoid interfering with its movement.
+Game_AutoScrollR_NoAct:
+	; Scroll the screen 1px right
 	ldh  a, [hScrollX]
 	inc  a
 	ldh  [hScrollX], a
+	; Update low nybble copy
 	and  $0F
 	ldh  [hScrollXNybLow], a
-	ret  nz
+	
+	; If we crossed a block boundary, increment the base column count 
+	; and redraw the right screen's edge
+	ret  nz		
 	ld   hl, wLvlColL
 	inc  [hl]
-	jp   L000980
-L000DEC:;J
+	
+	jp   LvlScroll_DrawEdgeR
+	
+; =============== Game_Do_ChkSpawnWaterBubble ===============
+; Spawns a water bubble every ~1 sec when the player is underwater, around their location.
+Game_Do_ChkSpawnWaterBubble:
+
+	; Every ~1 second... (1 sec + 4 frames)
 	ldh  a, [hTimer]
-	and  $3F
-	jr   nz, L000E34
+	and  $3F			; hTimer % $40 != 0?
+	jr   nz, .end		; If so, jump
+	
+	; If this level supports water...
 	ld   a, [wLvlWater]
-	or   a
-	jr   z, L000E34
+	or   a				; wLvlWater == 0?
+	jr   z, .end		; If so, jump
+	
+	; Skip doing it if the player is in the middle of a screen transition.
+	; These modes are in range $09-$0E
 	ld   a, [wPlMode]
-	cp   $09
-	jr   c, L000E03
-	cp   $0F
-	jr   c, L000E34
-L000E03:;R
+	cp   PL_MODE_CLIMBDTRSINIT	; wPlMode < $09?
+	jr   c, .setTarget			; If so, jump (ok)
+	cp   PL_MODE_FALLTRS+1		; wPlMode < $0F?
+	jr   c, .end				; If so, jump (skipped)
+.setTarget:
+
+	; If the top of the player is touching a water block, spawn a water bubble.
+	
+	; X Sensor: Player's X origin (middle)
 	ld   a, [wPlRelX]
 	ld   [wTargetRelX], a
-	ld   a, [wPlRelY]
-	sub  $0C
+	
+	; Y Sensor: Player's Y origin - collision box height (top border)
+	ld   a, [wPlRelY]		; Get Y origin
+	sub  PLCOLI_V*2			; Subtract (vertical collision box radius * 2) to get to the top border
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	cp   $10
-	jr   z, L000E1C
-	cp   $18
-	jr   nz, L000E34
-L000E1C:;R
-	ld   a, $64
+	
+	; Perform the block check.
+	; Only two blocks are hardcoded to be water -- an empty one and an underwater spike (necessary for pits to work).
+	call Lvl_GetBlockId		; A = Block ID at the target location
+	cp   BLOCKID_WATER		; BlockId == $10?
+	jr   z, .spawn			; If so, spawn it
+	cp   BLOCKID_WATERSPIKE	; BlockId == $18?
+	jr   nz, .end			; If not, don't spawn it
+	
+.spawn:
+	ld   a, ACT_BUBBLE		; Actor ID
 	ld   [wActSpawnId], a
-	xor  a
+	xor  a					; Not part of the actor layout
 	ld   [wActSpawnLayoutPtr], a
-	ld   a, [wTargetRelX]
+	ld   a, [wTargetRelX]	; Spawn from where we checked for collision
 	ld   [wActSpawnX], a
 	ld   a, [wTargetRelY]
 	ld   [wActSpawnY], a
-	call ActS_Spawn
-L000E34:;R
+	call ActS_Spawn			; and there
+.end:
+	; Fall-through
+	
+; =============== Game_Do_DecHurtTimers ===============
+; Ticks the hurt & invulerability timers.
+Game_Do_DecHurtTimers:
+	; Tick hurt timer (1/2)
+	; Mercy invincibility only starts after getting out of the hurt state,
+	; so only tick its timer if the hurt one has elapsed.
 	ld   a, [wPlHurtTimer]
 	or   a
-	jr   z, L000E40
+	jr   z, .tickInvuln
 	dec  a
 	ld   [wPlHurtTimer], a
-	jr   L000E51
-L000E40:;R
+	jr   Pl_DoCtrl
+.tickInvuln:
+	; Tick invulerability timer (2/2)
 	ld   a, [wPlInvulnTimer]
 	or   a
-	jr   z, L000E51
+	jr   z, Pl_DoCtrl
 	dec  a
 	ld   [wPlInvulnTimer], a
-	jr   L000E51
-L000E4C:;J
+	jr   Pl_DoCtrl
+	
+; =============== Pl_DoCtrl_NoMove ===============
+; Variation of Pl_DoCtrl used when the shutter effect is active,
+; to disable the player's controls when they aren't being overridden.
+Pl_DoCtrl_NoMove:
 	xor  a
 	ldh  [hJoyKeys], a
 	ldh  [hJoyNewKeys], a
-L000E51:;R
+	; Fall-through
+	
+; =============== Pl_DoCtrl ===============
+; Handles the player state.
+; Note that various actions don't have their own state, like walking or shooting.
+Pl_DoCtrl:
 	ld   a, [wPlMode]
 	rst  $00 ; DynJump
-	dw L000E8D ; PL_MODE_00
-	dw L001068 ; PL_MODE_01
-	dw L00107F ; PL_MODE_02
-	dw L00116F ; PL_MODE_03
-	dw L0012A4 ; PL_MODE_04
-	dw L00138A ; PL_MODE_05
-	dw L0013A3 ; PL_MODE_06
-	dw L0013BA ; PL_MODE_07
-	dw L0013D3 ; PL_MODE_08
-	dw L0013E9 ; PL_MODE_09
-	dw L001400 ; PL_MODE_0A
-	dw L001423 ; PL_MODE_0B
-	dw L001439 ; PL_MODE_0C
-	dw L00145C ; PL_MODE_0D
-	dw L001473 ; PL_MODE_0E
-	dw L001496 ; PL_MODE_0F
-	dw L001499 ; PL_MODE_SLIDE
-	dw L001516 ; PL_MODE_RM
-	dw L00169B ; PL_MODE_WARPIN
-	dw L0016AF ; PL_MODE_13
-	dw L001707 ; PL_MODE_14
-	dw L001727 ; PL_MODE_15
-	dw L001738 ; PL_MODE_16
-	dw L001758 ; PL_MODE_17
-	dw L00176C ; PL_MODE_18
-	dw L00176D ; PL_MODE_19
-	dw L00177E ; PL_MODE_1A
-	dw L00179E ; PL_MODE_1B
-L000E8D:;I
+	dw PlMode_Ground         ; PL_MODE_GROUND
+	dw PlMode_Jump           ; PL_MODE_JUMP
+	dw PlMode_JumpAbsorb     ; PL_MODE_JUMPABSORB
+	dw PlMode_Fall           ; PL_MODE_FALL
+	dw PlMode_Climb          ; PL_MODE_CLIMB
+	dw PlMode_ClimbInInit    ; PL_MODE_CLIMBININIT
+	dw PlMode_ClimbIn        ; PL_MODE_CLIMBIN
+	dw PlMode_ClimbOutInit   ; PL_MODE_CLIMBOUTINIT
+	dw PlMode_ClimbOut       ; PL_MODE_CLIMBOUT
+	dw PlMode_ClimbDTrsInit  ; PL_MODE_CLIMBDTRSINIT
+	dw PlMode_ClimbDTrs      ; PL_MODE_CLIMBDTRS
+	dw PlMode_ClimbUTrsInit  ; PL_MODE_CLIMBUTRSINIT
+	dw PlMode_ClimbUTrs      ; PL_MODE_CLIMBUTRS
+	dw PlMode_FallTrsInit    ; PL_MODE_FALLTRSINIT
+	dw PlMode_FallTrs        ; PL_MODE_FALLTRS
+	dw PlMode_NoCtrl         ; PL_MODE_NOCTRL
+	dw PlMode_Slide          ; PL_MODE_SLIDE
+	dw PlMode_RushMarine     ; PL_MODE_RM
+	dw PlMode_WarpInInit     ; PL_MODE_WARPININIT
+	dw PlMode_WarpInMove     ; PL_MODE_WARPINMOVE
+	dw PlMode_WarpInLand     ; PL_MODE_WARPINLAND
+	dw PlMode_WarpOutInit    ; PL_MODE_WARPOUTINIT
+	dw PlMode_WarpOutAnim    ; PL_MODE_WARPOUTANIM
+	dw PlMode_WarpOutMove    ; PL_MODE_WARPOUTMOVE
+	dw PlMode_WarpOutEnd     ; PL_MODE_WARPOUTEND
+	dw PlMode_TeleporterInit ; PL_MODE_TLPINIT
+	dw PlMode_Teleporter     ; PL_MODE_TLP
+	dw PlMode_TeleporterEnd  ; PL_MODE_TLPEND
+PlMode_Ground:;I
 	ld   a, [wWpnSGRide]
 	or   a
 	jr   z, L000EB8
@@ -3211,7 +3521,7 @@ L000EA5:;R
 	ld   [wPlSpdYSub], a
 	ld   a, $02
 	ld   [wPlMode], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L000EB8:;R
 	ld   a, [wPlHurtTimer]
 	or   a
@@ -3244,7 +3554,7 @@ L000EFC:;R
 	ld   a, [$CF3C]
 	cp   $38
 	jr   nz, L000F2E
-	call L0039C2
+	call Pause_StartHelperWarp
 	jr   c, L000F2E
 	ld   a, [wPlRelX]
 	ld   [wTargetRelX], a
@@ -3260,7 +3570,7 @@ L000EFC:;R
 	ld   [wShutterMode], a
 	ld   a, $04
 	ld   [wPlSprMapId], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L000F2E:;R
 	ldh  a, [hJoyKeys]
 	bit  6, a
@@ -3304,7 +3614,7 @@ L000F5B:;R
 	ld   a, $05
 	ld   [wPlMode], a
 	call L001A45
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L000F80:;R
 	ldh  a, [hJoyNewKeys]
 	bit  0, a
@@ -3341,7 +3651,7 @@ L000FB1:;R
 	ld   [wPlSlideTimer], a
 	ld   a, $30
 	ld   [wPlSlideDustTimer], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L000FD4:;JR
 	ldh  a, [hJoyNewKeys]
 	bit  0, a
@@ -3365,7 +3675,7 @@ L000FD4:;JR
 	ld   [wPlSpdYSub], a
 	ld   a, $01
 	ld   [wPlMode], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L00100E:;JR
 	call L001836
 	ld   a, [wColiGround]
@@ -3379,17 +3689,17 @@ L00101A:;X
 	ld   [wPlSpdYSub], a
 	ld   a, $03
 	ld   [wPlMode], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L00102C:;R
 	ld   a, [wCF6B_Unk_ActCurSlotPtrCopy]
 	cp   $FF
 	jr   nz, L00103A
 	ldh  a, [hJoyKeys]
 	and  $30
-	jp   nz, L001AAF
+	jp   nz, Pl_AnimWalk
 L00103A:;R
 	xor  a
-	ld   [wPlWalkAnimMode], a
+	ld   [wPlWalkAnimTimer], a
 	ld   a, [wPlBlinkChkDelay]
 	or   a
 	jr   nz, L001050
@@ -3405,12 +3715,12 @@ L001050:;R
 	jr   c, L001060
 	ld   a, $05
 	ld   [wPlSprMapId], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L001060:;R
 	ld   a, $04
 	ld   [wPlSprMapId], a
-	jp   L001AE9
-L001068:;I
+	jp   Pl_DrawSprMap
+PlMode_Jump:;I
 	call L014000 ; BANK $01
 	call L001895
 	call L0018FE
@@ -3420,7 +3730,7 @@ L001068:;I
 	bit  0, a
 	jr   nz, L001093
 	jp   L00115D
-L00107F:;I
+PlMode_JumpAbsorb:;I
 	call L014000 ; BANK $01
 	call L001895
 	call L0018FE
@@ -3447,7 +3757,7 @@ L001093:;R
 	ld   a, $04
 	ld   [wPlMode], a
 	call L001A45
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L0010C0:;R
 	ld   a, [wPlRelY]
 	cp   $18
@@ -3497,7 +3807,7 @@ L001120:;R
 	ld   [wPlSpdYSub], a
 	or   a
 	jr   z, L00115D
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L001137:;R
 	ld   bc, $0008
 	ld   a, [wPlSpdY]
@@ -3508,7 +3818,7 @@ L001137:;R
 	ld   [wPlSpdYSub], a
 	or   a
 	jr   z, L00115D
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L00114E:;R
 	ld   a, [wPlYCeilMask]
 	ld   b, a
@@ -3524,8 +3834,8 @@ L00115D:;JR
 	ld   [wPlSpdYSub], a
 	ld   a, $03
 	ld   [wPlMode], a
-	jp   L001AE9
-L00116F:;I
+	jp   Pl_DrawSprMap
+PlMode_Fall:;I
 	ld   a, [wPlHurtTimer]
 	or   a
 	jr   z, L00117D
@@ -3559,7 +3869,7 @@ L001186:;R
 	ld   a, $04
 	ld   [wPlMode], a
 	call L001A45
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L0011BE:;R
 	ld   a, [wCF4A_Unk_ActTargetSlot]
 	cp   $FF
@@ -3602,7 +3912,7 @@ L0011FD:;J
 L00121E:;R
 	ld   a, $0D
 	ld   [wPlMode], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L001226:;R
 	ld   a, [wLvlWater]
 	or   a
@@ -3625,12 +3935,12 @@ L001243:;R
 	adc  b
 	ld   [wPlSpdYSub], a
 	cp   $04
-	jp   c, L001AE9
+	jp   c, Pl_DrawSprMap
 	xor  a
 	ld   [wPlSpdY], a
 	ld   a, $04
 	ld   [wPlSpdYSub], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L001265:;R
 	ld   bc, $0008
 	ld   a, [wPlSpdY]
@@ -3640,12 +3950,12 @@ L001265:;R
 	adc  b
 	ld   [wPlSpdYSub], a
 	cp   $01
-	jp   c, L001AE9
+	jp   c, Pl_DrawSprMap
 	xor  a
 	ld   [wPlSpdY], a
 	ld   a, $01
 	ld   [wPlSpdYSub], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L001287:;J
 	ld   a, [wPlRelY]
 	or   $0F
@@ -3656,11 +3966,11 @@ L00128F:;J
 	ld   [wPlMode], a
 	ld   a, [wWpnSGRide]
 	or   a
-	jp   nz, L001AE9
+	jp   nz, Pl_DrawSprMap
 	ld   a, $01
 	ldh  [hSFXSet], a
-	jp   L001AE9
-L0012A4:;I
+	jp   Pl_DrawSprMap
+PlMode_Climb:;I
 	call L014000 ; BANK $01
 	ld   a, $09
 	ld   [wPlSprMapId], a
@@ -3674,7 +3984,7 @@ L0012A4:;I
 	jr   nc, L0012C9
 	ld   a, $03
 	ld   [wPlMode], a
-	jp   L001AD6
+	jp   Pl_AnimClimb
 L0012C9:;R
 	ldh  a, [hJoyNewKeys]
 	bit  0, a
@@ -3685,23 +3995,23 @@ L0012C9:;R
 	ld   [wPlSpdYSub], a
 	ld   a, $03
 	ld   [wPlMode], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L0012E2:;J
 	ld   a, [wPlShootTimer]
 	or   a
-	jp   nz, L001AE9
+	jp   nz, Pl_DrawSprMap
 	ldh  a, [hJoyKeys]
 	bit  5, a
 	jr   z, L0012F6
 	xor  a
 	ld   [wPlDirH], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L0012F6:;R
 	bit  4, a
 	jr   z, L001302
 	ld   a, $01
 	ld   [wPlDirH], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L001302:;R
 	ldh  a, [hJoyKeys]
 	bit  6, a
@@ -3716,14 +4026,14 @@ L001302:;R
 	jr   nc, L001325
 	ld   a, $07
 	ld   [wPlMode], a
-	jp   L001AD6
+	jp   Pl_AnimClimb
 L001325:;R
 	ld   a, [wPlRelY]
 	cp   $29
 	jr   nc, L001334
 	ld   a, $0B
 	ld   [wPlMode], a
-	jp   L001AD6
+	jp   Pl_AnimClimb
 L001334:;R
 	ld   a, [wPlRelYSub]
 	sub  $C0
@@ -3731,11 +4041,11 @@ L001334:;R
 	ld   a, [wPlRelY]
 	sbc  $00
 	ld   [wPlRelY], a
-	jp   L001AD6
+	jp   Pl_AnimClimb
 L001347:;R
 	ldh  a, [hJoyKeys]
 	bit  7, a
-	jp   z, L001AE9
+	jp   z, Pl_DrawSprMap
 	ld   a, [wPlRelX]
 	ld   [wTargetRelX], a
 	ld   a, [wPlRelY]
@@ -3756,7 +4066,7 @@ L001367:;R
 	jp   c, L001377
 	ld   a, $09
 	ld   [wPlMode], a
-	jp   L001AD6
+	jp   Pl_AnimClimb
 L001377:;J
 	ld   a, [wPlRelYSub]
 	add  $C0
@@ -3764,8 +4074,8 @@ L001377:;J
 	ld   a, [wPlRelY]
 	adc  $00
 	ld   [wPlRelY], a
-	jp   L001AD6
-L00138A:;I
+	jp   Pl_AnimClimb
+PlMode_ClimbInInit:;I
 	ld   a, $08
 	ld   [wPlSprMapId], a
 	ld   a, [wPlRelY]
@@ -3775,18 +4085,18 @@ L00138A:;I
 	ld   [wPl_CF1E_DelayTimer], a
 	ld   hl, wPlMode
 	inc  [hl]
-	jp   L001AE9
-L0013A3:;I
+	jp   Pl_DrawSprMap
+PlMode_ClimbIn:;I
 	ld   hl, wPl_CF1E_DelayTimer
 	dec  [hl]
-	jp   nz, L001AE9
+	jp   nz, Pl_DrawSprMap
 	ld   a, [wPlRelY]
 	add  $10
 	ld   [wPlRelY], a
 	ld   a, $04
 	ld   [wPlMode], a
-	jp   L001AE9
-L0013BA:;I
+	jp   Pl_DrawSprMap
+PlMode_ClimbOutInit:;I
 	ld   a, $08
 	ld   [wPlSprMapId], a
 	ld   a, [wPlRelY]
@@ -3796,18 +4106,18 @@ L0013BA:;I
 	ld   [wPl_CF1E_DelayTimer], a
 	ld   hl, wPlMode
 	inc  [hl]
-	jp   L001AE9
-L0013D3:;I
+	jp   Pl_DrawSprMap
+PlMode_ClimbOut:;I
 	ld   hl, wPl_CF1E_DelayTimer
 	dec  [hl]
-	jp   nz, L001AE9
+	jp   nz, Pl_DrawSprMap
 	ld   a, [wPlRelY]
 	sub  $08
 	ld   [wPlRelY], a
 	xor  a
 	ld   [wPlMode], a
-	jp   L001AE9
-L0013E9:;I
+	jp   Pl_DrawSprMap
+PlMode_ClimbDTrsInit:;I
 	call ActS_DespawnAll
 	ld   a, $09
 	ld   [wPlSprMapId], a
@@ -3816,8 +4126,8 @@ L0013E9:;I
 	call Game_Unk_StartRoomTrs
 	ld   hl, wPlMode
 	inc  [hl]
-	jp   L001AD6
-L001400:;I
+	jp   Pl_AnimClimb
+PlMode_ClimbDTrs:;I
 	ld   a, [wPlRelYSub]
 	add  $40
 	ld   [wPlRelYSub], a
@@ -3826,12 +4136,12 @@ L001400:;I
 	sub  $02
 	ld   [wPlRelY], a
 	call Game_Unk_DoRoomTrs
-	jp   nz, L001AD6
+	jp   nz, Pl_AnimClimb
 	ld   a, $04
 	ld   [wPlMode], a
-	call L001AD6
+	call Pl_AnimClimb
 	jp   ActS_SpawnRoom
-L001423:;I
+PlMode_ClimbUTrsInit:;I
 	call ActS_DespawnAll
 	ld   a, $09
 	ld   [wPlSprMapId], a
@@ -3840,8 +4150,8 @@ L001423:;I
 	call Game_Unk_StartRoomTrs
 	ld   hl, wPlMode
 	inc  [hl]
-	jp   L001AD6
-L001439:;I
+	jp   Pl_AnimClimb
+PlMode_ClimbUTrs:;I
 	ld   a, [wPlRelYSub]
 	sub  $40
 	ld   [wPlRelYSub], a
@@ -3850,12 +4160,12 @@ L001439:;I
 	add  $02
 	ld   [wPlRelY], a
 	call Game_Unk_DoRoomTrs
-	jp   nz, L001AD6
+	jp   nz, Pl_AnimClimb
 	ld   a, $04
 	ld   [wPlMode], a
-	call L001AD6
+	call Pl_AnimClimb
 	jp   ActS_SpawnRoom
-L00145C:;I
+PlMode_FallTrsInit:;I
 	call ActS_DespawnAll
 	ld   a, $07
 	ld   [wPlSprMapId], a
@@ -3864,8 +4174,8 @@ L00145C:;I
 	call Game_Unk_StartRoomTrs
 	ld   hl, wPlMode
 	inc  [hl]
-	jp   L001AE9
-L001473:;I
+	jp   Pl_DrawSprMap
+PlMode_FallTrs:;I
 	ld   a, [wPlSpdY]
 	add  $40
 	ld   [wPlSpdY], a
@@ -3874,14 +4184,14 @@ L001473:;I
 	sub  $02
 	ld   [wPlRelY], a
 	call Game_Unk_DoRoomTrs
-	jp   nz, L001AE9
+	jp   nz, Pl_DrawSprMap
 	ld   a, $03
 	ld   [wPlMode], a
-	call L001AE9
+	call Pl_DrawSprMap
 	jp   ActS_SpawnRoom
-L001496:;I
-	jp   L001AE9
-L001499:;I
+PlMode_NoCtrl:;I
+	jp   Pl_DrawSprMap
+PlMode_Slide:;I
 	ld   a, $0A
 	ld   [wPlSprMapId], a
 	call L0017E0
@@ -3902,7 +4212,7 @@ L0014B4:;R
 L0014B7:;R
 	call L001890
 	call L0018FE
-	call L001AE9
+	call Pl_DrawSprMap
 	call L001836
 	ld   a, [wColiGround]
 	and  $03
@@ -3916,7 +4226,7 @@ L0014B7:;R
 	ld   [wPlMode], a
 	ld   hl, wPlRelY
 	inc  [hl]
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L0014E2:;R
 	ld   a, [wPlSlideTimer]
 	or   a
@@ -3943,7 +4253,7 @@ L0014EC:;R
 	xor  a
 	ld   [wPlMode], a
 	ret
-L001516:;I
+PlMode_RushMarine:;I
 	call L014000 ; BANK $01
 	ld   hl, wPlRmSpdL
 	ldh  a, [hJoyKeys]
@@ -4155,7 +4465,7 @@ L00168A:;R
 	ret  z
 	cp   $18
 	ret
-L00169B:;I
+PlMode_WarpInInit:;I
 	ld   a, $00
 	ld   [wPlSpdY], a
 	ld   a, $01
@@ -4165,7 +4475,7 @@ L00169B:;I
 	ld   hl, wPlMode
 	inc  [hl]
 	ret
-L0016AF:;I
+PlMode_WarpInMove:;I
 	ld   a, [wPlRelY]
 	ld   b, a
 	ld   a, [wPlSpdYSub]
@@ -4189,12 +4499,12 @@ L0016CF:;R
 	adc  b
 	ld   [wPlSpdYSub], a
 	cp   $04
-	jp   c, L001AE9
+	jp   c, Pl_DrawSprMap
 	xor  a
 	ld   [wPlSpdY], a
 	ld   a, $04
 	ld   [wPlSpdYSub], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L0016F4:;R
 	ld   a, [wPlRelY]
 	or   $0F
@@ -4203,8 +4513,8 @@ L0016F4:;R
 	inc  [hl]
 	xor  a
 	ld   [wPlWarpSprMapRelId], a
-	jp   L001AE9
-L001707:;I
+	jp   Pl_DrawSprMap
+PlMode_WarpInLand:;I
 	ld   a, [wPlWarpSprMapRelId]
 	inc  a
 	ld   [wPlWarpSprMapRelId], a
@@ -4215,22 +4525,22 @@ L001707:;I
 	ld   a, $31
 	add  b
 	ld   [wPlSprMapId], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L00171E:;R
 	ld   a, $0C
 	ldh  [hSFXSet], a
 	xor  a
 	ld   [wPlMode], a
 	ret
-L001727:;I
+PlMode_WarpOutInit:;I
 	ld   a, $0A
 	ld   [wPlWarpSprMapRelId], a
 	ld   a, $34
 	ld   [wPlSprMapId], a
 	ld   hl, wPlMode
 	inc  [hl]
-	jp   L001AE9
-L001738:;I
+	jp   Pl_DrawSprMap
+PlMode_WarpOutAnim:;I
 	ld   a, [wPlWarpSprMapRelId]
 	dec  a
 	ld   [wPlWarpSprMapRelId], a
@@ -4240,33 +4550,33 @@ L001738:;I
 	ld   a, $30
 	add  b
 	ld   [wPlSprMapId], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L00174D:;R
 	ld   a, $0D
 	ldh  [hSFXSet], a
 	ld   hl, wPlMode
 	inc  [hl]
-	jp   L001AE9
-L001758:;I
+	jp   Pl_DrawSprMap
+PlMode_WarpOutMove:;I
 	ld   a, [wPlRelY]
 	sub  $04
 	ld   [wPlRelY], a
 	and  $F0
-	jp   nz, L001AE9
+	jp   nz, Pl_DrawSprMap
 	ld   hl, wPlMode
 	inc  [hl]
-	jp   L001AE9
-L00176C:;I
+	jp   Pl_DrawSprMap
+PlMode_WarpOutEnd:;I
 	ret
-L00176D:;I
+PlMode_TeleporterInit:;I
 	ld   a, $0A
 	ld   [wPlWarpSprMapRelId], a
 	ld   a, $34
 	ld   [wPlSprMapId], a
 	ld   hl, wPlMode
 	inc  [hl]
-	jp   L001AE9
-L00177E:;I
+	jp   Pl_DrawSprMap
+PlMode_Teleporter:;I
 	ld   a, [wPlWarpSprMapRelId]
 	dec  a
 	ld   [wPlWarpSprMapRelId], a
@@ -4276,14 +4586,14 @@ L00177E:;I
 	ld   a, $30
 	add  b
 	ld   [wPlSprMapId], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L001793:;R
 	ld   a, $0D
 	ldh  [hSFXSet], a
 	ld   hl, wPlMode
 	inc  [hl]
-	jp   L001AE9
-L00179E:;I
+	jp   Pl_DrawSprMap
+PlMode_TeleporterEnd:;I
 	ld   a, [wLvlWarpDest]
 	ld   [wLvlEnd], a
 	ret
@@ -4317,7 +4627,7 @@ L0017BC:;R
 	ld   [wExplodeOrgY], a
 	ld   a, $01
 	ld   [wLvlEnd], a
-	jp   L001AE9
+	jp   Pl_DrawSprMap
 L0017D2:;C
 	ld   a, [wWpnSel]
 	cp   $04
@@ -4529,7 +4839,7 @@ L001961:;CR
 	jr   nz, L00198A
 	ld   hl, wLvl_Unk_CurCol
 	dec  [hl]
-	ld   a, [wNoScroll]
+	ld   a, [wShutterNum]
 	or   a
 	jr   nz, L00199B
 	ld   h, $CB
@@ -4537,9 +4847,9 @@ L001961:;CR
 	ld   l, a
 	ld   a, [hl]
 	bit  7, a
-	call nz, L00094C
+	call nz, LvlScroll_DrawEdgeL
 L00198A:;R
-	ld   a, [wNoScroll]
+	ld   a, [wShutterNum]
 	or   a
 	jr   nz, L00199B
 	ld   h, $CB
@@ -4596,7 +4906,7 @@ L0019F5:;CR
 	ld   a, [wPlRelX]
 	cp   $9F
 	ret  nc
-	ld   a, [wNoScroll]
+	ld   a, [wShutterNum]
 	or   a
 	jr   nz, L001A0C
 	ld   h, $CB
@@ -4628,7 +4938,7 @@ L001A25:;R
 	ret  nz
 	ld   hl, wLvl_Unk_CurCol
 	inc  [hl]
-	ld   a, [wNoScroll]
+	ld   a, [wShutterNum]
 	or   a
 	ret  nz
 	ld   h, $CB
@@ -4637,7 +4947,7 @@ L001A25:;R
 	ld   a, [hl]
 	bit  7, a
 	ret  z
-	jp   L000980
+	jp   LvlScroll_DrawEdgeR
 L001A45:;C
 	ld   a, [wPlRelX]
 	ld   b, a
@@ -4706,190 +5016,351 @@ L001AA4:;J
 	dec  [hl]
 	jr   nz, L001AA4
 	ret
-L001AAF:;J
-	ld   a, [wPlWalkAnimMode]
-	cp   $07
-	jr   z, L001AC1
-	inc  a
-	ld   [wPlWalkAnimMode], a
-	ld   a, $06
+; =============== Pl_AnimWalk ===============
+; Animates the player's walk cycle, and redraws its sprite.
+Pl_AnimWalk:
+	
+	;
+	; The player's walk animation is split in two parts.
+	; Starting from a standstill, when holding left or right:
+	; - The first 7 frames the player uses a sidestep sprite
+	; - From the 8th frame, the proper walk cycle begins
+	;
+	; Unlike other games, the sidestep is a purely visual effect that does not affect or delay the controls in any way.
+	;
+	
+	; Which animation are we in?
+	ld   a, [wPlWalkAnimTimer]
+	cp   $07					; wPlWalkAnimTimer == $07?
+	jr   z, .walkAnim			; If so, jump (walk cycle on)
+.sidestep:
+	inc  a						; Otherwise, wPlWalkAnimTimer++
+	ld   [wPlWalkAnimTimer], a
+
+	ld   a, $06					; Set sidestep frame
 	ld   [wPlSprMapId], a
-	jr   L001AE9
-L001AC1:;R
+	jr   Pl_DrawSprMap			; Draw it
+	
+.walkAnim:
+
+	;
+	; This animation is done by cycling through four sprites, advancing after 64 frames.
+	; These four sprites are aligned to a 4-byte boundary ???
+	; 
+	
+	; Advance animation timer
 	ld   a, [wPlAnimTimer]
 	add  $08
 	ld   [wPlAnimTimer], a
-	swap a
-	srl  a
-	srl  a
+	
+	; Shift down bits6-7 to bit0-1 and use it as relative sprite mapping IDs.
+	swap a ; >> 4
+	srl  a ; >> 1 (5)
+	srl  a ; >> 1 (6)
 	and  $03
 	ld   [wPlSprMapId], a
-	jr   L001AE9
-L001AD6:;JC
+	jr   Pl_DrawSprMap
+	
+; =============== Pl_AnimClimb ===============
+; Animates the player's ladder climbing cycle, and redraws its sprite.
+Pl_AnimClimb:
+
+	;
+	; This animation is done by flipping the player's direction every 64 frames.
+	; The player's sprite is assumed to already be the climbing one when we get here.
+	;
+	; [POI] Setting the direction without restoring it after drawing the sprite
+	;       has some side effects, like inconsistent shot directions or Pipi spawn locations.
+	;       
+	
+	; Advance animation timer
 	ld   a, [wPlAnimTimer]
 	add  $06
 	ld   [wPlAnimTimer], a
-	swap a
-	srl  a
-	srl  a
-	and  $01
-	ld   [wPlDirH], a
-L001AE9:;JCR
+	
+	; Shift down bit6 ($40) to bit0 and use it as direction.
+	swap a ; >> 4
+	srl  a ; >> 1 (5)
+	srl  a ; >> 1 (6)
+	and  $01			; Filter out other bits
+	ld   [wPlDirH], a	; That's the direction
+	
+	; Fall-through
+	
+; =============== Pl_DrawSprMap ===============
+; Draws the sprite mapping for the player.
+Pl_DrawSprMap:
+
+	; Top Spin's spin state is internally a weapon shot, so it's not drawn here.
 	ld   a, [wWpnTpActive]
-	or   a
-	jp   nz, L001B9D
+	or   a					; Top spin is active?
+	jp   nz, .chkDust		; If so, skip
+	
+.chkHurt:
+	;
+	; When hurt, the player flashes and their frame is forced to the hurt one,
+	; unless the current state would look odd with it.
+	;
+
+	; Not applicable when not hurt
 	ld   a, [wPlHurtTimer]
-	or   a
-	jr   z, L001B0D
+	or   a					; Are we hurt?
+	jr   z, .notHurt		; If not, skip
+	
+	; Flash sprite every other frame
 	ldh  a, [hTimer]
-	rra  
-	jp   nc, L001B9D
+	rra  					; hTimer % 2 == 0?
+	jp   nc, .chkDust		; If so, jump
+	
+	; Force the player to use the hurt frame, except when their state is PL_MODE_SLIDE or above.
+	; Those don't account for the player being hurt, so that frame would look odd.
 	ld   a, [wPlMode]
-	cp   $10
-	jr   nc, L001B0D
+	cp   PL_MODE_SLIDE		; wPlMode >= PL_MODE_SLIDE?
+	jr   nc, .notHurt		; If so, jump
 	ld   a, [wWpnSGRide]
-	or   a
-	jr   nz, L001B0D
+	or   a					; Riding the Sakugarne?
+	jr   nz, .notHurt		; If so, jump
+	
+	; Force hurt frame
 	ld   a, $30
-	jr   L001B22
-L001B0D:;R
+	jr   .drawPl
+	
+.notHurt:
+	;
+	; During mercy invulnerability, flash sprite every 2 frames
+	;
 	ld   a, [wPlInvulnTimer]
-	or   a
-	jr   z, L001B1A
+	or   a					; Are we invulerable?
+	jr   z, .getIdx			; If not, skip
 	ldh  a, [hTimer]
-	rra  
-	rra  
-	jp   nc, L001B9D
-L001B1A:;R
+	rra
+	rra   					; (hTimer / 2) % 2 == 0? 
+	jp   nc, .chkDust		; If so, jump
+	
+.getIdx:
+	;
+	; Build the index to the player's sprite mapping table.
+	; A = wPlSprMapId | wPlShootType
+	;
+	; Since wPlShootType will be $00, $10 or $20, this enforces a specific frame order,
+	; with those >= $30 being wPlShootType-independent.
+	;
 	ld   a, [wPlShootType]
 	ld   b, a
 	ld   a, [wPlSprMapId]
 	or   b
-L001B22:;R
+	
+.drawPl:
+
+	;
+	; Find the sprite mapping associated to the current frame.
+	; There's a single table here unlike with actors, as there's only one player.
+	;
 	push af
-	ld   a, $03
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(Pl_SprMapPtrTbl) ; BANK $03
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, $4900
-	ld   b, $00
+	ld   hl, Pl_SprMapPtrTbl	; HL = Ptr table base
+	ld   b, $00					; BC = A * 2
 	sla  a
 	ld   c, a
-	add  hl, bc
-	ldi  a, [hl]
+	add  hl, bc					; Index it
+	ldi  a, [hl]				; Read out to DE
 	ld   e, a
 	ld   a, [hl]
 	ld   d, a
-	ld   h, $DF
+	
+	;
+	; Write the sprite mapping to the OAM mirror.
+	; See also: Relevant code in ActS_DrawSprMap since it's pretty much the same.
+	;
+	
+	ld   h, HIGH(wWorkOAM)	; HL = Ptr to current OAM slot
 	ldh  a, [hWorkOAMPos]
 	ld   l, a
+	
+	; Ignore blank sprite mappings
 	ld   a, [de]
-	or   a
-	jp   z, L001B94
-	inc  de
-	ld   b, a
+	or   a					; OBJCount == 0?
+	jp   z, .drawPlEnd		; If so, we're done
+	inc  de					; Otherwise, seek to the OBJ table
+	ld   b, a				; B = OBJCount
+	
+	; Check for horizontal flip
 	ld   a, [wPlDirH]
-	or   a
-	jr   nz, L001B6D
-L001B4A:;R
+	or   a					; Player facing right?
+	jr   nz, .loopR			; If so, jump
+	
+.loopL:
+	;
+	; NO FLIPPING
+	; Nothing special here.
+	;
+	
+	; YPos = wPlRelY + byte0
 	ld   a, [wPlRelY]
 	ld   c, a
 	ld   a, [de]
 	inc  de
 	add  c
 	ldi  [hl], a
+	
+	; XPos = wPlRelX + byte1
 	ld   a, [wPlRelX]
 	ld   c, a
 	ld   a, [de]
 	inc  de
 	add  c
 	ldi  [hl], a
+	
+	; TileID = byte2
 	ld   a, [de]
 	inc  de
 	ldi  [hl], a
+	
+	; Flags = byte3 | wPlSprFlags
 	ld   a, [de]
 	inc  de
 	ld   c, a
-	ld   a, [wActCurSprFlags]
+	ld   a, [wPlSprFlags]
 	or   c
 	ldi  [hl], a
-	dec  b
-	jr   nz, L001B4A
-	ld   a, l
+	
+	; [POI] No full OAM check here, since these mappings are assumed to not be that big.
+	dec  b					; Finished copying all OBJ?
+	jr   nz, .loopL			; If not, loop
+	
+	ld   a, l				; Save back current OAM ptr
 	ldh  [hWorkOAMPos], a
-	jr   L001B94
-L001B6D:;R
+	jr   .drawPlEnd
+	
+.loopR:
+	;
+	; HORIZONTAL FLIPPING
+	; Flips individual OBJ + the sprite mapping itself.
+	;
+	
+	; YPos = wPlRelY + byte0
 	ld   a, [wPlRelY]
 	ld   c, a
 	ld   a, [de]
 	inc  de
 	add  c
 	ldi  [hl], a
-	ld   a, [wPlRelX]
+	
+	; XPos = -(wPlRelX + byte1) - TILE_H + 1
+	; For flipping the sprite mapping
+	; [POI] This is offset 1 pixel to the right compared to actor sprites.
+	ld   a, [wPlRelX]	; C = Absolute X
 	ld   c, a
+	ld   a, [de]		; A = Relative X
+	inc  de				; Seek to byte2 for later
+	xor  $FF			; Invert the rel. X position (offset by -1)
+	sub  TILE_H-2		; Account for tile width - 1
+	add  c				; Get final pos
+	ldi  [hl], a		; Write to OAM mirror
+	
+	; TileID = byte2
 	ld   a, [de]
 	inc  de
-	xor  $FF
-	sub  $06
-	add  c
 	ldi  [hl], a
-	ld   a, [de]
-	inc  de
-	ldi  [hl], a
+	
+	; Flags = (byte3 | wPlSprFlags) ^ SPR_XFLIP
 	ld   a, [de]
 	inc  de
 	ld   c, a
-	ld   a, [wActCurSprFlags]
+	ld   a, [wPlSprFlags]
 	or   c
-	xor  $20
+	xor  SPR_XFLIP
 	ldi  [hl], a
-	dec  b
-	jr   nz, L001B6D
-	ld   a, l
+	
+	dec  b					; Finished copying all OBJ?
+	jr   nz, .loopR			; If not, loop
+	ld   a, l				; Save back current OAM ptr
 	ldh  [hWorkOAMPos], a
-L001B94:;R
+	
+.drawPlEnd:
 	push af
-	ldh  a, [hRomBankLast]
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-L001B9D:;J
+	
+.chkDust:
+	;
+	; Draw the dust particle caused by sliding, if needed.
+	;
 	ld   a, [wPlSlideDustTimer]
-	or   a
-	ret  z
-	dec  a
+	or   a							; Timer has elapsed?
+	ret  z							; If so, return
+	dec  a							; Otherwise, Timer--
 	ld   [wPlSlideDustTimer], a
-	swap a
-	and  $03
-	ld   hl, $1BD6
-	ld   b, $00
+	
+	;
+	; The animation frame picked is the timer's upper nybble.
+	; This has two consequences:
+	; - The animation advances every 16 frames
+	; - Since it's a countdown timer, entries in the tile ID table are stored in reverse
+	;
+	swap a							; A /= 16
+	and  $03						; Force valid range
+	ld   hl, .dustTileTbl			; HL = Tile ID Table
+	ld   b, $00						; BC = A
 	ld   c, a
 	add  hl, bc
-	ld   a, [hl]
+	
+	ld   a, [hl]					; B = Tile ID
 	ld   b, a
-	ld   a, [wActScrollX]
+	ld   a, [wActScrollX]			; C = wActScrollX
 	ld   c, a
-	ld   h, $DF
+	
+	ld   h, HIGH(wWorkOAM)			; HL = Ptr to current OAM slot
 	ldh  a, [hWorkOAMPos]
 	ld   l, a
+	
+	
+	; Y POSITION
+	
+	; The dust sprite should be vertically aligned with the player, so:
+	; YPos = wPlSlideDustY - (TILE_H - 1)
+	;
+	; wPlSlideDustY is a copy of wPlRelY, and since the player's origin is at the 
+	; bottom border, the sprite is manually offsetted by TILE_H-1.
 	ld   a, [wPlSlideDustY]
-	sub  $07
+	sub  TILE_H-1
 	ldi  [hl], a
-	ld   a, [wPlSlideDustX]
+	
+	; X POSITION
+	; 4 pixels to the left of the player's origin
+	; XPos = wPlSlideDustX - $04
+	
+	; The screen can scroll horizontally, so adjust wPlSlideDustX as needed
+	ld   a, [wPlSlideDustX]		; wPlSlideDustX += wActScrollX
 	add  c
 	ld   [wPlSlideDustX], a
-	sub  $04
+	
+	sub  $04					; XPos = wPlSlideDustX - $04
 	ldi  [hl], a
+	
+	; TileId = B
 	ld   a, b
 	ldi  [hl], a
-	ld   a, [wActCurSprFlags]
+	
+	; Flags = wPlSprFlags
+	ld   a, [wPlSprFlags]
 	ldi  [hl], a
-	ld   a, l
+	
+	ld   a, l					; Save back current OAM ptr
 	ldh  [hWorkOAMPos], a
 	ret
-L001BD6: db $62
-L001BD7: db $61
-L001BD8: db $60
+	
+; =============== .dustTileTbl ===============
+; Table of tile IDs for the dust particle animation, stored in reverse.
+.dustTileTbl:
+	db $62
+	db $61
+	db $60
 
 ; =============== ActS_ClearAll ===============
 ; Prepares the actor memory.
@@ -4941,7 +5412,7 @@ ActS_DespawnAll:
 	; By despawning all actors, we also despawned Rush & the Sakugarne.
 	; Clear out their flags that affect the player.
 	xor  a
-	ld   [wWpnItemWarp], a			; Rush/SG no longer there, can be recalled
+	ld   [wWpnHelperWarp], a			; Rush/SG no longer there, can be recalled
 	ld   [wWpnSGRide], a			; Disable pogo movement mode
 	
 	; Remove all weapon shots/actors.
@@ -4973,7 +5444,8 @@ ActS_SpawnRoom:
 	; As a room is made of 10 columns (width of a screen), this will spawn any actors
 	; defined on the 10 columns after the current one.
 	;
-	; In case the screen is locked to the right, one extra column is loaded. (??? why)
+	; In case the screen is locked to the right, one extra column is loaded.
+	; (??? why, presumably for spawners?)
 	;
 
 	; A = Current room locks
@@ -5003,7 +5475,7 @@ ActS_SpawnRoom:
 	; (otherwise actors' X positions would be offset incorrectly).
 	;
 	; This value is initialized to 7 rather than 0 to account for the actor's horizontal origin being at the center of the block.
-	; What it does *NOT* account is the offset applied to the hardware, since actor positions and sprite positions
+	; What it does *NOT* account is the offset applied by the hardware, since actor positions and sprite positions
 	; are one and the same. (ActS_SpawnFromLayout takes care of that)
 	ld   b, $07				; B = Initial X pos
 	
@@ -5014,7 +5486,7 @@ ActS_SpawnRoom:
 		ld   a, [hl]					; Read spawn flags
 		bit  ACTLB_NOSPAWN, a			; Is the actor prevented from spawning?
 		jr   nz, .skip					; If so, skip it (already on-screen or already collected)
-		bit  ACTLB_SPAWN4, a			; Is the 4th bit set?
+		bit  ACTLB_SPAWNNORM, a			; Does this actor spawn normally?
 		call nz, ActS_SpawnFromLayout	; If so, spawn it
 .skip:
 	pop  bc
@@ -5029,33 +5501,34 @@ ActS_SpawnRoom:
 	jr   nz, .loop		; If not, loop
 	ret
 	
-; =============== ActS_SpawnColEdge4 ===============
+; =============== ActS_SpawnColEdge ===============
 ; Spawns the actor, if one is defined, for the column that got scrolled in.
-; ??? Uses the 4th bit like the room spawn code.
 ; IN
 ; - L: Actor layout pointer
 ; - B: X Position
-ActS_SpawnColEdge4:
+ActS_SpawnColEdge:
 	ld   h, HIGH(wActLayoutFlags)
 	ld   a, [hl]
 	bit  ACTLB_NOSPAWN, a			; Is the actor prevented from spawning?
 	ret  nz							; If so, return
-	bit  ACTLB_SPAWN4, a			; Is the 4th bit set?
+	bit  ACTLB_SPAWNNORM, a			; Does this actor spawn normally?
 	ret  z							; If not, return
 	jr   ActS_SpawnFromLayout
 	
-; =============== ActS_SpawnColEdge1 ===============
-; Spawns the actor, if one is defined, for the column that got scrolled in.
-; ??? Uses the 5th bit unlike the room spawn code.
+; =============== ActS_SpawnColEdgeBehind ===============
+; Spawns the actor, if one is defined, for the column opposite to the one that got scrolled in.
+; Intended to only spawn actors that spawn from behind the screen, such as
+; the large bees in Hard Man's stage.
+; These actors are flagged with their own flag so that they are only spawned this way.
 ; IN
 ; - L: Actor layout pointer
 ; - B: X Position
-ActS_SpawnColEdge5:
+ActS_SpawnColEdgeBehind:
 	ld   h, HIGH(wActLayoutFlags)
 	ld   a, [hl]
 	bit  ACTLB_NOSPAWN, a			; Is the actor prevented from spawning?
 	ret  nz							; If so, return
-	bit  ACTLB_SPAWN5, a			; Is the 5th bit set?
+	bit  ACTLB_SPAWNBEHIND, a		; Does this actor spawn from behind?
 	ret  z							; If not, return
 	jr   ActS_SpawnFromLayout
 	
@@ -7269,7 +7742,7 @@ ActS_Despawn:
 	cp   ACT_E4			; iActId >= $E4?
 	jr   nc, .despawn	; If so, skip
 	xor  a
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	
 .despawn:
 	; Mark the slot as free
@@ -7293,6 +7766,7 @@ ActS_Despawn:
 ; =============== ActS_DrawSprMap ===============
 ; Draws an actor sprite mapping to the screen.
 ActS_DrawSprMap:
+	DEF tActSprFlags = wTmpCF52
 	push af
 		ld   a, BANK(ActS_SprMapPtrTbl) ; BANK $03
 		ldh  [hRomBank], a
@@ -7321,14 +7795,14 @@ ActS_DrawSprMap:
 	sla  a						; ...bit3
 	sla  a						; ...bit4 (SPRB_OBP1)
 	
-	; And merge it with the base flags into the final value
+	; And merge it with the player flags into the final value, to force all actors into
+	; sharing the same SPR_BGPRIORITY flag as the player.
 .calcFlags:
 	; A will be 0 if we jumped to here (SPRB_OBP1 clear)
-	; Note this isn't using xor b, so if the object is already using OBP1, the flash won't be visible.
 	ld   b, a					
-	ld   a, [wActCurSprFlags]
+	ld   a, [wPlSprFlags]
 	or   b						
-	ld   [wTmpCF52], a
+	ld   [tActSprFlags], a
 	
 	;--
 	
@@ -7457,13 +7931,13 @@ ActS_DrawSprMap:
 	inc  de
 	ldi  [hl], a
 	
-	; Flags = byte3 | wTmpCF52
+	; Flags = byte3 | tActSprFlags
 	; Curiously, the base flags are OR'd with ours, compared to the usual way of XOR'ing them.
-	; This prevents you from overriding all options.
+	; This prevents an actor from overriding all options.
 	ld   a, [de]
 	inc  de
 	ld   c, a
-	ld   a, [wTmpCF52]
+	ld   a, [tActSprFlags]
 	or   c
 	ldi  [hl], a
 	
@@ -7513,11 +7987,11 @@ ActS_DrawSprMap:
 	inc  de
 	ldi  [hl], a
 	
-	; Flags = (byte3 | wTmpCF52) ^ SPR_XFLIP
+	; Flags = (byte3 | tActSprFlags) ^ SPR_XFLIP
 	ld   a, [de]
 	inc  de
 	ld   c, a
-	ld   a, [wTmpCF52]
+	ld   a, [tActSprFlags]
 	or   c
 	xor  SPR_XFLIP			; Flip the individual OBJ graphic
 	ldi  [hl], a
@@ -7640,7 +8114,7 @@ Game_Main:
 	call Module_Game_InitScrOn
 	
 L0026AC:;R
-	call L0027C9
+	call Module_Game
 	cp   $02
 	jr   z, L0026CC
 	call L002862
@@ -7688,7 +8162,7 @@ Game_Main_ToTeleport:;R
 	call L0032C6
 	call Module_Game_InitScrOn
 L00271F:;R
-	call L0027C9
+	call Module_Game
 	cp   $02
 	jr   z, L00273F
 	call L002862
@@ -7716,7 +8190,7 @@ Game_Main_ToPreQuint:;X
 	ld   [wLvlId], a
 	call Module_Game_InitScrOff
 	call Module_Game_InitScrOn
-	call L0027C9
+	call Module_Game
 	cp   $02
 	jr   z, L002782
 L002769: db $CD;X
@@ -7757,7 +8231,7 @@ L002785:;R
 L002798:;R
 	ld   hl, wWpnUnlock1
 	set  3, [hl]
-	call L0027C9
+	call Module_Game
 	cp   $02
 	jr   z, L0027BD
 	call L002862
@@ -7777,11 +8251,18 @@ L0027BD:;R
 L0027C6: db $C3;X
 L0027C7: db $C6;X
 L0027C8: db $27;X
-L0027C9:;JCR
+
+; =============== Module_Game ===============
+; Gameplay loop.
+; OUT
+; - A: End result
+Module_Game:
 	rst  $08 ; Wait Frame
 	
-	; Alternate between the two palettes.
+	;
+	; Perform the palette animation immediately.
 	; This uses hBGPAnim0 for 5 frames, hBGPAnim1 for 3 frames, then it loops.
+	;
 	ld   hl, hBGPAnim0	; HL = Ptr to 1st pal
 	ldh  a, [hTimer]
 	and  $07
@@ -7791,62 +8272,110 @@ L0027C9:;JCR
 .setPalAnim:
 	ld   a, [hl]		; Read the palette
 	ldh  [hBGP], a		; Save it
-L0027D9:;R
+	
+	
+.pollKeys:
+	; Poll for input
 	call JoyKeys_Refresh
+	
+	;
+	; Press START to open the pause menu.
+	;
+	; This and a few other features only have an activation check since the subroutine called
+	; takes exclusive control, becoming the new main loop until we exit out of there.
+	;
+	; This being done here means it can be triggered at any given point, even during screen transitions,
+	; which isn't allowed in most other games.
+	;
+.chkPause:
 	ldh  a, [hJoyNewKeys]
-	bit  3, a
-	jr   z, L0027EA
+	bit  KEYB_START, a		; Pressed START?
+	jr   z, .chkFreeze		; If not, skip
+	
+	; Wait for any events that may be in progress, which can cause visible delays especially if this
+	; is done immediately after starting a room transition.
+	; This does need to happen though, since the pause menu needs to write to the tilemap during init
+	; and we don't want to abruptly overwrite those in progress.
 	call Ev_WaitAll
-	call L00375C
-	jr   L0027C9
-L0027EA:;R
-	bit  2, a
-	jr   z, L0027F8
+	call Pause_Do
+	jr   Module_Game
+	
+.chkFreeze:
+	;
+	; Press SELECT to freeze-frame pause.
+	;
+	; [TCRF] Disabled unless the invulnerability cheat is enabled.
+	;
+	bit  KEYB_SELECT, a		; Pressed SELECT?
+	jr   z, .doGame			; If not, skip
 	ldh  a, [hInvulnCheat]
-	or   a
-	jr   z, L0027F8
-L0027F3: db $CD;X
-L0027F4: db $EC;X
-L0027F5: db $51;X
-L0027F6: db $18;X
-L0027F7: db $D1;X
-L0027F8:;R
+	or   a					; Is the cheat enabled?
+	jr   z, .doGame			; If not, skip
+	call Freeze_Do ; BANK $01
+	jr   Module_Game
+	
+.doGame:
+	; Prepare for drawing any sprites
 	xor  a
 	ldh  [hWorkOAMPos], a
+	
+	; Save the hTimer value from the start of the gameplay loop.
+	; As hTimer is incremented during VBlank, at the end of the gameplay loop
+	; they can be compared to check for lag frames.
 	ldh  a, [hTimer]
-	ld   [wUnk_FrameStartTimer], a
-	call L000CB0
-	call L00354A
-	call L0143B4 ; BANK $01
+	ld   [wStartTimer], a
+	
+	call Game_Do ; Run gameplay
+	call L00354A ; Process player-actor collision
+	call L0143B4 ; BANK $01 ; Process on-screen shots 
+	
+	;
+	; Run actor code.
+	; Actor code, unlike everything else, expects the default bank to be BANK $02, because ???
+	;
 	push af
-	ld   a, BANK(L024000) ; BANK $02
-	ldh  [hRomBankLast], a
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(L024000) ; BANK $02
+		ldh  [hRomBankLast], a
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	call L024000
 	push af
-	ld   a, $01
-	ldh  [hRomBankLast], a
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, $01
+		ldh  [hRomBankLast], a
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
+	
 	call OAM_ClearRest
-	ld   hl, hTimer
-	ld   a, [wUnk_FrameStartTimer]
-	cp   [hl]
-	jr   nz, L0027D9
-	call L002AF3
+	
+	;
+	; If hTimer does not match wStartTimer, it means a lag frame has occurred.
+	; In that case, jump back to the main loop without waiting for a new frame,
+	; in an attempt to catch up.
+	; Refill processing is also skipped as they are run during VBlank.
+	;
+	ld   hl, hTimer			; HL = Ptr to hTimer
+	ld   a, [wStartTimer]	; A = wStartTimer
+	cp   [hl]				; wStartTimer != hTimer?
+	jr   nz, .pollKeys		; If so, jump
+	
+	call Game_TickTime		; Tick gameplay clock & process refills
+	
+	;
+	; If the level is marked as ended, determine if/how to exit out of here.
+	; There are various ways a level can end, which can be influenced by the level we're in too.
+	;
 	ld   a, [wLvlEnd]
-	or   a
-	jr   z, L0027C9
+	or   a					; Anything written to wLvlEnd?
+	jr   z, Module_Game		; If not, loop
 	push af
-	call L0017D2
-	call L0039EF
-	xor  a
-	ld   [wActCurSprFlags], a
-	ld   [wLvlWater], a
-	ld   [wActScrollX], a
+		call L0017D2
+		call WpnS_SaveCurAmmo
+		xor  a
+		ld   [wPlSprFlags], a
+		ld   [wLvlWater], a
+		ld   [wActScrollX], a
 	pop  af
 	cp   $03
 	ret  c
@@ -7858,7 +8387,7 @@ L0027F8:;R
 	ld   [wLvlRoomId], a
 	call Module_Game_InitScrOff
 	call Module_Game_InitScrOn
-	jp   L0027C9
+	jp   Module_Game
 L002862:;C
 	xor  a
 	ld   [wPlHealthInc], a
@@ -7876,9 +8405,9 @@ L002873:;R
 	jr   z, L002887
 	jr   L002896
 L00287F:;R
-	ld   a, $00
+	ld   a, SND_MUTE
 	ldh  [hBGMSet], a
-	ld   a, $06
+	ld   a, SFX_EXPLODE
 	ldh  [hSFXSet], a
 L002887:;R
 	ld   a, [wExplodeOrgX]
@@ -7892,20 +8421,20 @@ L002896:;R
 	ldh  [hWorkOAMPos], a
 	call L0143B4 ; BANK $01
 	push af
-	ld   a, BANK(L024000) ; BANK $02
-	ldh  [hRomBankLast], a
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(L024000) ; BANK $02
+		ldh  [hRomBankLast], a
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	call L024000
 	push af
-	ld   a, $01
-	ldh  [hRomBankLast], a
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, $01
+		ldh  [hRomBankLast], a
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	call OAM_ClearRest
-	call L002AF3
+	call Game_TickTime
 	pop  bc
 	dec  b
 	jr   nz, L002873
@@ -7960,13 +8489,13 @@ L002908:;R
 	ld   b, $10
 L002916:;R
 	push bc
-	call L000DD7
+		call Game_AutoScrollR
 	pop  bc
 	dec  b
 	jr   nz, L002916
 	call Module_Game_InitScrOn
 	ld   a, $01
-	ld   [wNoScroll], a
+	ld   [wShutterNum], a
 	xor  a
 	ld   [wPlRespawn], a
 	scf  
@@ -8205,7 +8734,7 @@ L002A97:;C
 	rst  $08 ; Wait Frame
 	xor  a
 	ldh  [hWorkOAMPos], a
-	call L000CB0
+	call Game_Do
 	call L0143B4 ; BANK $01
 	push af
 	ld   a, BANK(L024000); BANK $02
@@ -8221,7 +8750,7 @@ L002A97:;C
 	ld   [MBC1RomBank], a
 	pop  af
 	call OAM_ClearRest
-	call L002AF3
+	call Game_TickTime
 	pop  bc
 	pop  de
 	pop  hl
@@ -8257,98 +8786,160 @@ Module_Game_InitScrOn:
 	ldh  [hBGMSet], a
 	ret
 	
-L002AF3:;C
-	ld   a, [wGameTimeSub]
+; =============== Game_TickTime ===============
+; Updates the gameplay timer, which is measured in seconds.
+;
+; This subroutine is only executed when there's no lag frame, and it chains
+; into others that have the same requirement.
+Game_TickTime:
+	ld   a, [wGameTimeSub]	; FrameCnt++
 	inc  a
 	ld   [wGameTimeSub], a
-	cp   $3C
-	jr   nz, L002B06
-	xor  a
+	cp   60					; FrameCnt == 60?
+	jr   nz, .end			; If not, skip
+	xor  a					; Otherwise, FrameCnt++
 	ld   [wGameTimeSub], a
-	ld   hl, wGameTime
+	ld   hl, wGameTime		; SecondCnt++
 	inc  [hl]
-L002B06:;R
+.end:
+; Fall-through
+	
+; =============== Game_DoRefill ===============
+; Performs any timed refills, 1 unit of health at a time.
+; Unlike other games, these can happen concurrently without stopping gameplay.
+Game_DoRefill:
+	
+	; Don't process them if level scrolling or normal events are being run, as those take priority.
+	; This is to make sure every step of the bar redraw visibly happens, to avoid choppy or incomplete refills.
 	xor  a
 	ld   hl, wLvlScrollEvMode
-	or   [hl]
+	or   [hl]				; wLvlScrollEvMode != 0?
 	ld   hl, wTilemapEv
-	or   [hl]
-	ret  nz
+	or   [hl]				; || wTilemapEv != 0?
+	ret  nz					; If so, return
+	
+.chkHealth:
+	;
+	; Player Health (BARID_PL)
+	;
 	ld   a, [wPlHealthInc]
-	or   a
-	jr   z, L002B3B
-	dec  a
+	or   a					; Any more health to add?
+	jr   z, .chkAmmo		; If not, skip
+	dec  a					; Tick one down
 	ld   [wPlHealthInc], a
-	ld   a, [wPlHealth]
+	
+	; Update the player's health
+	ld   a, [wPlHealth]		; C = Old Health
 	ld   c, a
-	inc  a
-	cp   $98
-	jr   c, L002B25
-	ld   a, $98
-L002B25:;R
-	ld   b, a
-	ld   [wPlHealth], a
-	xor  c
-	and  $08
-	jr   z, L002B3B
-	ld   a, b
+	inc  a					; A = MIN(wPlHealth + 1, BAR_MAX)
+	cp   BAR_MAX
+	jr   c, .setHealth
+	ld   a, BAR_MAX
+.setHealth:
+	ld   b, a				; B = New Health
+	ld   [wPlHealth], a		; Save new health
+	
+	; Only play the refill sound and redraw the status bar when a new bar is added.
+	; This is necessary because we're not incrementing health by a bar, but by a single unit of health,
+	; and a single bar is worth 8 units. It doesn't make sense to waste time redrawing the same bar.
+	
+	; Checking bit3 after xoring between the old and new health will tell if it has changed.
+	; If it did, we crossed an 8 unit boundary, so it needs a redraw.
+	xor  c					
+	and  $08				; ((NewHealth ^ OldHealth) & $08) == 0?
+	jr   z, .chkAmmo		; If so, skip
+	
+	ld   a, b				; Set to draw the new amount of health
 	ld   [wPlHealthBar], a
-	ld   hl, wStatusBarRedraw
-	set  0, [hl]
-	ld   a, $07
+	ld   hl, wStatusBarRedraw	; Trigger redraw
+	set  BARID_PL, [hl]
+	ld   a, SFX_BAR			; Play refill sound
 	ldh  [hSFXSet], a
-L002B3B:;R
+
+.chkAmmo:
+	;
+	; Weapon Ammo (BARID_WPN)
+	; Almost identical to the one above, except for weapon ammo.
+	;
+	
+	; Any more ammo to add?
 	ld   a, [wWpnAmmoInc]
 	or   a
-	jr   z, L002B6A
+	jr   z, .end
 	dec  a
 	ld   [wWpnAmmoInc], a
+	;--
+	; The default weapon has unlimited ammo, no need to redraw it.
+	; [BUG] This is accidentally returning early instead of skipping to .end.
+	;       If player's health is being refilled, it will prevent it from being redrawn
+	;       while ammo is also being refilled.
 	ld   a, [wWpnSel]
 	or   a
 	ret  z
+	;--
+	
+	; Update the weapon's ammo
 	ld   a, [wWpnAmmoCur]
 	ld   c, a
 	inc  a
-	cp   $98
-	jr   c, L002B55
-	ld   a, $98
-L002B55:;R
+	cp   BAR_MAX
+	jr   c, .setAmmo
+	ld   a, BAR_MAX
+.setAmmo:
 	ld   b, a
 	ld   [wWpnAmmoCur], a
+	
+	; Only redraw when crossing a 8 unit threshold
 	xor  c
 	and  $08
 	ret  z
+	
+	; Trigger redraw & sfx
 	ld   a, b
 	ld   [wWpnAmmoBar], a
 	ld   hl, wStatusBarRedraw
-	set  1, [hl]
-	ld   a, $07
+	set  BARID_WPN, [hl]
+	ld   a, SFX_BAR
 	ldh  [hSFXSet], a
-L002B6A:;R
-	ld   a, [wStatusBarRedraw]
+.end:
+	; Fall-through
+	
+; =============== Game_ChkRedrawBar ===============
+; Queues up redraw events for all parts of the status bar that need to be redrawn.
+Game_ChkRedrawBar:
+	
+	ld   a, [wStatusBarRedraw]		; B = Redraw flags
 	ld   b, a
 	ld   hl, wPlHealthBar
-	ld   c, $00
-	ldi  a, [hl]
-	bit  0, b
-	call nz, Game_AddBarDrawEv
-	inc  c
-	ldi  a, [hl]
-	bit  1, b
-	call nz, Game_AddBarDrawEv
-	inc  c
-	ldi  a, [hl]
-	bit  2, b
-	call nz, Game_AddBarDrawEv
-	ld   a, [hl]
-	bit  3, b
-	call nz, Game_AddLivesDrawEv
+	
+	; Process the redraws in BARID_* order
+	ld   c, BARID_PL				; C = Running BARID_* value
+	ldi  a, [hl]					; Read wPlHealthBar, seek to wWpnAmmoBar
+	bit  BARID_PL, b				; Need to redraw the health bar?
+	call nz, Game_AddBarDrawEv		; If so, do it
+	
+	inc  c							; C = BARID_WPN
+	ldi  a, [hl]					; Read wWpnAmmoBar, seek to wBossHealthBar
+	bit  BARID_WPN, b				; Need to redraw the weapon bar?
+	call nz, Game_AddBarDrawEv		; If so, do it
+	
+	inc  c							; C = BARID_BOSS
+	ldi  a, [hl]					; Read wBossHealthBar, seek to wPlLivesView
+	bit  BARID_BOSS, b				; Need to redraw the boss health bar?
+	call nz, Game_AddBarDrawEv		; If so, do it
+	
+	ld   a, [hl]					; Read wPlLivesView
+	bit  BARID_LIVES, b				; Need to redraw the lives indicator?
+	call nz, Game_AddLivesDrawEv	; If so, do it
+	
+	; If anything was redrawn, trigger the bar redraw event
 	ld   a, b
-	or   a
-	ret  z
-	xor  a
+	or   a							; wStatusBarRedraw == 0?
+	ret  z							; If so, return (nothing redrawn)
+	
+	xor  a							; Otherwise, reset redraw flags
 	ld   [wStatusBarRedraw], a
-	inc  a
+	inc  a							; and trigger the event
 	ld   [wTilemapBarEv], a
 	ret
 	
@@ -10504,7 +11095,7 @@ L003636:;R
 	jp   L0018FE
 L003656:;R
 	ld   b, a
-	ld   a, [wWpnItemWarp]
+	ld   a, [wWpnHelperWarp]
 	cp   $FF
 	ret  nz
 	ld   a, b
@@ -10659,398 +11250,719 @@ L00374D:;I
 	ld   a, $08
 	ldh  [hSFXSet], a
 	ret
-L00375C:;C
-	call L0039EF
+	
+; =============== Pause_Do ===============
+; Main loop of the pause menu.
+Pause_Do:
+	; Save any changes immediately, before wWpnSel can change
+	call WpnS_SaveCurAmmo
+	
+	;
+	; Draw the pause menu.
+	;
+	; This involves small bars for the player's health and all of the unlocked weapons,
+	; as well as drawing the E-Tanks in sequence.
+	;
+	; As usual, the writes are performed during VBlank, using the TilemapDef system,
+	; and to minimize the waiting time groups of bars are applied at once.
+	;
 	ld   a, [wWpnSel]
-	push af
-	ld   hl, wPlHealth
-	ld   de, wScrEvRows
-	ld   c, $00
-	ldi  a, [hl]
-	call L003AD9
-	ld   a, [wWpnUnlock1]
+	push af						; Save wWpnSel for much later
+	
+		; PLAYER HEALTH
+	.plBar:
+		ld   hl, wPlHealth		; HL = Ptr to value
+		ld   de, wTilemapBuf	; DE = Ptr to write buffer
+		ld   c, $00				; C = Selection (WPNSEL_*)
+		ldi  a, [hl]			; Read wPlHealth, seek to wWpnAmmoRC
+		call Pause_AddBarDrawEv	; Draw the weapon name & small lifebar
+		
+		; RUSH ITEMS
+		; These are on the first three bits of wWpnUnlock1.
+		; The way this is done by shifting bits right and incrementing the selection 
+		; absolutely requires wWpnUnlock1, wWpnSel and the weapon array to be consistent.
+		; ie: RC, RM and RJ are in the same order both in WPN_* and WPNSEL_*, even though
+		; they start at different indexes. This pattern is also required for the 8 main weapons.
+	.rushBars:
+		ld   a, [wWpnUnlock1]	; B = Item unlock bitmask
+		ld   b, a
+		ld   a, $03				; A = Bits to check (bit0-2)
+	.loop1:
+		push af 				; Save count
+			inc  c						; SelId++
+			ldi  a, [hl]				; A = Weapon ammo, seek to next one
+			srl  b						; Shift the respective weapon unlock bit to the carry
+			call c, Pause_AddBarDrawEv	; Is the weapon unlocked? If so, draw its indicator
+		pop  af					; Restore count
+		dec  a					; Checked all Rush bits?
+		jr   nz, .loop1			; If not, loop
+		rst  $10 ; Wait tilemap load
+		
+		; 8 MAIN WEAPONS
+		; See the one above
+	.mainBars:
+		ld   de, wTilemapBuf	; Reset buffer pos
+		ld   a, [wWpnUnlock0]
+		or   a					; Are any unlocked?		
+		jr   z, .sgBar			; If not, skip
+		ld   b, a
+		ld   a, $08				; A = Bits to check (all)
+	.loop0:
+		push af
+			inc  c
+			ldi  a, [hl]
+			srl  b
+			call c, Pause_AddBarDrawEv
+		pop  af
+		dec  a
+		jr   nz, .loop0
+		rst  $10 ; Wait tilemap load
+	
+	.sgBar:
+		; SAKUGARNE
+		ld   de, wTilemapBuf	; Reset buffer pos
+		ld   a, [wWpnUnlock1]
+		and  WPN_SG				; Pogo unlocked?
+		jr   z, .etanks			; If not, skip
+		ld   a, [wWpnAmmoSG]
+		ld   c, WPNSEL_SG
+		call Pause_AddBarDrawEv
+		
+	.etanks:
+
+		; E TANKS
+		; "EN" text, followed by right-aligned E-Tank icons drawn in sequence for each one collected.
+		
+		; bytes0-1: Destination pointer
+		ld   hl, Pause_BarTbl.en
+		call CopyWord
+		
+		; byte2: Writing mode + Number of bytes to write
+		ld   a, $07				; Max 4 Tanks + 2 for "EN" + 1 for blank padding
+		ld   [de], a
+		
+		; byte3+: payload
+		inc  de					; Copy "EN" text
+		call CopyWord
+		
+		;
+		; Now draw the E-Tank icons, aligned to the right.
+		; Because events can't draw tiles from right to left, this needs to calculate
+		; the padding length first, draw blank tiles over it, then the E-Tank icons.
+		;
+		
+		; Draw (5 - wETanks) blank tiles from the current location.
+		; This will malfunction when wETanks >= 5.
+		ld   a, [wETanks]	; C = wETanks
+		ld   c, a
+		ld   a, $05			; B = 5 - wETanks
+		sub  c
+		ld   b, a
+		ld   a, $70			; A = Tile to draw
+	.etPadLoop:
+		ld   [de], a
+		inc  de
+		dec  b
+		jr   nz, .etPadLoop
+		
+		; Draw (wETanks) E-Tank icons from the current location
+		ld   a, c
+		or   a				; wETanks == 0?
+		jr   z, .etDone		; If so, skip
+		ld   a, $98			; A = Tile to draw
+	.etIcoLoop:
+		ld   [de], a
+		inc  de
+		dec  c
+		jr   nz, .etIcoLoop
+		
+	.etDone:
+		xor  a				; Write terminator
+		ld   [de], a
+		rst  $10 ; Wait tilemap load
+		
+		;	
+		; Delete all sprites except for Rockman and his shots.
+		;
+		; This is accomplished by clearing OAM, then redrawing the player.
+		;
+		
+		xor  a
+		ldh  [hWorkOAMPos], a
+		
+		; The Rush Marine ride state does not get drawn through Pl_DrawSprMap, and so it gets skipped.
+		ld   a, [wPlMode]
+		cp   PL_MODE_RM			; Inside Rush Marine?
+		jr   z, .skipDraw		; If so, skip
+		
+		; [POI] The Sakugarne ride state is also skipped, even though it is supported by Pl_DrawSprMap.
+		;       Leftover from an earlier iteration, or just a mistake?
+		ld   a, [wWpnSGRide]
+		or   a					; Riding sakugarne?
+		jr   nz, .skipDraw		; If so, skip
+		
+		call Pl_DrawSprMap
+		
+	.skipDraw:
+		call OAM_ClearRest
+		
+		;
+		; Copy the pause screen graphics for the small bars and weapon text.
+		;
+		; This happens over 8 frames, while the status bar is being scrolled up (which takes 16 frames),
+		; so to minimize graphical corruption, GFX_Pause is laid out in such a way where the graphics
+		; that scroll into view earlier are stored earlier (and so are loaded earlier).
+		;
+		; This could have been avoided entirely by keeping the font graphics always loaded, had
+		; the actor art sets been better optimized.
+		;
+		ld   bc, (BANK(GFX_Pause) << 8) | $20 ; Source GFX bank number + Number of tiles to copy
+		ld   hl, GFX_Pause ; Source GFX ptr
+		ld   de, $8800 ; VRAM Destination ptr (start of 2nd section)
+		call GfxCopy_Req
+		
+		; Play pause sound
+		ld   a, SFX_TELEPORTIN	
+		ldh  [hSFXSet], a
+		
+		; Scroll the status bar up 8px at a time until it reaches the top of the screen, while GFX_Pause loads in.
+		; The status bar is assumed to be at Y position $80 at the start of the loop, so... 
+		ld   b, $10			; B = 16 tiles ($10 * 8 = $80)
+		ldh  a, [hLYC]
+	.inLoop:
+		sub  $08			
+		ldh  [hLYC], a		; Move status bar effect target 1 tile up
+		ldh  [hWinY], a		; Scroll status bar 1 tile up
+		rst  $08 ; Wait Frame
+		dec  b				; Are we done?
+		jr   nz, .inLoop	; If not, loop
+		
+		;
+		; MAIN LOOP
+		;
+	.main:
+		call Pause_FlashWpnName		; and poll inputs
+		; Wait until we press anything we look for
+		ldh  a, [hJoyNewKeys]
+		and  KEY_DOWN|KEY_UP|KEY_LEFT|KEY_RIGHT|KEY_START|KEY_A
+		jr   z, .main
+		; A/START: Select weapon
+		and  KEY_START|KEY_A		; ## Pressed A or START?
+		ld   a, [wWpnSel]			; (A = Selected entry)
+		jr   nz, .redrawName		; ## If so, skip ahead
+		
+		; DOWN: Move cursor down
+		ldh  a, [hJoyNewKeys]
+		rla
+		jr   c, .selUp
+		; UP: Move cursor up
+		rla  
+		jr   c, .selDown
+		
+		; LEFT/RIGHT: Move cursor horizontally.
+		; There are only two columns, so this can get away with toggling the lowest bit of the cursor position.
+		; Of course, this requires the cursor positions to be ordered left to right, top to bottom.
+		ld   a, [wWpnSel]
+		xor  $01					; Move to other column
+		call Pause_CanMoveSel		; Can we move there?
+		jr   c, .redrawName			; If so, jump
+		jr   .selUp2				; Otherwise, try to move up from there
+		
+		DEF PAUSESCR_COLS = 2
+		DEF PAUSESCR_ROWS = 7
+		DEF PAUSESCR_OOB  = WPNSEL_EN+1
+	.selUp:
+		ld   a, [wWpnSel]			; A = wWpnSel
+	.selUp2:
+		; This may need to repeat the check several times, since we move row by row and weapons may not be unlocked.
+		; Just in case, a limit to the amount of times it can repeat the check is made, which corresponds to the
+		; number of rows - 1.
+		ld   b, PAUSESCR_ROWS-1		; B = LoopCount
+	.selUpLoop:
+		add  PAUSESCR_COLS			; A += 2 (column count)
+		cp   PAUSESCR_OOB			; Went out of bounds?
+		jr   c, .selUpChk			; If not, skip
+		sub  PAUSESCR_OOB			; Otherwise, wrap back to the top
+	.selUpChk:
+		call Pause_CanMoveSel		; Can we move there?
+		jr   c, .redrawName			; If so, jump
+		dec  b						; Otherwise, try to move up again
+		jr   nz, .selUpLoop			; Reached the loop limit? If not, loop
+		jr   .main					; Otherwise, give up and stay at the current location
+		
+	.selDown:
+		; Same thing, but for moving down
+		ld   a, [wWpnSel]
+		ld   b, PAUSESCR_ROWS-1
+	.selDownLoop:
+		sub  PAUSESCR_COLS
+		cp   PAUSESCR_OOB
+		jr   c, .selDownChk
+		add  PAUSESCR_OOB
+	.selDownChk:
+		call Pause_CanMoveSel
+		jr   c, .redrawName
+		dec  b
+		jr   nz, .selDownLoop
+		jr   .main
+		
+	.redrawName:
+		; Force redraw the current weapon name, in case it's in the middle of flashing.
+		; Needed when either moving the cursor or selecting an option.
+		; This is the same code used in Pause_FlashWpnName, but simplified.
+		push af ; Save new cursor pos
+			ld   a, [wWpnSel]		; A = wWpnSel * 4
+			add  a
+			add  a
+			ld   hl, Pause_BarTbl	; HL = Table base
+			ld   b, $00
+			ld   c, a
+			add  hl, bc				; Seek to entry (starts with vram pointer)
+			; bytes0-1: Destination pointer
+			ld   de, wTilemapBuf	; DE = Event data buffer
+			call CopyWord			; Write the word value, seek pointers ahead
+			
+			; byte2: Writing mode + Number of bytes to write
+			ld   a, $02				; 2 tiles for the weapon name
+			ld   [de], a
+			inc  de
+			
+			; byte3+: payload
+			call CopyWord			; Copy those tiles
+			
+			; Write terminator
+			xor  a
+			ld   [de], a
+			
+			rst  $10 ; Wait tilemap load
+		pop  af ; Restore new cursor pos
+		ld   [wWpnSel], a		; and apply it
+		
+		; If we pressed A or START, select the current option
+		ldh  a, [hJoyNewKeys]
+		and  KEY_START|KEY_A
+		jr   nz, .doSel
+		; Otherwise return to the main loop
+		jr   .main
+		
+	.doSel:
+		ld   a, [wWpnSel]
+		cp   WPNSEL_EN		; wWpnSel < WPNSEL_EN?
+		jr   c, .selWpn		; If so, jump (weapon selected)
+		
+	.selETank:
+		;
+		; E-TANK SELECTED
+		;
+		; Removes a tank from the inventory, refills the player's life and returns to the menu's main loop.
+		;
+		
+		; If no tanks are left, don't do anything
+		ld   a, [wETanks]
+		or   a
+		jp   z, .main
+		
+		; If the player already is at max health, don't do anything
+		ld   a, [wPlHealth]
+		cp   BAR_MAX
+		jp   nc, .main
+		
+		; Checks passed, perform the refill
+		
+		; Remove 1 tank from the player
+		ld   a, [wETanks]
+		dec  a
+		ld   [wETanks], a
+		
+		;
+		; Replace the leftmost tank icon with a blank tile
+		;
+		ld   b, a				; B = wETanks
+		ld   hl, wTilemapBuf	; HL = Event buffer
+		
+		; bytes0-1: Destination pointer
+		; $9DF1 is the location in the tilemap of the rightmost E-Tank.
+		; Subtract the updated wETanks for the location of the tile to blank.
+		ld   a, HIGH($9DF1)
+		ldi  [hl], a
+		ld   a, LOW($9DF1)
+		sub  b					; $9DF1 - wETanks
+		ldi  [hl], a
+		
+		; byte2: Writing mode + Number of bytes to write
+		ld   a, $01				; 1 tile
+		ldi  [hl], a
+		
+		; byte3+: payload
+		ld   a, $70				; Blank tile ID
+		ldi  [hl], a
+		
+		xor  a					; Write terminator
+		ld   [hl], a
+		rst  $10 ; Wait tilemap load
+		
+		;
+		; In a loop, refill the player's health 1 bar at a time, until it reaches the max value.
+		;
+		ld   a, [wPlHealth]
+	.healthLoop:
+		add  $08				; wPlHealth += 1 bar
+		cp   BAR_MAX			; Reached the max value?
+		jr   c, .setHealth		; If not, jump
+		ld   a, BAR_MAX			; Otherwise, cap it
+	.setHealth:
+		ld   [wPlHealth], a		; Update health
+		
+		; Update large health bar
+		ld   c, $00
+		call Game_AddBarDrawEv
+		rst  $18 ; Wait bar update
+		
+		; Update small health bar
+		ld   de, wScrEvRows
+		call Pause_AddBarDrawEv
+		rst  $10 ; Wait tilemap load
+		
+		; Play refill sound
+		ld   a, SFX_BAR
+		ldh  [hSFXSet], a
+		
+		ld   a, [wPlHealth]
+		cp   BAR_MAX			; Reached the max health value?
+		jr   c, .healthLoop		; If not, loop
+		jp   .main				; Otherwise, we're done
+	.selWpn:
+		;
+		; WEAPON SELECTED
+		;
+		; Loads in the graphics for the weapon, updates the screen and closes the menu.
+		;
+		
+		;
+		; Weapon name
+		;
+		; As keeping the entire font loaded during gameplay would be a waste, two tiles are reserved for the weapon name.
+		; Whenever a new weapon is selected, a subset of the font is copied there, while the tilemap never gets updated.
+		;
+		
+		; Seek to the tile IDs for the font from its Pause_BarTbl entry
+		ld   a, [wWpnSel]					; A = wWpnSel * 4
+		add  a
+		add  a
+		ld   hl, Pause_BarTbl+iPBar_Tiles	; HL = Pause_BarTbl+2
+		ld   b, $00							; BC = A
+		ld   c, a
+		add  hl, bc							; Seek to there
+		
+		; Copy GFX for the first tile
+		ldi  a, [hl]						; A = 1st tile id
+		ld   de, $9600						; DE = Destination ptr
+		call Pause_CopyFontTileGFX
+		
+		; Copy GFX for the second tile
+		ld   a, [hl]						; A = 2nd tile id
+		ld   de, $9610						; DE = Destination ptr
+		call Pause_CopyFontTileGFX
+		
+		;
+		; Set the active weapon's ammo if the selected weapon uses ammo.
+		; wWpnAmmoCur = wWpnAmmoTbl[wWpnSel]
+		;
+		ld   a, [wWpnSel]
+		or   a ; WPNSEL_P			; Default weapon selected?
+		jr   z, .selDrawBar			; If so, skip
+		ld   hl, wWpnAmmoTbl
+		ld   b, $00					; Index by wWpnSel
+		ld   c, a
+		add  hl, bc
+		ld   a, [hl]				; Read saved ammo
+		ld   [wWpnAmmoCur], a		; Save to cache
+		
+	.selDrawBar:
+		;
+		; Draw the weapon's ammo bar.
+		;
+		xor  a						; Just in case
+		ld   [wBarQueuePos], a
+		ld   a, [wWpnSel]
+		or   a ; WPNSEL_P			; # Default weapon selected?
+		ld   a, [wWpnAmmoCur]		; A = Weapon ammo
+		jr   nz, .selBarEv			; # If not, jump
+		ld   a, $FF					; Otherwise, A = Value higher than BAR_MAX
+									; This will tell Game_AddBarDrawEv to clear the weapon bar with blank tiles.
+	.selBarEv:
+		ld   c, BARID_WPN			; Draw the weapon bar
+		call Game_AddBarDrawEv
+		rst  $18 ; Wait bar update
+		
+		; If a previous weapon bar redraw request was pending, cancel it since it will be outdated
+		ld   hl, wStatusBarRedraw
+		res  BARID_WPN, [hl]
+	
+		;
+		; If the weapon changed:
+		; - Delete all on-screen shots
+		; - Reset weapon-related fields
+		; - Make any helpers (Rush/Sakugarne) teleport out on the spot
+		;
+		ld   a, [wWpnSel]	; B = New wWpnSel
+		ld   b, a
+	pop  af					; A = Old wWpnSel
+	cp   b					; Has it changed?
+	jr   z, .loadGfx		; If not, skip
+	call Pause_ClrShots
+	call Pause_StartHelperWarp
+	
+.loadGfx:
+	;
+	; Load the set of graphics for the selected weapon.
+	;
+	; Each WPNSEL_* value is mapped to a set of graphics, each being 16 tiles long and getting loaded to $8500-$85FF.
+	; All weapon graphics fit into this limit (with multiple weapons being stored on the same set, even), except for the Sakugarne.
+	; Therefore, its graphics are split in two. One set is loaded when riding it, the other when not, and so:
+	; SetId = wWpnSel + wWpnSGRide
+	;
+	; What this means is the set for the ridden Sakugarne must come immediately after the standalone one.
+	; Thankfully, after WPNSEL_SG comes WPNSEL_EN, which is not for a weapon. 
+	;
+	
+	;--
+	; HL = Source GFX ptr
+	ld   a, [wWpnSel]			; Build index
 	ld   b, a
-	ld   a, $03
-L003775:;R
-	push af
-	inc  c
-	ldi  a, [hl]
-	srl  b
-	call c, L003AD9
-	pop  af
-	dec  a
-	jr   nz, L003775
-	rst  $10 ; Wait tilemap load
-	ld   de, wScrEvRows
-	ld   a, [wWpnUnlock0]
-	or   a
-	jr   z, L00379B
-	ld   b, a
-	ld   a, $08
-L00378E:;R
-	push af
-	inc  c
-	ldi  a, [hl]
-	srl  b
-	call c, L003AD9
-	pop  af
-	dec  a
-	jr   nz, L00378E
-	rst  $10 ; Wait tilemap load
-L00379B:;R
-	ld   de, wScrEvRows
-	ld   a, [wWpnUnlock1]
-	and  $08
-	jr   z, L0037AD
-	ld   a, [wWpnAmmoSG]
-	ld   c, $0C
-	call L003AD9
-L0037AD:;R
-	ld   hl, $3B5F
-	call CopyWord
-	ld   a, $07
-	ld   [de], a
-	inc  de
-	call CopyWord
-	ld   a, [wETanks]
-	ld   c, a
-	ld   a, $05
-	sub  c
-	ld   b, a
-	ld   a, $70
-L0037C4:;R
-	ld   [de], a
-	inc  de
-	dec  b
-	jr   nz, L0037C4
-	ld   a, c
-	or   a
-	jr   z, L0037D4
-	ld   a, $98
-L0037CF:;R
-	ld   [de], a
-	inc  de
-	dec  c
-	jr   nz, L0037CF
-L0037D4:;R
-	xor  a
-	ld   [de], a
-	rst  $10 ; Wait tilemap load
-	xor  a
-	ldh  [hWorkOAMPos], a
-	ld   a, [wPlMode]
-	cp   $11
-	jr   z, L0037EA
-	ld   a, [wWpnSGRide]
-	or   a
-	jr   nz, L0037EA
-	call L001AE9
-L0037EA:;R
-	call OAM_ClearRest
-	ld   bc, $0A20
-	ld   hl, $7800
-	ld   de, $8800
-	call GfxCopy_Req
-	ld   a, $0C
-	ldh  [hSFXSet], a
-	ld   b, $10
-	ldh  a, [hLYC]
-L003801:;R
-	sub  $08
-	ldh  [hLYC], a
-	ldh  [hWinY], a
-	rst  $08 ; Wait Frame
-	dec  b
-	jr   nz, L003801
-L00380B:;JR
-	call L003B63
-	ldh  a, [hJoyNewKeys]
-	and  $F9
-	jr   z, L00380B
-	and  $09
-	ld   a, [wWpnSel]
-	jr   nz, L00385D
-	ldh  a, [hJoyNewKeys]
-	rla  
-	jr   c, L00382F
-	rla  
-	jr   c, L003846
-	ld   a, [wWpnSel]
-	xor  $01
-	call L003BA2
-	jr   c, L00385D
-	jr   L003832
-L00382F:;R
-	ld   a, [wWpnSel]
-L003832:;R
-	ld   b, $06
-L003834:;R
-	add  $02
-	cp   $0E
-	jr   c, L00383C
-	sub  $0E
-L00383C:;R
-	call L003BA2
-	jr   c, L00385D
-	dec  b
-	jr   nz, L003834
-	jr   L00380B
-L003846:;R
-	ld   a, [wWpnSel]
-	ld   b, $06
-L00384B:;R
-	sub  $02
-	cp   $0E
-	jr   c, L003853
-	add  $0E
-L003853:;R
-	call L003BA2
-	jr   c, L00385D
-	dec  b
-	jr   nz, L00384B
-	jr   L00380B
-L00385D:;R
-	push af
-	ld   a, [wWpnSel]
-	add  a
-	add  a
-	ld   hl, $3B2B
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ld   de, wScrEvRows
-	call CopyWord
-	ld   a, $02
-	ld   [de], a
-	inc  de
-	call CopyWord
-	xor  a
-	ld   [de], a
-	rst  $10 ; Wait tilemap load
-	pop  af
-	ld   [wWpnSel], a
-	ldh  a, [hJoyNewKeys]
-	and  $09
-	jr   nz, L003886
-	jr   L00380B
-L003886:;R
-	ld   a, [wWpnSel]
-	cp   $0D
-	jr   c, L0038E0
-	ld   a, [wETanks]
-	or   a
-	jp   z, L00380B
-	ld   a, [wPlHealth]
-	cp   $98
-	jp   nc, L00380B
-	ld   a, [wETanks]
-	dec  a
-	ld   [wETanks], a
-	ld   b, a
-	ld   hl, wScrEvRows
-	ld   a, $9D
-	ldi  [hl], a
-	ld   a, $F1
-	sub  b
-	ldi  [hl], a
-	ld   a, $01
-	ldi  [hl], a
-	ld   a, $70
-	ldi  [hl], a
-	xor  a
-	ld   [hl], a
-	rst  $10 ; Wait tilemap load
-	ld   a, [wPlHealth]
-L0038BA:;R
-	add  $08
-	cp   $98
-	jr   c, L0038C2
-	ld   a, $98
-L0038C2:;R
-	ld   [wPlHealth], a
-	ld   c, $00
-	call Game_AddBarDrawEv
-	rst  $18 ; Wait bar update
-	ld   de, wScrEvRows
-	call L003AD9
-	rst  $10 ; Wait tilemap load
-	ld   a, $07
-	ldh  [hSFXSet], a
-	ld   a, [wPlHealth]
-	cp   $98
-	jr   c, L0038BA
-	jp   L00380B
-L0038E0:;R
-	ld   a, [wWpnSel]
-	add  a
-	add  a
-	ld   hl, $3B2D
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ldi  a, [hl]
-	ld   de, $9600
-	call L00397C
-	ld   a, [hl]
-	ld   de, $9610
-	call L00397C
-	ld   a, [wWpnSel]
-	or   a
-	jr   z, L00390B
-	ld   hl, wPlHealth
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ld   a, [hl]
-	ld   [wWpnAmmoCur], a
-L00390B:;R
-	xor  a
-	ld   [wBarQueuePos], a
-	ld   a, [wWpnSel]
-	or   a
-	ld   a, [wWpnAmmoCur]
-	jr   nz, L00391A
-	ld   a, $FF
-L00391A:;R
-	ld   c, $01
-	call Game_AddBarDrawEv
-	rst  $18 ; Wait bar update
-	ld   hl, wStatusBarRedraw
-	res  1, [hl]
-	ld   a, [wWpnSel]
-	ld   b, a
-	pop  af
-	cp   b
-	jr   z, L003933
-	call L0039A0
-	call L0039C2
-L003933:;R
-	ld   a, [wWpnSel]
-	ld   b, a
-	ld   a, [wWpnSGRide]
+	ld   a, [wWpnSGRide]	
 	add  b
-	ld   hl, $3992
+	
+	ld   hl, Pause_WpnGfxPtrTbl	; Get table base
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ld   h, [hl]
-	ld   l, $00
-	ld   de, $8500
-	ld   bc, $0B10
+	add  hl, bc					; Index it
+	
+	ld   h, [hl]				; Read high byte
+	ld   l, $00					; Low byte is always 0
+	;--
+	
+	ld   de, $8500 ; VRAM Destination ptr
+	ld   bc, (BANK(L0B4500) << 8)|$10 ; BANK $0B ; Source GFX bank number, Number of tiles to copy
 	call GfxCopy_Req
-	ld   a, $0D
+	
+	ld   a, SFX_TELEPORTOUT
 	ldh  [hSFXSet], a
-	ld   b, $10
+	
+	;
+	; Scroll the status bar down 8px at a time until it reaches the bottom of the screen.
+	; Unlike when the status bar was being scrolled up, the enemy GFX cannot be reloaded while doing this,
+	; as it'd overwrite the pause screen font while it'd still be visible.
+	;
+	ld   b, $10			; B = 16 tiles ($10 * 8 = $80)
 	ldh  a, [hLYC]
-L003956:;R
-	add  $08
-	ldh  [hLYC], a
-	ldh  [hWinY], a
+.outLoop:
+	add  $08			
+	ldh  [hLYC], a		; Move status bar effect target 1 tile down
+	ldh  [hWinY], a		; Scroll status bar 1 tile down
 	rst  $08 ; Wait Frame
-	dec  b
-	jr   nz, L003956
+	dec  b				; Are we done?
+	jr   nz, .outLoop	; If not, loop
+		
+	;
+	; Reload the top half of the current actor GFX set.
+	; Since we know that exactly $20 tiles were overwritten from the top of the art set,
+	; we can just load the first $20 tiles.
+	;
 	ld   a, [wActGfxId]
-	ld   hl, ActS_GFXSetTbl
-	sla  a
+	ld   hl, ActS_GFXSetTbl	; HL = ActS_GFXSetTbl
+	sla  a					; BC = wActGfxId * 2
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ld   b, [hl]
-	ld   c, $20
+	
+	ld   b, [hl]		; B = [byte0] Source GFX bank number
+	ld   c, $20			; C = Number of tiles to copy
 	inc  hl
-	ld   a, [hl]
+	ld   a, [hl]		; HL = [byte1] Source GFX ptr, with low byte hardcoded to $00
 	ld   h, a
 	ld   l, $00
-	ld   de, $8800
-	call GfxCopy_Req
+	ld   de, $8800		; DE = VRAM Destination ptr
+	call GfxCopy_Req	; Set up the request and return
+	
 	rst  $20 ; Wait GFX load
 	ret
-L00397C:;C
+	
+; =============== Pause_CopyFontTileGFX ===============
+; Copies a single font tile graphic to the specified location in VRAM.
+; IN
+; - A: Tile ID
+; - DE: VRAM Destination ptr
+Pause_CopyFontTileGFX:
 	push hl
-	swap a
-	ld   l, a
-	and  $07
-	or   $78
-	ld   h, a
-	ld   a, l
-	and  $F0
-	ld   l, a
-	ld   bc, $0A01
-	call GfxCopy_Req
-	rst  $20 ; Wait GFX load
+	
+		;--
+		; Convert the tile ID to a pointer pointing to its respective graphic within GFX_Pause.
+		; Effectively does this, but with some shortcuts:
+		; HL = GFX_Pause + ((A - $80) * TILESIZE)
+		
+		; As usual, this multiplication is done by swapping the nybbles and spreading them across
+		; the two bytes the other way around, but it also needs to cap them and add the GFX_Pause base.
+		swap a					; Just do it once here
+		ld   l, a				; Save that for later
+		
+		;
+		; HIGH BYTE
+		;
+		
+		; Tile IDs for the font are assumed to all be in the $80-$9F range, since that's where GFX_Pause gets loaded to.
+		; We're using them as index, so it's preferable to bring them down to $00-$1F by removing the MSB.
+		; Since we also need to extract what previously was the high nybble (now swapped to low nybble)
+		; into the high byte, we can do both at once by keeping only the lowest 3 bits.
+		and  $07
+		
+		; There's an assumption here.
+		; GFX_Pause must stored on a byte boundary that doesn't make it conflict with the index, since it's using
+		; "or" rather than "and". In practice, it should be stored on a $200-byte boundary, given it's $200 bytes long.
+		or   HIGH(GFX_Pause)	; Add the base value
+		ld   h, a
+		
+		;
+		; LOW BYTE
+		;
+		
+		ld   a, l				; Get back the swapped value
+		and  $F0				; New high nybble in low byte
+		; The same assumption from before applies here.
+		; Since GFX_Pause must be aligned to $200 anyway, its low byte will always be $00,
+		; so there's no need to either "or" or "and" with $00.
+		ld   l, a
+		;--
+		
+		ld   bc, (BANK(GFX_Pause) << 8)|$01 ; BANK $0A ; Source GFX bank number, Number of tiles to copy
+		call GfxCopy_Req
+		rst  $20 ; Wait GFX load
 	pop  hl
 	ret
-L003992: db $45
-L003993: db $48
-L003994: db $49
-L003995: db $4A
-L003996: db $4B
-L003997: db $4E
-L003998: db $48
-L003999: db $4F
-L00399A: db $4D
-L00399B: db $4F
-L00399C: db $48
-L00399D: db $4E
-L00399E: db $4D
-L00399F: db $4C
-L0039A0:;C
+	
+; =============== Pause_WpnGfxPtrTbl ===============
+; Maps each weapon to its graphics.
+;
+; Specifically, it maps the selected weapon (wWpnSel/WPNSEL_*) to the high byte of a pointer to a weapon art set.
+; These sets of graphics are all in BANK $0B, are all $100 bytes long, and are all aligned to a $100 byte boundary,
+; making their low byte always be $00.
+;
+; To save space, graphics for multiple weapons may be stored into the same art set.
+Pause_WpnGfxPtrTbl:
+	db HIGH(L0B4500) ; WPNSEL_P 
+	db HIGH(GFX_Space1OBJ) ; WPNSEL_RC
+	db HIGH(L0B4900) ; WPNSEL_RM
+	db HIGH(L0B4A00) ; WPNSEL_RJ
+	db HIGH(L0B4B00) ; WPNSEL_TP
+	db HIGH(L0B4E00) ; WPNSEL_AR
+	db HIGH(GFX_Space1OBJ) ; WPNSEL_WD
+	db HIGH(L0B4F00) ; WPNSEL_ME
+	db HIGH(L0B4D00) ; WPNSEL_CR
+	db HIGH(L0B4F00) ; WPNSEL_NE
+	db HIGH(GFX_Space1OBJ) ; WPNSEL_HA
+	db HIGH(L0B4E00) ; WPNSEL_MG
+	db HIGH(L0B4D00) ; WPNSEL_SG (wWpnSGRide = $00)
+	db HIGH(L0B4C00) ; WPNSEL_SG (wWpnSGRide = $01)
+
+
+; =============== Pause_ClrShots ===============
+; Clears all weapon shots and resets weapon-specific variables.
+; Used when a different weapon is selected.
+Pause_ClrShots:
+	; Force the player out of the Rush Marine ride
 	ld   a, [wPlMode]
-	cp   $11
-	jr   nz, L0039AB
-	xor  a
+	cp   PL_MODE_RM		; Riding Rush Marine?
+	jr   nz, .clrWpn	; If not, skip
+	xor  a				; Otherwise, reset state to idle
 	ld   [wPlMode], a
-L0039AB:;R
+	
+.clrWpn:
+	; Delete all 4 possible on-screen shots
 	xor  a
 	ld   [wShot0], a
 	ld   [wShot1], a
 	ld   [wShot2], a
 	ld   [wShot3], a
+	; Reset additional weapon-related globals
 	ld   [wWpnNePos], a
+	; Force out of Top Spin's spin state or the Sakugarne
 	ld   [wWpnTpActive], a
 	ld   [wWpnSGRide], a
 	ret
-L0039C2:;C
-	ld   hl, wAct
-L0039C5:;R
-	ld   a, [hl]
-	cp   $E0
-	jr   c, L0039E7
-	cp   $E4
-	jr   nc, L0039E7
-	ld   a, [wWpnItemWarp]
-	cp   $06
-	jr   z, L0039ED
-	cp   $07
-	jr   z, L0039ED
-	cp   $08
-	jr   z, L0039ED
-	inc  l
+	
+; =============== Pause_StartHelperWarp ===============
+; Makes the first found helper (Rush or Sakugarne) teleport out.
+; Used when a different weapon is selected.
+; OUT
+; - C flag: If set, an item was found and set to be teleported out
+Pause_StartHelperWarp:
+	;
+	; Only a single helper actor can be active at once.
+	; Find the first one.
+	;
+	ld   hl, wAct		; Start from first actor slot
+.loop:
+
+	; Actor IDs between $E0-$E3 are reserved to the helpers.
+	; If the actor ID for the slot is outside this range, seek to the next.
+	ld   a, [hl]		; A = iActId
+	cp   ACT_E0			; A < ACT_E0?
+	jr   c, .next		; If so, skip
+	cp   ACT_E4			; A >= ACT_E4?
+	jr   nc, .next		; If so, skip
+	
+	; If the actor is already in the middle of teleporting out, there's nothing to do.
+	ld   a, [wWpnHelperWarp]
+	cp   AHW_WARPOUT_START
+	jr   z, .notFound
+	cp   AHW_MODE_7
+	jr   z, .notFound
+	cp   AHW_MODE_8
+	jr   z, .notFound
+	
+.found:
+	; Otherwise, we found an active helper.
+	; Make it teleport out.
+	
+	inc  l				; Seek to iActRtnId
 	xor  a
-	ld   [hl], a
-	ld   a, $06
-	ld   [wWpnItemWarp], a
-	scf  
+	ld   [hl], a		; iActRtnId = 0
+	
+	ld   a, AHW_WARPOUT_START
+	ld   [wWpnHelperWarp], a
+	
+	scf ; C Flag = set
 	ret
-L0039E7:;R
-	ld   a, l
-	add  $10
+	
+.next:
+	; Seek to next entry
+	ld   a, l			; HL += $10
+	add  iActEnd
 	ld   l, a
-	jr   nz, L0039C5
-L0039ED:;R
-	xor  a
+	; If the low byte overflowed to $00, we reached the end of wAct.
+	jr   nz, .loop		; Reached the end? If not, loop
+	
+.notFound:
+	xor  a ; C Flag = clear
 	ret
-L0039EF:;C
+	
+; =============== WpnS_SaveCurAmmo ===============
+; Saves the current weapon's ammo back to the array.
+WpnS_SaveCurAmmo:
+	; Nothing to save if no weapon is selected
 	ld   a, [wWpnSel]
 	or   a
 	ret  z
-	ld   hl, wPlHealth
+	
+	; Otherwise, wWpnAmmoTbl[wWpnSel] = wWpnAmmoCur
+	ld   hl, wWpnAmmoTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [wWpnAmmoCur]
 	ld   [hl], a
 	ret
+	
 L003A00:;C
 	push bc
 	ld   a, [wWpnShotCost]
@@ -11230,7 +12142,7 @@ Game_MkBarRowDrawEv:
 		pop  af 			; Restore bar count
 		and  $03			; Get remainder
 		jr   z, .stEmpty	; Is it 0? If so, skip ahead
-		add  b				; Otherwise, draw add the base tile ID
+		add  b				; Otherwise, add the base tile ID
 		ldi  [hl], a		; and draw the single partial tile
 		dec  c				; TilesLeft--
 		
@@ -11329,159 +12241,201 @@ Game_LivesFontMaps:
 	db $5B, $59 ; 8
 	db $5B, $55 ; 9
 	
-L003AD9:;C
+; =============== Pause_AddBarDrawEv ===============
+; Appends a *small* health/ammo bar draw request to the buffer.
+; Used on the pause menu exclusively to render the gauges.
+; See also: Game_AddBarDrawEv
+; IN
+; - A: Bar value
+; - C: Weapon selection ID (WPNSEL_*)
+; - DE: Tilemap destination ptr
+Pause_AddBarDrawEv:
+	;
+	; These gauges are handled similarly to the large ones, and most of the draw code is very similar too.
+	; They have the following differences though:
+	; - These gauges are 1-tile tall.
+	;   With no repeated draw being necessary, the equivalent to Game_MkBarRowDrawEv is directly inlined.
+	; - The weapon name (2 tiles) is displayed to the left of the bar.
+	; - There's no blanking feature when drawing values > BAR_MAX. 
+	;   Attempting to do so will instead cap it back.
+	;
 	push bc
 	push hl
-	push af
-	ld   b, $00
-	sla  c
-	sla  c
-	ld   hl, $3B2B
-	add  hl, bc
-	call CopyWord
-	ld   a, $07
-	ld   [de], a
-	inc  de
-	call CopyWord
-	ld   c, $05
-	pop  af
-	cp   $99
-	jr   c, L003AF9
-L003AF7: db $3E;X
-L003AF8: db $98;X
-L003AF9:;R
-	add  $07
-	srl  a
-	srl  a
-	srl  a
-	push af
-	srl  a
-	srl  a
-	jr   z, L003B11
-	ld   b, a
-	ld   a, $84
-L003B0B:;R
-	ld   [de], a
-	inc  de
-	dec  c
-	dec  b
-	jr   nz, L003B0B
-L003B11:;R
-	pop  af
-	and  $03
-	jr   z, L003B1B
-	add  $80
-	ld   [de], a
-	inc  de
-	dec  c
-L003B1B:;R
-	ld   a, c
-	or   a
-	jr   z, L003B26
-	ld   a, $80
-L003B21:;R
-	ld   [de], a
-	inc  de
-	dec  c
-	jr   nz, L003B21
-L003B26:;R
-	xor  a
-	ld   [de], a
+		push af
+			
+			;
+			; Build the TilemapDef starting from the weapon's name.
+			; The table containing this data, indexed by WPNSEL_*, also contains the tilemap pointer.
+			; After drawing the tilemap name (2 bytes), the bar will be immediately drawn to the right.
+			;
+		
+			; bytes0-1: Destination pointer
+			ld   b, $00				; BC = C * 4
+			sla  c					
+			sla  c
+			ld   hl, Pause_BarTbl	; HL = Table base
+			add  hl, bc				; Seek to entry (starts with vram pointer)
+			call CopyWord			; Write the word value, seek pointers ahead
+			
+			; byte2: Writing mode + Number of bytes to write
+			ld   a, $07				; Gauge width of 5 tiles + 2 for the weapon name
+			ld   [de], a
+			inc  de
+			
+			; byte3+: payload
+			call CopyWord			; Copy weapon name, seek pointers ahead
+			
+			;
+			; We're now pointing two tiles to the right from the origin point.
+			; Set up the tilemap event to draw the small gauge at the current location.
+			;
+			
+			ld   c, $05			; C = Tiles left
+			
+		; [POI] Unreachable failsafe, cap the value to BAR_MAX
+		pop  af					; A = Bar value
+		cp   BAR_MAX+1			; tBarValue <= $98?
+		jr   c, .calcBars		; If so, jump
+		ld   a, $98				; Otherwise, cap
+
+	.calcBars:
+		; The same code as Game_MkBarRowDrawEv, but with hardcoded tile ID ranges
+		
+		; Each bar represents 8 units
+		; A = CEIL(A/8)
+		add  $07			; CEIL
+		srl  a				; >> 1 (/2)
+		srl  a				; >> 1 (/4)
+		srl  a				; >> 1 (/8)
+	
+	.stFill:
+		; Filled: Draw BarCount/4 filled tiles 
+		push af ; Save bar count
+			srl  a			; >> 1 (/2)
+			srl  a			; >> 1 (/4)
+			jr   z, .stPart	; Are there less than 4 bars left? If so, skip ahead
+			
+		.drawFill:
+			ld   b, a		; D = Fill tiles left
+			ld   a, $84		; A = Fill tile ID
+		.loopF:
+			ld   [de], a	; Write the tile
+			inc  de
+			dec  c			; TilesLeft--
+			dec  b			; FillLeft--
+			jr   nz, .loopF
+			
+	.stPart:
+		; Partially Filled: Remainder of the above
+		pop  af 			; Restore bar count
+		and  $03			; Get remainder
+		jr   z, .stEmpty	; Is it 0? If so, skip ahead
+		add  $80			; Otherwise, add the base tile ID
+		ld   [de], a		; and draw the single partial tile
+		inc  de
+		dec  c				; TilesLeft--
+		
+	.stEmpty:
+		; Empty: Keep drawing until TilesLeft elapses
+		ld   a, c
+		or   a				; Is it already 0?
+		jr   z, .end		; If so, we're done
+		ld   a, $80			; A = Black bar tile ID
+	.loopE:
+		ld   [de], a		; Draw to tilemap
+		inc  de
+		dec  c				; Are we done?
+		jr   nz, .loopE		; If not, loop
+	.end:
+		xor  a				; Write the end terminator
+		ld   [de], a
 	pop  hl
 	pop  bc
 	ret
-L003B2B: db $9C
-L003B2C: db $62
-L003B2D: db $85
-L003B2E: db $97
-L003B2F: db $9C
-L003B30: db $6B
-L003B31: db $86
-L003B32: db $87
-L003B33: db $9C
-L003B34: db $A2
-L003B35: db $86
-L003B36: db $88
-L003B37: db $9C
-L003B38: db $AB
-L003B39: db $86
-L003B3A: db $89
-L003B3B: db $9C
-L003B3C: db $E2
-L003B3D: db $91
-L003B3E: db $85
-L003B3F: db $9C
-L003B40: db $EB
-L003B41: db $8A
-L003B42: db $86
-L003B43: db $9D
-L003B44: db $22
-L003B45: db $92
-L003B46: db $8B
-L003B47: db $9D
-L003B48: db $2B
-L003B49: db $88
-L003B4A: db $8C
-L003B4B: db $9D
-L003B4C: db $62
-L003B4D: db $87
-L003B4E: db $8F
-L003B4F: db $9D
-L003B50: db $6B
-L003B51: db $90
-L003B52: db $8C
-L003B53: db $9D
-L003B54: db $A2
-L003B55: db $8E
-L003B56: db $8A
-L003B57: db $9D
-L003B58: db $AB
-L003B59: db $88
-L003B5A: db $8D
-L003B5B: db $9D
-L003B5C: db $E2
-L003B5D: db $93
-L003B5E: db $8D
-L003B5F: db $9D
-L003B60: db $EB
-L003B61: db $8C
-L003B62: db $90
-L003B63:;C
+	
+; =============== Pause_BarTbl ===============
+; Defines the location and name for each entry in the pause screen, indexed by weapon selection ID.
+; The tilemap pointer refers to where the name gets written, while the gauge is drawn two tiles to the right.
+MACRO mPBarDef
+	db HIGH(\1),LOW(\1) ; Tilemap pointer (reverse order)
+	db \2 ; Weapon name
+ENDM
+Pause_BarTbl:
+	SETCHARMAP pause
+	mPBarDef $9C62, "P " ; WPNSEL_P 
+.wpn:
+	mPBarDef $9C6B, "RC" ; WPNSEL_RC
+	mPBarDef $9CA2, "RM" ; WPNSEL_RM
+	mPBarDef $9CAB, "RJ" ; WPNSEL_RJ
+	mPBarDef $9CE2, "TP" ; WPNSEL_TP
+	mPBarDef $9CEB, "AR" ; WPNSEL_AR
+	mPBarDef $9D22, "WD" ; WPNSEL_WD
+	mPBarDef $9D2B, "ME" ; WPNSEL_ME
+	mPBarDef $9D62, "CL" ; WPNSEL_CR
+	mPBarDef $9D6B, "NE" ; WPNSEL_NE
+	mPBarDef $9DA2, "HA" ; WPNSEL_HA
+	mPBarDef $9DAB, "MG" ; WPNSEL_MG
+	mPBarDef $9DE2, "SG" ; WPNSEL_SG
+.en:
+	mPBarDef $9DEB, "EN" ; WPNSEL_EN
+	
+; =============== Pause_FlashWpnName ===============
+; Flashes the selected weapon's name every 8 frames.
+; This also polls for input.
+Pause_FlashWpnName:
+	; Every 8 frames...
 	ldh  a, [hTimer]
 	and  $07
-	jr   nz, L003B97
-	ld   a, [wWpnSel]
+	jr   nz, .noChange
+	
+	;
+	; Build the TilemapDef for the weapon name only.
+	; The table containing this data, indexed by WPNSEL_*, also contains the tilemap pointer.
+	; After drawing the tilemap name (2 bytes), the bar will be immediately drawn to the right.
+	;
+	
+	; bytes0-1: Destination pointer
+	ld   a, [wWpnSel]		; A = wWpnSel * 4
 	add  a
 	add  a
-	ld   hl, $3B2B
-	ld   b, $00
+	ld   hl, Pause_BarTbl	; HL = Table base
+	ld   b, $00				
 	ld   c, a
-	add  hl, bc
-	ld   de, wScrEvRows
-	call CopyWord
-	ld   a, $02
+	add  hl, bc				; Seek to entry (starts with vram pointer)
+	ld   de, wTilemapBuf	; DE = Event data buffer
+	call CopyWord			; Write the word value, seek pointers ahead
+	
+	; byte2: Writing mode + Number of bytes to write
+	ld   a, $02				; 2 tiles for the weapon name
 	ld   [de], a
 	inc  de
+	
+	; byte3+: payload
+	
+	; Alternate between the actual weapon name and two blank tiles every other 8 frames
 	ldh  a, [hTimer]
-	and  $08
-	jr   nz, L003B8B
-	ld   a, $70
+	and  $08				; hTimer % 8 != 0?
+	jr   nz, .wpnName		; If so, jump
+.blankName:
+	ld   a, $70				; A = Blank tile
+	ld   [de], a			; Set it as first char
+	inc  de					; EvPtr++
+	jr   .setChar2			; Set it as second char
+.wpnName:
+	ldi  a, [hl]			; Read first char
+	ld   [de], a			; Write it over
+	inc  de					; EvPtr++
+	ldi  a, [hl]			; Read second char
+.setChar2:
+	ld   [de], a			; Write it over
+	inc  de					; EvPtr++
+	xor  a					; Write terminator
 	ld   [de], a
-	inc  de
-	jr   L003B8F
-L003B8B:;R
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-L003B8F:;R
-	ld   [de], a
-	inc  de
-	xor  a
-	ld   [de], a
+	
 	rst  $10 ; Wait tilemap load
 	jp   JoyKeys_Refresh
-L003B97:;R
+	
+.noChange:
 	rst  $08 ; Wait Frame
 	jp   JoyKeys_Refresh
 	
@@ -11499,41 +12453,62 @@ REPT 2
 ENDR
 	ret
 	
-L003BA2:;C
-	or   a
-	jr   nz, L003BA7
+; =============== Pause_CanMoveSel ===============
+; Checks if the cursor can move to the specified location.
+; In practice, it mostly checks if the weapons are unlocked.
+; IN
+; - A: Cursor position (WPNSEL_*)
+; OUT
+; - C flag: If set, the cursor can move.
+;           (ie: the weapon is unlocked)
+Pause_CanMoveSel:
+	; The basic player weapon is always selectable
+	or   a ; WPNSEL_P	; Selecting the default weapon?
+	jr   nz, .chkTank	; If not, skip
+	scf  				; Otherwise, C Flag = Set
+	ret
+.chkTank:
+	; And so are E-Tanks
+	cp   WPNSEL_EN
+	jr   nz, .chkWpns
 	scf  
 	ret
-L003BA7:;R
-	cp   $0D
-	jr   nz, L003BAD
-	scf  
-	ret
-L003BAD:;R
+.chkWpns:
+	; The rest is all unlockable weapons/items.
+	; This opts to do checks by shifting the relevant bit to the carry, and it assumes
+	; that cursor poin a way that can't be represented by the WPNB_* constants,
 	push bc
-	ld   c, a
-	cp   $0C
-	jr   nz, L003BBB
-	ld   a, [wWpnUnlock1]
-	swap a
-	rla  
-	jr   L003BCF
-L003BBB:;R
-	cp   $04
-	jr   nc, L003BC5
-	ld   b, a
-	ld   a, [wWpnUnlock1]
-	jr   L003BCB
-L003BC5:;R
-	sub  $03
-	ld   b, a
-	ld   a, [wWpnUnlock0]
-L003BCB:;R
-	rra  
-	dec  b
-	jr   nz, L003BCB
-L003BCF:;R
-	ld   a, c
+		ld   c, a ; Save cursor pos
+			; Sakugarne requires bit3 of wWpnUnlock1
+			; This is just a manual check, as it's the exception to the convention (see .chkItems)
+			cp   WPNSEL_SG			; Selecting Sakugarne?
+			jr   nz, .chkItems		; If not, skip
+			ld   a, [wWpnUnlock1]	; Get unlock bits
+			swap a					; << 4
+			rla  					; << 1 (bit3 shifted)
+			jr   .end
+		.chkItems:
+			; The first four selections are for the items, stored in wWpnUnlock1 (alongside WPNSEL_P, which was checked before).
+			; This and .chkNormWpn need WPNSEL_* and WPNB_* to be consistent, due to how the selection number doubles
+			; as how many times to shift bits right.
+			cp   WPNSEL_TP			; wWpnSel >= WPNSEL_TP
+			jr   nc, .chkNormWpn	; If so, skip 
+			ld   b, a				; Res = wWpnUnlock1 >> A
+			ld   a, [wWpnUnlock1]
+			jr   .loopBit
+		.chkNormWpn:
+			; Normal boss weapon, stored in wWpnUnlock0.
+			; Offset by -1 since one extra shift is needed to shift into the carry.
+			; (.chkItems didn't need to as WPNSEL_P being $00 already provided that extra shift)
+			sub  WPNSEL_TP-1		; Res = wWpnUnlock0 >> A - 3
+			ld   b, a
+			ld   a, [wWpnUnlock0]
+		.loopBit:
+			rra  					; A >>= 1
+			dec  b					; Done shifting?
+			jr   nz, .loopBit		; If not, loop
+	.end:
+		ld   a, c ; Restore cursor pos
 	pop  bc
 	ret
 	

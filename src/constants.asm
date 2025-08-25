@@ -110,7 +110,6 @@ DEF WPNSEL_MG EQU $0B
 DEF WPNSEL_SG EQU $0C
 DEF WPNSEL_EN EQU $0D
 
-
 DEF SECT_DISABLE     EQU $FF ; Magic value to disable the WINDOW layer and LYC trigger
 
 DEF SCREVB_SCROLLV   EQU 7 ; Vertical scrolling
@@ -137,13 +136,16 @@ DEF BLOCK_TILECOUNT_V    EQU $02 ; Number of 8x8 tiles in a block, vertically
 DEF BLOCK_H EQU BLOCK_TILECOUNT_H * TILE_H ; $10
 DEF BLOCK_V EQU BLOCK_TILECOUNT_V * TILE_V ; $10
 
-DEF LVLSCROLLV_BLOCKCOUNT  EQU $0C ; Number of blocks drawn when scrolling vertically
-
 DEF SCREEN_GAME_BLOCKCOUNT_H EQU $0A ; Number of blocks horizontally in the game screen
 DEF SCREEN_GAME_BLOCKCOUNT_V EQU $08 ; Number of blocks vertically in the game screen
 DEF SCREEN_GAME_H          EQU SCREEN_GAME_BLOCKCOUNT_H * BLOCK_TILECOUNT_H * TILE_H ; $A0 ; Width, in pixels, of the gameplay screen
 DEF SCREEN_GAME_V          EQU SCREEN_GAME_BLOCKCOUNT_V * BLOCK_TILECOUNT_V * TILE_V ; $80 ; Height, in pixels, of the gameplay screen
 
+
+DEF LVLSCROLLV_BLOCKCOUNT  EQU $0C ; Number of blocks drawn when scrolling vertically
+;DEF LVLSCROLLH_EDGECOL     EQU $02 ; Location of the seam column when scrolling horizontally
+;                                   ; relative to both the left and right edges of the screen. 
+;                                   ; (2 cols to the left of the left edge, 2 cols to the right of the right edge)
 
 ; Rooms
 DEF COL_TILECOUNT_H  EQU $02 ; Number of tiles horizontally in a column
@@ -160,39 +162,50 @@ DEF BAR_MAX EQU $98 ; 152
 DEF BARID_PL   EQU 0 ; Player health
 DEF BARID_WPN  EQU 1 ; Weapon ammo
 DEF BARID_BOSS EQU 2 ; Boss health
+DEF BARID_LIVES EQU 3 ; Player lives (special)
+
+
 
 DEF BLOCKID_EMPTY_START EQU $00 ; Empty blocks ($00-$21)
 DEF BLOCKID_SOLID_START EQU $22 ; Solid blocks ($22-$3B)
-DEF BLOCKID_HALF_START EQU $3C ; Small platforms ($3C-$3F)
+DEF BLOCKID_HALF_START  EQU $3C ; Small platforms ($3C-$3F)
 
-DEF PL_MODE_00 EQU $00
-DEF PL_MODE_01 EQU $01
-DEF PL_MODE_02 EQU $02
-DEF PL_MODE_03 EQU $03
-DEF PL_MODE_04 EQU $04
-DEF PL_MODE_05 EQU $05
-DEF PL_MODE_06 EQU $06
-DEF PL_MODE_07 EQU $07
-DEF PL_MODE_08 EQU $08
-DEF PL_MODE_09 EQU $09
-DEF PL_MODE_0A EQU $0A
-DEF PL_MODE_0B EQU $0B
-DEF PL_MODE_0C EQU $0C
-DEF PL_MODE_0D EQU $0D
-DEF PL_MODE_0E EQU $0E
-DEF PL_MODE_0F EQU $0F
-DEF PL_MODE_SLIDE EQU $10
-DEF PL_MODE_RM EQU $11
-DEF PL_MODE_WARPIN EQU $12
-DEF PL_MODE_13 EQU $13
-DEF PL_MODE_14 EQU $14
-DEF PL_MODE_15 EQU $15
-DEF PL_MODE_16 EQU $16
-DEF PL_MODE_17 EQU $17
-DEF PL_MODE_18 EQU $18
-DEF PL_MODE_19 EQU $19
-DEF PL_MODE_1A EQU $1A
-DEF PL_MODE_1B EQU $1B
+DEF BLOCKID_WATER      EQU $10 ; Underwater block
+DEF BLOCKID_WATERSPIKE EQU $18 ; Underwater spike
+DEF BLOCKID_SPIKE      EQU $19 ; Spike
+
+
+DEF PLCOLI_V EQU $06 ; Player collision box, vertical radius
+
+; wPlMode
+DEF PL_MODE_GROUND        EQU $00 ; On the ground
+DEF PL_MODE_JUMP          EQU $01 ; Jumping (move up)
+DEF PL_MODE_JUMPABSORB    EQU $02 ; Fast jump before absorbing the weapon
+DEF PL_MODE_FALL          EQU $03 ; Falling (move down)
+DEF PL_MODE_CLIMB         EQU $04 ; Climbing
+DEF PL_MODE_CLIMBININIT   EQU $05 ; Init for...
+DEF PL_MODE_CLIMBIN       EQU $06 ; Climbed down from top of the ladder while standing
+DEF PL_MODE_CLIMBOUTINIT  EQU $07 ; Init for...
+DEF PL_MODE_CLIMBOUT      EQU $08 ; Climbed to the top of a ladder
+DEF PL_MODE_CLIMBDTRSINIT EQU $09 ; Init for...
+DEF PL_MODE_CLIMBDTRS     EQU $0A ; Downwards screen transition - climbing down
+DEF PL_MODE_CLIMBUTRSINIT EQU $0B ; Init for...
+DEF PL_MODE_CLIMBUTRS     EQU $0C ; Upwards screen transition - climbing up
+DEF PL_MODE_FALLTRSINIT   EQU $0D ; Init for...
+DEF PL_MODE_FALLTRS       EQU $0E ; Downwards screen transition - falling
+DEF PL_MODE_NOCTRL        EQU $0F ; Controls disabled (for the boss room) 
+DEF PL_MODE_SLIDE         EQU $10 ; Sliding
+DEF PL_MODE_RM            EQU $11 ; Inside Rush Marine
+DEF PL_MODE_WARPININIT    EQU $12 ; Init for...
+DEF PL_MODE_WARPINMOVE    EQU $13 ; Teleporting Down - Moving
+DEF PL_MODE_WARPINLAND    EQU $14 ; Teleporting Down - Ground animation
+DEF PL_MODE_WARPOUTINIT   EQU $15 ; Init for...
+DEF PL_MODE_WARPOUTANIM   EQU $16 ; Teleporting Up - Ground animation
+DEF PL_MODE_WARPOUTMOVE   EQU $17 ; Teleporting Up - Moving
+DEF PL_MODE_WARPOUTEND    EQU $18 ; Teleporting Up - Wait for level end
+DEF PL_MODE_TLPINIT       EQU $19 ; Init for...
+DEF PL_MODE_TLP           EQU $1A ; Wily Teleporter - Anim
+DEF PL_MODE_TLPEND        EQU $1B ; Wily Teleporter - Wait for level end
 
 DEF ACT_EXPLPART   EQU $07 ; Large explosion particle
 DEF ACT_BOSS_START EQU $68
@@ -205,11 +218,23 @@ DEF ACT_METALMAN   EQU $6D
 DEF ACT_WOODMAN    EQU $6E
 DEF ACT_AIRMAN     EQU $6F
 
-DEF ACT_E0 EQU $E0
-DEF ACT_E1 EQU $E1
-DEF ACT_E2 EQU $E2
+DEF ACT_BUBBLE EQU $64 ; Air bubble when the player is underwater
+DEF ACT_E0 EQU $E0 ; Rush Coil ?
+DEF ACT_E1 EQU $E1 ; Rush Marine ?
+DEF ACT_E2 EQU $E2 ; Rush Jet ?
 DEF ACT_WPN_SG EQU $E3 ; Sakugarne
 DEF ACT_E4 EQU $E4
+
+; wWpnHelperWarp
+DEF AHW_MODE_0 EQU $00
+DEF AHW_MODE_1 EQU $01
+DEF AHW_MODE_2 EQU $02
+DEF AHW_MODE_3 EQU $03
+DEF AHW_MODE_4 EQU $04
+DEF AHW_MODE_5 EQU $05
+DEF AHW_WARPOUT_START EQU $06
+DEF AHW_MODE_7 EQU $07
+DEF AHW_MODE_8 EQU $08
 
 
 ; wLvlEnd
@@ -218,10 +243,10 @@ DEF EXPL_PL   EQU $01 ; Player explodes (restart level)
 DEF EXPL_BOSS EQU $02 ; Boss explodes (won level)
 
 
-DEF ACTLB_SPAWN4 EQU 4 ; ??? Might be related to the "not an art set" marker
-DEF ACTLB_SPAWN5 EQU 5 ; ???
-DEF ACTLB_NOSPAWN EQU 7 ; Prevents the actor from being respawned
-DEF ACTL_NOSPAWN EQU 1 << ACTLB_NOSPAWN
+DEF ACTLB_SPAWNNORM   EQU 4 ; Spawn the actor normally
+DEF ACTLB_SPAWNBEHIND EQU 5 ; Spawn the actor from behind
+DEF ACTLB_NOSPAWN     EQU 7 ; Prevents the actor from being respawned
+DEF ACTL_NOSPAWN      EQU 1 << ACTLB_NOSPAWN
 
 DEF ACTB_UNK_PROCFLAG EQU 7
 DEF ACT_UNK_PROCFLAG EQU 1 << ACTB_UNK_PROCFLAG
@@ -270,6 +295,11 @@ DEF iDotD2 EQU $0D
 DEF iDotD3 EQU $0E
 DEF iDotD4 EQU $0F
 
+; Pause bar bullshit
+DEF iPBar_Ptr EQU $00
+DEF iPBar_Tiles EQU $02
+
+
 ; Sound driver
 DEF SND_MUTE              EQU $00
 
@@ -306,7 +336,7 @@ DEF SFX_SHUTTER           EQU $0A
 DEF SFX_BOSSBAR           EQU $0B
 DEF SFX_TELEPORTIN        EQU $0C
 DEF SFX_TELEPORTOUT       EQU $0D
-DEF SFX_UNKNOWN1          EQU $0E
+DEF SFX_FREEZETOGGLE      EQU $0E
 DEF SFX_WEAPONABSORB      EQU $0F
 DEF SFX_BLOCK             EQU $10
 DEF SFX_UFOCRASH          EQU $11

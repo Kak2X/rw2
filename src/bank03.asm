@@ -2318,7 +2318,7 @@ L0348FC: db $B6
 L0348FD: db $4C
 L0348FE: db $B6
 L0348FF: db $4C
-L034900: db $BF
+Pl_SprMapPtrTbl: db $BF
 L034901: db $75
 L034902: db $DC
 L034903: db $75

@@ -114,4 +114,23 @@ NEWCHARMAP bossname
 	CHARMAP "↑", $5E
 	CHARMAP "↓", $5F
 	
+; Pause screen
+NEWCHARMAP pause
+	CHARMAP "P", $85
+	CHARMAP "R", $86
+	CHARMAP "C", $87
+	CHARMAP "M", $88
+	CHARMAP "J", $89
+	CHARMAP "A", $8A
+	CHARMAP "D", $8B
+	CHARMAP "E", $8C
+	CHARMAP "G", $8D
+	CHARMAP "H", $8E
+	CHARMAP "L", $8F
+	CHARMAP "N", $90
+	CHARMAP "T", $91
+	CHARMAP "W", $92
+	CHARMAP "S", $93
+	CHARMAP " ", $97
+	
 SETCHARMAP ascii

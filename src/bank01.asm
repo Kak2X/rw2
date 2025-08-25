@@ -176,7 +176,7 @@ L014112:;C
 	ldh  a, [hJoyNewKeys]
 	bit  1, a
 	ret  z
-	ld   a, [wWpnItemWarp]
+	ld   a, [wWpnHelperWarp]
 	or   a
 	ret  nz
 	xor  a
@@ -195,7 +195,7 @@ L014134:;R
 	call ActS_Spawn
 	ret  c
 	ld   a, $01
-	ld   [wWpnItemWarp], a
+	ld   [wWpnHelperWarp], a
 	ret
 L014145:;I
 	ld   a, $01
@@ -1304,7 +1304,7 @@ L0147F3:;R
 	xor  $20
 L014804:;R
 	ld   c, a
-	ld   a, [wActCurSprFlags]
+	ld   a, [wPlSprFlags]
 	or   c
 	ld   [de], a
 	inc  de
@@ -3828,57 +3828,52 @@ L0151E8: db $20
 L0151E9: db $54
 L0151EA: db $01
 L0151EB: db $00
-L0151EC: db $3E;X
-L0151ED: db $0E;X
-L0151EE: db $E0;X
-L0151EF: db $99;X
-L0151F0: db $CF;X
-L0151F1: db $CD;X
-L0151F2: db $48;X
-L0151F3: db $07;X
-L0151F4: db $F0;X
-L0151F5: db $8B;X
-L0151F6: db $CB;X
-L0151F7: db $57;X
-L0151F8: db $28;X
-L0151F9: db $F6;X
-L0151FA: db $3E;X
-L0151FB: db $0E;X
-L0151FC: db $E0;X
-L0151FD: db $99;X
-L0151FE: db $C9;X
-L0151FF: db $3E;X
-L015200: db $98;X
-L015201: db $EA;X
-L015202: db $D0;X
-L015203: db $CF;X
-L015204: db $EA;X
-L015205: db $E0;X
-L015206: db $CF;X
-L015207: db $FA;X
-L015208: db $D0;X
-L015209: db $CF;X
-L01520A: db $0E;X
-L01520B: db $00;X
-L01520C: db $CD;X
-L01520D: db $25;X
-L01520E: db $3A;X
-L01520F: db $FA;X
-L015210: db $DF;X
-L015211: db $CF;X
-L015212: db $B7;X
-L015213: db $28;X
-L015214: db $08;X
-L015215: db $FA;X
-L015216: db $E0;X
-L015217: db $CF;X
-L015218: db $0E;X
-L015219: db $01;X
-L01521A: db $CD;X
-L01521B: db $25;X
-L01521C: db $3A;X
-L01521D: db $DF;X
-L01521E: db $C9;X
+
+; =============== Freeze_Do ===============
+; [TCRF] Handles the freeze-frame pause feature, normally unused.
+Freeze_Do:
+	; The sound used when toggling this is unique to this subroutine,
+	; making it normally unused.
+	ld   a, SFX_FREEZETOGGLE
+	ldh  [hSFXSet], a
+	
+	; Stay here until pressing SELECT to unpause
+.loop:
+	rst  $08 ; Wait frame
+	call JoyKeys_Refresh
+	ldh  a, [hJoyNewKeys]
+	bit  KEYB_SELECT, a		; Pressed SELECT?
+	jr   z, .loop			; If not, keep waiting
+	
+	ld   a, SFX_FREEZETOGGLE
+	ldh  [hSFXSet], a
+	ret
+	
+; =============== Game_Unused_RefillCur ===============
+; [TCRF] Unreferenced code.
+; Instantly refills all of the player's health and the current weapon's ammo.
+; Supiciously located after the freeze frame handler.
+Game_Unused_RefillCur:
+	
+	ld   a, BAR_MAX			; Fully refill...
+	ld   [wPlHealth], a		; ... our health
+	ld   [wWpnAmmoCur], a	; ... the current weapon's ammo
+	
+	ld   a, [wPlHealth]		; Redraw the health bar
+	ld   c, $00
+	call Game_AddBarDrawEv
+	
+	ld   a, [wWpnSel]		; If a weapon is selected...
+	or   a
+	jr   z, .exec
+	ld   a, [wWpnAmmoCur]	; ...redraw the weapon bar too
+	ld   c, $01
+	call Game_AddBarDrawEv
+	
+.exec:
+	rst  $18 ; Wait bar update
+	ret
+	
 L01521F:;C
 	call L003156
 	call StartLCDOperation

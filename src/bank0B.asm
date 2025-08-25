@@ -1278,6 +1278,10 @@ L0B44FC: db $CD
 L0B44FD: db $1C
 L0B44FE: db $8B
 L0B44FF: db $38
+; =============== WEAPON ART SETS ===============
+; Sets of weapon graphics, each 16 tiles large.
+; Only one can be loaded at a time.
+Marker_GFX_Wpn:
 L0B4500: db $00
 L0B4501: db $00
 L0B4502: db $00
