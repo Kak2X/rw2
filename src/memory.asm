@@ -12,10 +12,10 @@ wRoomTrsU:             ds $19 ; $CC20 ; Table of target room IDs when scrolling 
 ds $07
 wRoomTrsD:             ds $19 ; $CC40 : See above, but when scrolling down.
 ds $07
-wShot0:                ds $10 ; $CC60 ; On-screen shots
-wShot1:                ds $10 ; $CC70 ;
-wShot2:                ds $10 ; $CC80 ;
-wShot3:                ds $10 ; $CC90 ;
+wShot0:                ds $10 ; $CC60 ; Weapon shot #1
+wShot1:                ds $10 ; $CC70 ; Weapon shot #2
+wShot2:                ds $10 ; $CC80 ; Weapon shot #3
+wShot3:                ds $10 ; $CC90 ; Weapon shot #4 (typically used for special purposes)	
 
 SECTION "CD00", WRAM0[$CD00]
 wAct:                  ds $100 ; $CD00 ; Currently loaded actors
@@ -43,8 +43,8 @@ wLvlRoomId:            db ; $CF0B ; Room ID, only used in a few cases (ie: room 
 wLvlColL:              db ; $CF0C ; Current column number in a level, ??? relative to the left edge of the screen.
 wTargetRelX:           db ; $CF0D ; Temporary relative X position, for targets
 wTargetRelY:           db ; $CF0E ; Temporary relative Y position, for targets
-wPl_Unk_Alt_X:         db ; $CF0F ; ??? Target pos?
-wLvl_Unk_CurCol:       db ; $CF10 ; ??? Current column number the player is on
+wPlRelRealX:           db ; $CF0F ; Copy of wPlRelX without the hardware's sprite offset
+wLvlColPl:             db ; $CF10 ; Current column number the player is on
 wPlSprMapId:           db ; $CF11 ; Player sprite mapping ID
 wPlDirH:               db ; $CF12 ; Direction the player faces (0: left, 1: right)
 wPlWalkAnimTimer:      db ; $CF13 ; Walk animation timer. Player will sidestep until it reaches 7 (purely visual) 
@@ -53,7 +53,7 @@ wPlRelX:               db ; $CF15 ; Player X position, relative to the screen
 wPlRelY:               db ; $CF16 ; Player Y position, relative to the screen
 wPl_Unk_RelY_Copy:     db ; $CF17 ; ??? Copy of the above
 wPlSpdXSub:            db ; $CF18 ; Player horizontal speed (subpixels)
-wPlSpdX:               db ; $CF19 ; Player horizontal speed
+wPlSpdX:               db ; $CF19 ; Player horizontal speed.
 wPlSpdYSub:            db ; $CF1A ; Player vertical speed (subpixels)
 wPlSpdY:               db ; $CF1B ; Player vertical speed
 wPlYCeilMask:          db ; $CF1C ; Mask applied to the player's Y position when hitting the ceiling while jumping. Can be $F0 or $F8 depending on the type of ceiling hit.
@@ -178,11 +178,11 @@ DEF wWpnAmmo_Start EQU wWpnAmmoRC
 DEF wWpnAmmo_End   EQU wWpnAmmoSG + 1
 wWpnUnlock1:            db ; $CFDD ; Automatic weapon unlocks
 wWpnUnlock0:            db ; $CFDE ; Unlocked weapons / beaten stages (bitmask)
-wWpnSel:                db ; $CFDF ; Currently selected weapon
+wWpnId:                 db ; $CFDF ; Current weapon
 wWpnAmmoCur:            db ; $CFE0 ; Active weapon ammo
 wBarQueuePos:           db ; $CFE1 ; Index to current wTilemapBarBuf write position
 wTmpCFE2:               db ; $CFE2 ; Temporary location (copy of wWpnAmmoCur, password error marker) 
-wPlIdleDelay:           db ; $CFE3 ; If set, the player returns to the idle state when it elapses. Used by Hard Knuckle
+wPlIdleDelay:           db ; $CFE3 ; If set, the player returns to the idle state when it elapses. Used by Hard Knuckle.
 wWpnNePos:              db ; $CFE4 ; Timer used to alternate the vertical position of Needle Cannon shots
 wWpnWdUseAmmoOnThrow:   db ; $CFE5 ; Makes the Wood Shield use up ammo when fired. Not sure why it's a flag.
 wTmpCFE6:               db ; $CFE6 ; Temporary storage
@@ -190,13 +190,13 @@ wTmpCFE7:               db ; $CFE7 ; Temporary storage
 wPlLives:               db ; $CFE8 ; Number of lives remaining
 wETanks:                db ; $CFE9 ; Number of E Tanks
 wWpnTpActive:           db ; $CFEA ; The player is spinning in the air, actively using Top Spin
-wWpn_Unused_ShotType:   db ; $CFEB ; ??? Identifies the current weapon's shot type, but is only written to
-wWpnColiH:              db ; $CFEC ; Weapon collision box - horizontal radius
-wWpnColiV:              db ; $CFED ; Weapon collision box - vertical radius
+wWpnUnlockMask:         db ; $CFEB ; [TCRF] Masks the bit for the current weapon against wWpnUnlock0. Only written to though.
+wWpnColiBoxH:           db ; $CFEC ; Weapon collision box - horizontal radius
+wWpnColiBoxV:           db ; $CFED ; Weapon collision box - vertical radius
 wWpnActDmg:             db ; $CFEE ; Damage the current weapon dealt to the actor
 wWpnPierceLvl:          db ; $CFEF ; "Piercing level" of the current weapon (WPNPIERCE_*)
 wWpnShotCost:           db ; $CFF0 ; Ammo cost of the currently fired shot
-wWpnHelperWarp:         db ; $CFF1 ; Teleport animation mode for the Rush/Sakugarne
+wWpnHelperActive:       db ; $CFF1 ; Rush/Sakugarne actors are active ??? Teleport animation mode for the Rush/Sakugarne
 wWpnAmmoInc:            db ; $CFF2 ; Slowly increments the weapon ammo until it elapses. (weapon energy effect)
 wPlHealthInc:           db ; $CFF3 ; Slowly increments the player's health until it elapses. (life energy effect)
 wPassCursorX:           db ; $CFF4 ; Password cursor - X position
@@ -256,6 +256,7 @@ hRomBankLast:            db ; $FF9D ; Last ROM bank loaded (Bank to restore when
 hRomBank:                db ; $FF9E ; Current ROM bank loaded
 hTrsRowsProc:            db ; $FF9F ; Number of block rows processed during vertical transitions
 hActCur:                 ds $10 ; $FFA0 ; Currently processed actor, copied from the actor slot
+DEF hShotCur EQU hActCur ; Reused!
 hScrEvLvlLayoutPtr_Low:  db ; $FFB0 ; Source level layout pointer
 hScrEvLvlLayoutPtr_High: db ; $FFB1 ; 
 hScrEvOffH:              db ; $FFB2 ; Target horizontal offset in grid
@@ -341,6 +342,58 @@ DEF iActColiE EQU $0E
 DEF iActColiF EQU $0F
 DEF iActColiEnd EQU $10
 
+; ActS_ColiTbl
+DEF iRomActColiBoxH       EQU $00
+DEF iRomActColiBoxV       EQU $01
+DEF iRomActColiType       EQU $02
+DEF iRomActColiDamage     EQU $03
+DEF iRomActColiHealthLow  EQU $04
+DEF iRomActColiHealthHigh EQU $05
+DEF iRomActColiDmgP       EQU $06
+DEF iRomActColiDmgTp      EQU $07
+DEF iRomActColiDmgAr      EQU $08
+DEF iRomActColiDmgWd      EQU $09
+DEF iRomActColiDmgMe      EQU $0A
+DEF iRomActColiDmgCr      EQU $0B
+DEF iRomActColiDmgNe      EQU $0C
+DEF iRomActColiDmgHa      EQU $0D
+DEF iRomActColiDmgMg      EQU $0E
+DEF iRomActColiDmgSg      EQU $0F
+
 ; wShot
-DEF iShotId  EQU $00
-DEF iShotEnd EQU $10
+DEF iShotId      EQU $00 ; Weapon shot ID
+DEF iShotWkTimer EQU $01 ; Timer, shot-specific
+DEF iShotDir     EQU $02 ; Shot direction
+DEF iShotFlags   EQU $03 ; Flags. In practice, there's only the deflected one.
+DEF iShotXSub    EQU $04 ; Horizontal speed (subpixels)
+DEF iShotX       EQU $05 ; Horizontal speed
+DEF iShotYSub    EQU $06 ; Vertical speed (subpixels)
+DEF iShotY       EQU $07 ; Vertical speed
+DEF iShotSprId   EQU $08 ; Sprite mapping ID
+DEF iShot9       EQU $09 ; Free space, not used
+DEF iShotA       EQU $0A ; Free space, not used
+DEF iShotB       EQU $0B ; Free space, not used
+DEF iShotC       EQU $0C ; Free space, not used
+DEF iShotD       EQU $0D ; Unused
+DEF iShotE       EQU $0E ; Unused
+DEF iShotF       EQU $0F ; Unused
+DEF iShotEnd     EQU $10
+
+DEF iShotTpAnimTimer EQU iShotWkTimer ; Animation timer
+DEF iShotArNum       EQU iShotWkTimer ; Shot number, out of 3
+DEF iShotWdAnim      EQU iShotWkTimer ; Animation timer & flags
+                                      ; RT--CCNN (intro)
+							          ; RTAAAAAA (main)
+							          ; R - Rotation flag
+							          ;     If set, the initial intro where the four leaves move outwards is done.
+							          ; T - Throw flag
+							          ;     If set, the shield has been thrown
+							          ; N - Leaf number
+							          ;     Identifies the movement code it uses.
+							          ; C - Intro animation counter
+							          ; A - Shield rotation timer (position index)
+DEF iShotMeAnimTimer EQU iShotWkTimer ; Animation number
+DEF iShotCrTimer     EQU iShotWkTimer ; Explosion timer
+DEF iShotNeTimer     EQU iShotWkTimer ; How many frames have passed since the shot spawned
+DEF iShotHaTimer     EQU iShotWkTimer ; How many frames have passed since the shot spawned (up to $10)
+DEF iShotMgMoveV     EQU iShotWkTimer ; If set, Magnet Missile is moving vertically (has locked in)

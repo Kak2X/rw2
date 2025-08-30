@@ -1,294 +1,510 @@
-L014000:;C
-	ld   hl, $4CA9
-	ld   a, [wWpnSel]
+; =============== Pl_DoWpnCtrl ===============
+; Handles player controls for the currently active weapon.
+Pl_DoWpnCtrl:
+	
+	;
+	; First, read out the current weapon's properties to a temporary area.
+	; Curiously done here all the time rather than only when selecting a weapon,
+	; but this way it does account for some edge cases (ie: start of the level).
+	;
+	ld   hl, Wpn_PropTbl	; HL = Property table
+	ld   a, [wWpnId]		; BC = wWpnId * 4
 	add  a
 	add  a
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
+	add  hl, bc				; Index it
+	ldi  a, [hl]			; Read out all of its 4 bytes
+	ld   [wWpnColiBoxH], a
 	ldi  a, [hl]
-	ld   [$CFEC], a
-	ldi  a, [hl]
-	ld   [$CFED], a
+	ld   [wWpnColiBoxV], a
 	ldi  a, [hl]
 	ld   [wWpnShotCost], a
 	ld   a, [hl]
 	ld   [wWpnPierceLvl], a
-	ld   a, [wWpnSel]
+	
+	; Execute weapon-specific controls code
+	ld   a, [wWpnId]
 	rst  $00 ; DynJump
-L014020: db $60
-L014021: db $40
-L014022: db $A8
-L014023: db $40
-L014024: db $B7
-L014025: db $40
-L014026: db $C6
-L014027: db $40
-L014028: db $45
-L014029: db $41
-L01402A: db $8F
-L01402B: db $41
-L01402C: db $E5
-L01402D: db $41
-L01402E: db $38
-L01402F: db $42
-L014030: db $C9
-L014031: db $42
-L014032: db $EA
-L014033: db $42
-L014034: db $61
-L014035: db $43
-L014036: db $8C
-L014037: db $43
-L014038: db $D5
-L014039: db $40
-L01403A:;J
+	dw WpnCtrl_Default       ; WPN_P
+	dw WpnCtrl_RushCoil      ; WPN_RC
+	dw WpnCtrl_RushMarine    ; WPN_RM
+	dw WpnCtrl_RushJet       ; WPN_RJ
+	dw WpnCtrl_TopSpin       ; WPN_TP
+	dw WpnCtrl_AirShooter    ; WPN_AR
+	dw WpnCtrl_LeafShield    ; WPN_WD
+	dw WpnCtrl_MetalBlade    ; WPN_ME
+	dw WpnCtrl_CrashBomb     ; WPN_CR
+	dw WpnCtrl_NeedleCannon  ; WPN_NE
+	dw WpnCtrl_HardKnuckle   ; WPN_HA
+	dw WpnCtrl_MagnetMissile ; WPN_MG
+	dw WpnCtrl_Sakugarne     ; WPN_SG
+
+; =============== COMMON SUBROUTINES ===============
+
+; =============== WpnCtrlS_End ===============
+; Common actions to execute at the end of every weapon control code.
+; All this does is handle timing for the player's shooting animation.
+WpnCtrlS_End:
+	; Don't do anything if the timer is already elapsed
 	ld   a, [wPlShootTimer]
 	or   a
 	ret  z
-	dec  a
+	; Otherwise, decrement it
+	dec  a						
 	ld   [wPlShootTimer], a
+	; If it elapsed now, reset wPlShootType.
+	; This will cause Rockman to stop being in the shooting pose.
 	ret  nz
 	ld   [wPlShootType], a
 	ret
-L014048:;JR
+	
+; =============== WpnCtrlS_StartShootAnim ===============
+; Starts the player's shooting animation.
+WpnCtrlS_StartShootAnim:
+	;
+	; The shooting animation is the pose where Rockman holds his hand forward while shooting.
+	; Depending on the weapon, different frames may be used (shooting or throwing), which
+	; is set to wPlShootType and directly affects the sprite mapping used by the player.
+	;
+	; Note that this animation does *not* affect how often shots can be fired, as long
+	; as we're under the on-screen shot limit, a new shot can always be fired.
+	;
+	
+	; Regardless of the weapon, this animation always lasts $0C frames
 	ld   a, $0C
 	ld   [wPlShootTimer], a
-	ld   hl, $4C9C
-	ld   a, [wWpnSel]
+	
+	; Index the shoot animation type off Wpn_ShootTypeTbl
+	; wPlShootType = Wpn_ShootTypeTbl[wWpnId]
+	ld   hl, Wpn_ShootTypeTbl
+	ld   a, [wWpnId]
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
 	ld   [wPlShootType], a
-	ld   a, $02
+	
+	; Play shoot sound
+	ld   a, SFX_SHOOT
 	ldh  [hSFXSet], a
 	ret
-L014060:;JI
+	
+; =============== WEAPON FIRE CODE ===============
+; Most weapons follow a similar pattern, this is detailed in WpnCtrl_Default.
+
+; =============== WpnCtrl_Default ===============
+; The default weapon, a small shot that travels forward.
+; Items such as Rush Coil reuse this for actual player shots.
+WpnCtrl_Default:
+	; Keep track of the weapon unlock bit for this shot ??? identify the unlock bit for the current weapon. 
+	; This value is only ever written to though.
 	xor  a
-	ld   [wWpn_Unused_ShotType], a
+	ld   [wWpnUnlockMask], a
+	
+	; If the player isn't pressing B, just exit (only process the shooting animation, if one is set)
 	ldh  a, [hJoyNewKeys]
-	bit  1, a
-	jp   z, L01403A
+	bit  KEYB_B, a			; Pressed B?
+	jp   z, WpnCtrlS_End	; If not, we're done
+	
+	; Otherwise, find a free slot to spawn a shot. At most 3 shots can be on screen.
+	; There's no special weapon property marking the number of on-screen shots,
+	; this is all handled by repeated checks.
 	ld   hl, wShot0
 	ld   a, [hl]
-	or   a
-	jr   z, L014081
+	or   a					; Is there an active shot in the first slot?
+	jr   z, .spawn			; If not, spawn it here
 	ld   hl, wShot1
 	ld   a, [hl]
-	or   a
-	jr   z, L014081
+	or   a					; "" second slot?
+	jr   z, .spawn			; If not, spawn it here
 	ld   hl, wShot2
 	ld   a, [hl]
-	or   a
-	jp   nz, L01403A
-L014081:;R
-	ld   a, $80
-	ld   c, $00
-L014085:;J
-	ldi  [hl], a
+	or   a					; "" third slot?
+	jp   nz, WpnCtrlS_End	; If so, all three shots are on-screen, return
+	
+.spawn:
+	ld   a, SHOT_UNK_PROCFLAG|WPN_P ; Shot ID
+	ld   c, SHOTSPR_P ; Sprite ID
+	; Fall-through
+	
+; =============== WpnCtrlS_SpawnShotFwd ===============
+; Spawns a projectile that (initially) moves forward, starting from the player's hands.
+; IN
+; - A: Shot ID
+; - C: Sprite ID
+; - HL: Ptr to shot slot
+WpnCtrlS_SpawnShotFwd:
+	; Set the shot ID, which determines the code to execute for it.
+	ldi  [hl], a	; iShotId
+	
+	; Shot-specific timer
 	xor  a
-	ldi  [hl], a
+	ldi  [hl], a	; iShotWkTimer
+	
+	; To move forward, the shot needs to face the same direction as the player.
 	ld   a, [wPlDirH]
-	and  $01
-	ldi  [hl], a
-	ld   b, $F2
-	or   a
-	jr   z, L014095
-	ld   b, $0F
-L014095:;R
+	and  $01		; Filter out other bits
+	ldi  [hl], a	; iShotDir
+	
+	;
+	; Make the shot originate from the player's hands.
+	; This point is in front of the player, vertically centered.
+	;
+	
+	; HORIZONTAL OFFSET - 14px in front of the player
+	; The +1 discrepancy when facing right is due to the player sprite being visually offset 1 pixel there.
+	ld   b, -PLCOLI_H-$08	; B = 14px to the left
+	or   a ; PLDIR_L		; Facing left?
+	jr   z, .setShot3		; If so, skip
+	ld   b, PLCOLI_H+$08+1	; B = 15px to the right
+.setShot3:
+	; Not deflected
 	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
+	ldi  [hl], a		; iShotFlags
+	
+	; Set the X coordinate, offsetted by the previously calculated value
+	ldi  [hl], a		; iActXSub
 	ld   a, [wPlRelX]
-	add  b
-	ldi  [hl], a
+	add  b				; + offset
+	ldi  [hl], a		; iShotX
+	
+	; VERTICAL OFFSET - Middle of the player
+	; It's not possible to shoot while sliding, so this can always point to 12px above the origin.
 	xor  a
-	ldi  [hl], a
-	ld   a, [wPlRelY]
-	sub  $0C
-	ldi  [hl], a
-	ld   [hl], c
-	jr   L014048
-L0140A8:;I
+	ldi  [hl], a		; iShotYSub
+	ld   a, [wPlRelY]	; From origin (bottom)
+	sub  PLCOLI_V		; - v radius (middle)
+	ldi  [hl], a		; iShotY
+	
+	; Set specified sprite mapping ID
+	ld   [hl], c		; iShotSprId
+	
+	jr   WpnCtrlS_StartShootAnim
+	
+; =============== WpnCtrl_RushCoil ===============
+; Rush Coil.
+; This and other items have execution fall back to WpnCtrl_Default,
+; which is what allows to fire normal shots while using items.
+WpnCtrl_RushCoil:
+	; Uses normal shot
 	xor  a
-	ld   [wWpn_Unused_ShotType], a
-	ld   a, $60
+	ld   [wWpnUnlockMask], a
+	
+	; When an item "weapon" is selected, firing a shot will try to spawn its respective helper actor if one is not active already.
+	; In this case, it spawns, well, the Rush Coil.
+	; All helper actors are spawned the same way, as they teleport in from the top of the screen in front of the player.
+	ld   a, ACT_WPN_RC
 	ld   [wActSpawnId], a
-	call L014112
-	jp   L014060
-L0140B7:;I
+	call WpnCtrl_ChkSpawnHelper
+	
+	; Additionally, they also all allow firing normal shots.
+	; This behaviour is separate from the helper actor spawning one, so pressing the B button to spawn one also fires a normal
+	; shot at the same time.
+	jp   WpnCtrl_Default
+	
+; =============== WpnCtrl_RushMarine ===============
+; Rush Marine.
+; Underwater version of Rush Jet.
+WpnCtrl_RushMarine:
 	xor  a
-	ld   [wWpn_Unused_ShotType], a
-	ld   a, $61
+	ld   [wWpnUnlockMask], a
+	ld   a, ACT_WPN_RM
 	ld   [wActSpawnId], a
-	call L014112
-	jp   L014060
-L0140C6:;I
+	call WpnCtrl_ChkSpawnHelper
+	jp   WpnCtrl_Default
+	
+; =============== WpnCtrl_RushJet ===============
+; Rush Jet.
+; The broken free-roaming RM3 variant.
+WpnCtrl_RushJet:
 	xor  a
-	ld   [wWpn_Unused_ShotType], a
-	ld   a, $62
+	ld   [wWpnUnlockMask], a
+	ld   a, ACT_WPN_RJ
 	ld   [wActSpawnId], a
-	call L014112
-	jp   L014060
-L0140D5:;I
+	call WpnCtrl_ChkSpawnHelper
+	jp   WpnCtrl_Default
+	
+; =============== WpnCtrl_Sakugarne ===============
+; Sakugarne.
+; Useless pogo stick.
+WpnCtrl_Sakugarne:
 	xor  a
-	ld   [wWpn_Unused_ShotType], a
-	ld   a, $63
+	ld   [wWpnUnlockMask], a
+	ld   a, ACT_WPN_SG
 	ld   [wActSpawnId], a
-	call L014112
+	call WpnCtrl_ChkSpawnHelper
+	
+	; If the player isn't riding the Sakugarne yet, don't do anything special.
 	ld   a, [wWpnSGRide]
 	or   a
-	jp   z, L014060
-	ld   hl, wShot3
+	jp   z, WpnCtrl_Default
+	
+	;
+	; When riding it and moving downwards, make the bottom of the Sakugarne deal damage.
+	; This is done by attaching an invisible weapon shot with an hysterically small hitbox.
+	; 
+	ld   hl, wShot3		; Special purpose shot
+	
+	; If the player isn't falling, don't deal damage.
 	ld   a, [wPlMode]
-	cp   $03
-	jr   z, L0140F5
-	xor  a
+	cp   PL_MODE_FALL	; Is the player falling?
+	jr   z, .dmg		; If so, jump
+.noDmg:
+	xor  a				; Despawn the shot
 	ld   [hl], a
 	ret
-L0140F5:;R
-	ld   a, $8C
-	ldi  [hl], a
+.dmg:
+	; Spawn the shot
+	ld   a, SHOT_UNK_PROCFLAG|WPN_SG
+	ldi  [hl], a		; iShotId
 	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
+	ldi  [hl], a ; iShotWkTimer
+	ldi  [hl], a ; iShotDir
+	ldi  [hl], a ; iShotFlags
+	
+	; Centered to the player
+	; XPos = PlX
+	ldi  [hl], a ; iShotXSub
 	ld   a, [wPlRelX]
-	ldi  [hl], a
+	ldi  [hl], a ; iShotX
+	
+	; 4 pixels below the player
+	; XPos = PlY + 4
 	xor  a
-	ldi  [hl], a
+	ldi  [hl], a ; iShotYSub
 	ld   a, [wPlRelY]
 	add  $04
-	ldi  [hl], a
-	ld   a, $1C
-	ldi  [hl], a
+	ldi  [hl], a ; iShotY
+	
+	; Use an invisible sprite
+	ld   a, SHOTSPR_SG
+	ldi  [hl], a ; iShotSprId
+	
+	; [POI] These are never used
 	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   [hl], a
+	ldi  [hl], a ; iShot9
+	ldi  [hl], a ; iShotA
+	ldi  [hl], a ; iShotB
+	ld   [hl], a ; iShotC
 	ret
-L014112:;C
-	call L003A00
+	
+; =============== WpnCtrl_ChkSpawnHelper ===============
+; Tries to spawn an item helper actor. (Rush, Sakugarne)
+; IN
+; - wActSpawnId: Actor ID
+WpnCtrl_ChkSpawnHelper:
+	; If there's not enough ammo to jump on Rush Coil, don't even bother calling him in
+	call WpnS_HasAmmoForShot
 	ret  c
+	
+	; If we didn't press B to call in Rush/Sakugarne, there's nothing to spawn
 	ldh  a, [hJoyNewKeys]
-	bit  1, a
+	bit  KEYB_B, a
 	ret  z
-	ld   a, [wWpnHelperWarp]
+	
+	; Don't spawn it if one is already active.
+	; (this includes different helpers when teleporting out)
+	ld   a, [wWpnHelperActive]
 	or   a
 	ret  nz
-	xor  a
+	
+	;
+	; Passed the checks.
+	; Spawn the actor from the top of the screen, as they teleport in to the player's vertical position.
+	;
+	
+	xor  a					; Not part of the actor layout
 	ld   [wActSpawnLayoutPtr], a
-	ld   a, $0F
+	
+	; Spawn immediately offscreen above
+	ld   a, OBJ_OFFSET_Y-1	; 1 pixel above the edge of the screen
 	ld   [wActSpawnY], a
-	ld   b, $18
+	
+	; Spawn 24 pixels in front of the player
+	ld   b, $18				; B = 24px to the right
 	ld   a, [wPlDirH]
-	and  $01
-	jr   nz, L014134
-	ld   b, $E8
-L014134:;R
-	ld   a, [wPlRelX]
+	and  PLDIR_R			; Facing right?
+	jr   nz, .setX			; If so, skip
+	ld   b, $E8				; B = 24px to the left
+.setX:
+	ld   a, [wPlRelX]		; XPos = PlX + B
 	add  b
 	ld   [wActSpawnX], a
-	call ActS_Spawn
-	ret  c
-	ld   a, $01
-	ld   [wWpnHelperWarp], a
+	
+	call ActS_Spawn			; Did it spawn?
+	ret  c					; If not, return
+	ld   a, $01				; Otherwise, flag that an helper is onscreen, so no more can spawn
+	ld   [wWpnHelperActive], a
 	ret
-L014145:;I
-	ld   a, $01
-	ld   [wWpn_Unused_ShotType], a
+	
+; =============== WpnCtrl_TopSpin ===============
+; Top Spin.
+; Melee weapon activated in the air.
+WpnCtrl_TopSpin:
+	ld   a, WPU_TP
+	ld   [wWpnUnlockMask], a
+	
+	; Top Spin is activated by pressing B in the air.
+	; It will then stay active for the remainder of the jump.
 	ldh  a, [hJoyNewKeys]
-	bit  1, a
-	jp   z, L01403A
+	bit  KEYB_B, a				; Pressed B?
+	jp   z, WpnCtrlS_End			; If not, return
+	
+	; Only allowed when the player is in the air ($01-$03)
+	; (PL_MODE_JUMP, PL_MODE_JUMPHI, PL_MODE_FALL)
 	ld   a, [wPlMode]
-	or   a
-	jp   z, L01403A
-	cp   $04
-	jp   nc, L01403A
+	or   a ; PL_MODE_GROUND	; wPlMode == $00?
+	jp   z, WpnCtrlS_End		; If so, return
+	cp   PL_MODE_FALL+1		; wPlMode >= $04?
+	jp   nc, WpnCtrlS_End	; If so, return
+	
+	; If it's already active, don't reactivate it
 	ld   a, [wWpnTpActive]
 	or   a
-	jp   nz, L01403A
-	call L003A00
-	jp   c, L01403A
-	ld   hl, wShot0
-	ld   a, $84
-	ld   [wWpnTpActive], a
-	ldi  [hl], a
+	jp   nz, WpnCtrlS_End
+	
+	; If there isn't enough ammo to use it, don't do it either.
+	; Note that Top Spin only uses up ammo on contact, not on activation.
+	call WpnS_HasAmmoForShot
+	jp   c, WpnCtrlS_End
+	
+	;
+	; If we got here, we can activate Top Spin.
+	; This will visually cause Rockman to spin, and his whole body will deal damage to enemies weak to it.
+	;
+	; What *actually* happens is that the player sprite is hidden and a weapon shot is spawned
+	; to the player's location, which has a sprite showing the player spinning, will track the
+	; player's position on its own, and is the part that deals damage.
+	;
+	ld   hl, wShot0					; Fixed slot
+	ld   a, SHOT_UNK_PROCFLAG|WPN_TP
+	ld   [wWpnTpActive], a			; Enable Top Spin mode, which hides the normal player sprite
+	ldi  [hl], a ; iShotId
 	xor  a
-	ldi  [hl], a
+	ldi  [hl], a ; iShotWkTimer
+	
+	; Face same direction as player
 	ld   a, [wPlDirH]
-	and  $01
-	ldi  [hl], a
+	and  PLDIR_R
+	ldi  [hl], a ; iShotDir
+	
+	; Not deflected
 	xor  a
-	ldi  [hl], a
-	inc  hl
+	ldi  [hl], a ; iShotFlags
+	
+	; XPos: PlX
+	inc  hl ; iShotXSub
 	ld   a, [wPlRelX]
-	ldi  [hl], a
-	inc  hl
+	ldi  [hl], a ; iShotX
+	
+	; YPos: PlY - 8
+	inc  hl ; iShotYSub
 	ld   a, [wPlRelY]
 	sub  $08
-	ldi  [hl], a
-	ld   a, $18
-	ld   [hl], a
-	jp   L014048
-L01418F:;I
-	ld   a, $02
-	ld   [wWpn_Unused_ShotType], a
+	ldi  [hl], a ; iShotY
+	
+	; Set initial Top Spin sprite
+	ld   a, SHOTSPR_TP0
+	ld   [hl], a ; iShotSprId
+	
+	jp   WpnCtrlS_StartShootAnim
+	
+; =============== WpnCtrl_AirShooter ===============
+; Air Shooter.
+; Spreadshot made up of 3 whirlwinds, travels diagonally up.
+WpnCtrl_AirShooter:
+	ld   a, WPU_AR
+	ld   [wWpnUnlockMask], a
+	
+	; Shoot on B
 	ldh  a, [hJoyNewKeys]
-	bit  1, a
-	jp   z, L01403A
+	bit  KEYB_B, a
+	jp   z, WpnCtrlS_End
+	
+	; All of the three individual shots must be despawned.
+	; This gives a real limit of 1 shot onscreen.
 	ld   hl, wShot0
 	ld   a, [hl]
 	ld   hl, wShot1
 	or   [hl]
 	ld   hl, wShot2
 	or   [hl]
-	jp   nz, L01403A
-	call L003A0B
-	jp   c, L01403A
-	ld   c, $03
-	ld   hl, wShot0
-L0141B5:;R
-	ld   a, $85
-	ldi  [hl], a
+	jp   nz, WpnCtrlS_End
+	
+	; Use up ammo, if there isn't enough don't spawn any shots
+	call WpnS_UseAmmo
+	jp   c, WpnCtrlS_End
+	
+	;
+	; Spawn the three shots in a loop.
+	;
+	ld   c, $03			; C = Shots left
+	ld   hl, wShot0		; HL = From the first slot
+.loop:
+	ld   a, SHOT_UNK_PROCFLAG|WPN_AR
+	ldi  [hl], a ; iShotId
+	
+	; Set the shot number, needed to help distinguish between the three as each travels at its own speed. 
 	ld   a, c
-	ldi  [hl], a
+	ldi  [hl], a ; iShotWkTimer
+	
 	ld   a, [wPlDirH]
-	and  $01
-	ldi  [hl], a
-	ld   b, $F2
-	or   a
-	jr   z, L0141C7
-	ld   b, $0F
-L0141C7:;R
+	and  PLDIR_R	; A = Shot direction
+	ldi  [hl], a ; iShotDir
+	
+	; Spawn 14 pixels in front of the player
+	ld   b, -$0E		; B = 14px to the left
+	or   a				; Facing right?
+	jr   z, .setX		; If not, jump
+	ld   b, $0E+1		; B = 14px to the right
+.setX:
+	; Not deflected
 	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
+	ldi  [hl], a ; iShotFlags
+	
+	; Set X position
+	ldi  [hl], a ; iShotXSub
 	ld   a, [wPlRelX]
 	add  b
-	ldi  [hl], a
+	ldi  [hl], a ; iShotX
+	
+	; Spawn 13 pixels above the player
 	xor  a
-	ldi  [hl], a
+	ldi  [hl], a ; iShotYSub
 	ld   a, [wPlRelY]
 	sub  $0B
-	ldi  [hl], a
-	ld   [hl], $01
+	ldi  [hl], a ; iShotY
+	
+	; Set sprite
+	ld   [hl], SHOTSPR_AR0 ; iShotSprId
+	
+	; Seek to next slot
 	ld   a, l
-	and  $F0
-	add  $10
+	and  $F0		; Seek back to iShotId
+	add  iShotEnd	; Next slot
 	ld   l, a
-	dec  c
-	jr   nz, L0141B5
-	jp   L014048
-L0141E5:;I
-	ld   a, $04
-	ld   [wWpn_Unused_ShotType], a
+	
+	dec  c			; Done spawning all shots?
+	jr   nz, .loop	; If not, loop
+	
+	jp   WpnCtrlS_StartShootAnim
+	
+; =============== WpnCtrl_LeafShield ===============
+; Leaf Shield.
+; Four leaves that rotate around the player and can never be destroyed (but can be deflected).
+WpnCtrl_LeafShield:
+	ld   a, WPU_WD
+	ld   [wWpnUnlockMask], a
+	
+	; Return if not pressing B
 	ldh  a, [hJoyNewKeys]
-	bit  1, a
-	jp   z, L01403A
+	bit  KEYB_B, a
+	jp   z, WpnCtrlS_End
+	
+	; Leaf Shield is made up of four leaves, each being its own individual shot.
+	; This is necessary since each leaf can get deflected without affecting the others.
+	; Only spawn a new shield if all of the leaves are despawned.
 	ld   hl, wShot0
 	ld   a, [hl]
 	ld   hl, wShot1
@@ -297,502 +513,805 @@ L0141E5:;I
 	or   [hl]
 	ld   hl, wShot3
 	or   [hl]
-	jp   nz, L01403A
-	call L003A00
-	jp   c, L01403A
+	jp   nz, WpnCtrlS_End
+	
+	; Don't spawn if there isn't enough ammo
+	call WpnS_HasAmmoForShot
+	jp   c, WpnCtrlS_End
+	
+	; Use up ammo when throwing the shield
 	ld   a, $01
 	ld   [wWpnWdUseAmmoOnThrow], a
-	ld   c, $04
-	ld   hl, wShot0
-L014214:;R
-	ld   a, $86
-	ldi  [hl], a
+	
+	;
+	; Spawn the four leaves.
+	;
+	ld   c, $04			; C = Leaves left
+	ld   hl, wShot0		; From the first slot...
+.loop:
+	ld   a, SHOT_UNK_PROCFLAG|WPN_WD
+	ldi  [hl], a ; iShotId
+	
+	; iShotWkTimer = C - 1
 	ld   a, c
 	dec  a
-	ldi  [hl], a
-	inc  hl
+	ldi  [hl], a ; iShotWkTimer
+	
+	; Direction is irrelevant until the shield is thrown
+	inc  hl ; iShotDir
+	
+	; Not deflected
 	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
+	ldi  [hl], a ; iShotFlags
+	
+	; Place the shield at the center of the player
+	ldi  [hl], a ; iShotX
 	ld   a, [wPlRelX]
-	ldi  [hl], a
+	ldi  [hl], a ; iShotX
 	xor  a
-	ldi  [hl], a
+	ldi  [hl], a ; iShotYSub
 	ld   a, [wPlRelY]
-	sub  $0B
-	ldi  [hl], a
-	ld   [hl], $04
+	sub  PLCOLI_V-1
+	ldi  [hl], a ; iShotY
+	
+	; Set sprite
+	ld   [hl], SHOTSPR_WD ; iShotSprId
+	
+	; Seek to next slot
 	ld   a, l
 	and  $F0
-	add  $10
+	add  iShotEnd
 	ld   l, a
-	dec  c
-	jr   nz, L014214
-	jp   L014048
-L014238:;I
-	ld   a, $08
-	ld   [wWpn_Unused_ShotType], a
+	
+	dec  c			; Spawned all leaves?
+	jr   nz, .loop	; If not, loop
+	jp   WpnCtrlS_StartShootAnim
+	
+; =============== WpnCtrl_MetalBlade ===============
+; Metal Blade.
+; 8-way buster replacement.
+WpnCtrl_MetalBlade:
+	ld   a, WPU_ME
+	ld   [wWpnUnlockMask], a
+	
+	; Check for shoot button
 	ldh  a, [hJoyNewKeys]
-	bit  1, a
-	jp   z, L01403A
+	bit  KEYB_B, a
+	jp   z, WpnCtrlS_End
+	
+	; Max 3 shots on screen
 	ld   hl, wShot0
 	ld   a, [hl]
 	or   a
-	jr   z, L01425A
+	jr   z, .chkAmmo
 	ld   hl, wShot1
 	ld   a, [hl]
 	or   a
-	jr   z, L01425A
+	jr   z, .chkAmmo
 	ld   hl, wShot2
 	ld   a, [hl]
 	or   a
-	jp   nz, L01403A
-L01425A:;R
-	call L003A0B
-	jp   c, L01403A
-	ld   a, $87
-	ldi  [hl], a
+	jp   nz, WpnCtrlS_End
+	
+.chkAmmo:
+	; Use up ammo, if there isn't enough don't spawn the shot
+	call WpnS_UseAmmo
+	jp   c, WpnCtrlS_End
+	
+.spawn:
+	; Spawn the Metal Blade projectile.
+	ld   a, SHOT_UNK_PROCFLAG|WPN_ME
+	ldi  [hl], a ; iShotId
+	
 	xor  a
-	ldi  [hl], a
+	ldi  [hl], a ; iShotWkTimer
+	
+	;
+	; Metal Blades can be thrown in all 8 directions.
+	; Check which one to set.
+	;
+	
+	; If not holding any key, shoot forward like other weapons.
+	; This also filters out non-directional keys for the detailed check.
 	ldh  a, [hJoyKeys]
-	and  $F0
-	jr   nz, L014273
-	ld   a, [wPlDirH]
-	and  $01
+	and  KEY_DOWN|KEY_UP|KEY_LEFT|KEY_RIGHT	; Holding a directional key?
+	jr   nz, .chkDirEx						; If so, jump
+.chkDir:
+	; Forward depends on the player's direction
+	ld   a, [wPlDirH]	; C = wPlDirH & PLDIR_R
+	and  PLDIR_R
 	ld   c, a
-	jr   L014296
-L014273:;R
-	ld   c, $07
-	cp   $90
-	jr   z, L014295
-	dec  c
-	cp   $A0
-	jr   z, L014295
-	dec  c
-	cp   $50
-	jr   z, L014295
-	dec  c
-	cp   $60
-	jr   z, L014295
-	dec  c
-	rla  
-	jr   c, L014295
-	dec  c
-	rla  
-	jr   c, L014295
-	dec  c
-	rla  
-	jr   nc, L014295
-	dec  c
-L014295:;R
+	jr   .setDir
+.chkDirEx:
+	; Otherwise, perform the detailed check starting from diagonals.
+	ld   c, MEDIR_DR			; C = MEDIR_DR
+	cp   KEY_DOWN|KEY_RIGHT		; Holding Down-Right?
+	jr   z, .dirFound			; If so, jump (key found)
+	dec  c 						; C = MEDIR_DL
+	cp   KEY_DOWN|KEY_LEFT		; ...
+	jr   z, .dirFound
+	dec  c						; C = MEDIR_UR
+	cp   KEY_UP|KEY_RIGHT
+	jr   z, .dirFound
+	dec  c						; C = MEDIR_UL
+	cp   KEY_UP|KEY_LEFT
+	jr   z, .dirFound
+	
+	; Then all individual directions, bit by bit
+	dec  c						; C = MEDIR_D
+	rla  ; KEYB_DOWN			; Shift KEYB_DOWN into the carry
+	jr   c, .dirFound			; Is it set? If so, jump
+	dec  c						; C = MEDIR_U
+	rla  ; KEYB_UP
+	jr   c, .dirFound
+	
+	; The bits here are stored in a different order between MEDIR_* and KEY_*,
+	; requiring a small switchup.
+	dec  c						; C = MEDIR_R
+	rla  ; KEYB_LEFT			; Is the left button pressed set?
+	jr   nc, .dirFound			; If *NOT*, we're holding right (keep MEDIR_R)
+	dec  c						; Otherwise, C = MEDIR_L
+.dirFound:
 	ld   a, c
-L014296:;R
-	ldi  [hl], a
+.setDir:
+	ldi  [hl], a ; iShotDir
+	
+	; Not deflected
 	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   a, $EC
+	ldi  [hl], a ; iShotFlags
+	
+	;
+	; Each direction uses different spawn coordinates for the shot.
+	;
+	
+	; X POSITION
+	ldi  [hl], a ; iShotXSub	; No subpixels
+	; Index Wpn_MePosXTbl by direction and read out the offset to B
+	ld   a, LOW(Wpn_MePosXTbl)	; E = LOW(Wpn_MePosXTbl) + C
 	add  c
 	ld   e, a
-	ld   a, $4B
+	ld   a, HIGH(Wpn_MePosXTbl)	; D = HIGH(Wpn_MePosXTbl)	+ (Carry)
 	adc  $00
 	ld   d, a
-	ld   a, [de]
+	ld   a, [de]				; B = X Offset
 	ld   b, a
+	; That offset is relative to the player, as usual
 	ld   a, [wPlRelX]
 	add  b
-	ldi  [hl], a
+	ldi  [hl], a ; iShotX
+	
+	; Y POSITION
+	; Same thing, but with a different table.
 	xor  a
-	ldi  [hl], a
-	ld   a, $F4
+	ldi  [hl], a ; iShotYSub
+	ld   a, LOW(Wpn_MePosYTbl)
 	add  c
 	ld   e, a
-	ld   a, $4B
+	ld   a, HIGH(Wpn_MePosYTbl)
 	adc  $00
 	ld   d, a
 	ld   a, [de]
 	ld   b, a
 	ld   a, [wPlRelY]
 	add  b
-	ldi  [hl], a
-	ld   [hl], $05
-	ld   a, $0C
+	ldi  [hl], a ; iShotY
+	
+	; Set sprite
+	ld   [hl], SHOTSPR_ME0 ; iShotSprId
+	
+	; [POI] For some reason, this does not go through WpnCtrlS_StartShootAnim, opting to manually set the fields.
+	;       In doing so, it forgets to play a sound effect and it also sets the wrong shooting animation,
+	;       which WpnCtrlS_StartShootAnim/Wpn_ShootTypeTbl would have gotten right.
+	ld   a, $0C					; Same timing as WpnCtrlS_StartShootAnim 
 	ld   [wPlShootTimer], a
-	ld   a, $10
+	ld   a, PSA_SHOOT
 	ld   [wPlShootType], a
 	ret
-L0142C9:;I
-	ld   a, $10
-	ld   [wWpn_Unused_ShotType], a
+	
+; =============== WpnCtrl_CrashBomb ===============
+; Crash Bomb.
+; A shot fired forward that eats up copious amounts of energy with an explosion just for show.
+WpnCtrl_CrashBomb:
+	ld   a, WPU_CR
+	ld   [wWpnUnlockMask], a
+	
+	; Check for shoot button
 	ldh  a, [hJoyNewKeys]
-	bit  1, a
-	jp   z, L01403A
+	bit  KEYB_B, a
+	jp   z, WpnCtrlS_End
+	
+	; Max 1 shot on-screen
 	ld   hl, wShot0
 	ld   a, [hl]
 	or   a
-	jp   nz, L01403A
-	call L003A0B
-	jp   c, L01403A
-	ld   a, $88
-	ld   c, $07
-	jp   L014085
-L0142EA:;I
-	ld   a, $20
-	ld   [wWpn_Unused_ShotType], a
+	jp   nz, WpnCtrlS_End
+	
+	; Eat up wild amountx of ammo, chances are there's not enough to spawn a shot
+	call WpnS_UseAmmo
+	jp   c, WpnCtrlS_End
+	
+	; Only fired forward
+	ld   a, SHOT_UNK_PROCFLAG|WPN_CR ; Shot ID
+	ld   c, SHOTSPR_CRMOVE ; Sprite ID
+	jp   WpnCtrlS_SpawnShotFwd
+	
+; =============== WpnCtrl_NeedleCannon ===============
+; Needle Cannon.
+; Rapid-fire weapon with shots that alternate between two vertical positions.
+WpnCtrl_NeedleCannon:
+	ld   a, WPU_NE
+	ld   [wWpnUnlockMask], a
+	
+	; Needle cannon has autofire, the B button can be held.
 	ldh  a, [hJoyKeys]
-	bit  1, a
-	jp   z, L01403A
+	bit  KEYB_B, a			; Holding B?
+	jp   z, WpnCtrlS_End	; If not, return
+	
+	;
+	; Max 3 shots on-screen
+	;
 	ld   hl, wShot0
 	ld   a, [hl]
-	or   a
-	jr   z, L01430C
+	or   a					; Is the first slot empty?
+	jr   z, .chkCooldown			; If so, jump
 	ld   hl, wShot1
 	ld   a, [hl]
 	or   a
-	jr   z, L01430C
+	jr   z, .chkCooldown
 	ld   hl, wShot2
 	ld   a, [hl]
 	or   a
-	jp   nz, L01403A
-L01430C:;R
-	ld   de, wShot0
-	ld   b, $03
-L014311:;R
+	jp   nz, WpnCtrlS_End
+	
+	;
+	; Enforce a cooldown period of 10 frames between shots.
+	; 
+	; However, the way the cooldown timer is handled is... weird. 
+	; It would have made sense to have it as a global variable, instead it makes use of the shot-specific timer in iShotNeTimer.
+	; 
+	; This means we have to loop through all shots and check if any have spawned in the last 10 frames.
+	; If any did, return and don't spawn a new one.
+	;
+.chkCooldown:
+	ld   de, wShot0			; DE = First slot
+	ld   b, $03				; B = Slots left
+.loopCo:
+	; Ignore empty slots
 	ld   a, [de]
-	or   a
-	jr   z, L01431D
-	inc  e
+	or   a					; Is the slot free?
+	jr   z, .nextCo			; If so, skip
+	; If the shot is too new, return
+	inc  e					; Seek to iShotNeTimer
 	ld   a, [de]
-	cp   $0A
-	jp   c, L01403A
+	cp   $0A				; iShotNeTimer < $0A?
+	jp   c, WpnCtrlS_End	; If so, return
 	dec  e
-L01431D:;R
-	ld   a, e
-	add  $10
+.nextCo:
+	; Seek to next slot
+	ld   a, e				; DE += $10
+	add  iShotEnd
 	ld   e, a
-	dec  b
-	jr   nz, L014311
-	call L003A0B
-	jp   c, L01403A
-	ld   a, $89
-	ldi  [hl], a
+	dec  b					; Checked all slots?
+	jr   nz, .loopCo		; If not, loop
+	
+	; Check for ammo
+	call WpnS_UseAmmo
+	jp   c, WpnCtrlS_End
+	
+.spawn:
+	; Spawn the shot.
+	ld   a, SHOT_UNK_PROCFLAG|WPN_NE
+	ldi  [hl], a ; iShotId
 	xor  a
-	ldi  [hl], a
+	ldi  [hl], a ; iShotNeTimer
+	
+	; Face same direction as player
 	ld   a, [wPlDirH]
-	and  $01
-	ldi  [hl], a
-	ld   b, $F2
-	or   a
-	jr   z, L01433C
-	ld   b, $0F
-L01433C:;X
+	and  PLDIR_R
+	ldi  [hl], a ; iShotDir
+	
+	; X POSITION
+	; Spawn 14px in front of the player
+	ld   b, -$0E	; B = 14px to the left
+	or   a			; Facing right?
+	jr   z, .setX	; If not, jump
+	ld   b, $0E+1	; B = 14px to the right
+.setX:
+	; Not deflected
 	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
+	ldi  [hl], a ; iShotFlags
+	
+	; XPos = PlX + B
+	ldi  [hl], a ; iShotXSub
 	ld   a, [wPlRelX]
 	add  b
-	ldi  [hl], a
-	xor  a
-	ldi  [hl], a
-	ld   a, [wWpnNePos]
+	ldi  [hl], a ; iShotX
+	
+	; Y POSITION
+	; The vertical position alternates between 9px and 14px every other shot,
+	; starting with 9px (wWpnNePos is initialized to 0, which gets flipped to 1)
+	xor  a		
+	ldi  [hl], a ; iShotYSub
+	
+	ld   a, [wWpnNePos]	; # Flip direction marker in bit0
 	xor  $01
 	ld   [wWpnNePos], a
-	rra  
-	ld   a, [wPlRelY]
-	jr   c, L014358
-	sub  $0E
-	jr   L01435A
-L014358:;R
-	sub  $09
-L01435A:;R
-	ldi  [hl], a
-	ld   a, $13
-	ld   [hl], a
-	jp   L014048
-L014361:;I
-	ld   a, $40
-	ld   [wWpn_Unused_ShotType], a
+	rra  				; # C Flag = wWpnNePos % 2
+	ld   a, [wPlRelY]	; A = PlY
+	jr   c, .y0			; # Every other frame alternate between...
+.y1:
+	sub  $0E			; ...14px above 
+	jr   .setY
+.y0:
+	sub  $09			; ...9px above
+.setY:
+	ldi  [hl], a ; iShotY
+	
+	; Set sprite
+	ld   a, SHOTSPR_NE
+	ld   [hl], a ; iShotSprId
+	
+	jp   WpnCtrlS_StartShootAnim
+	
+; =============== WpnCtrl_HardKnuckle ===============
+; Hard Knuckle
+; Large fist fired forward, its vertical position can be adjusted over time.
+WpnCtrl_HardKnuckle:
+	ld   a, WPU_HA
+	ld   [wWpnUnlockMask], a
+	
+	; Check for shoot button
 	ldh  a, [hJoyNewKeys]
-	bit  1, a
-	jp   z, L01403A
+	bit  KEYB_B, a
+	jp   z, WpnCtrlS_End
+	
+	; Max 1 shot on-screen
 	ld   hl, wShot0
 	ld   a, [hl]
 	or   a
-	jp   nz, L01403A
-	call L003A0B
-	jp   c, L01403A
-	ld   a, $0F
-	ld   [wPlMode], a
+	jp   nz, WpnCtrlS_End
+	
+	; Use up ammo, if there isn't enough don't spawn the shot
+	call WpnS_UseAmmo
+	jp   c, WpnCtrlS_End
+	
+	;--
+	; Freeze the player for 16 frames after firing the shot.
+	; This countdown timer is global, ticking down every time shots are processed in WpnS_Do.
+	ld   a, PL_MODE_FROZEN
+	ld   [wPlMode], a		; Freeze player
 	ld   a, $10
-	ld   [wPlIdleDelay], a
-	ld   a, $8A
-	ld   c, $14
-	jp   L014085
-L01438C:;I
-	ld   a, $80
-	ld   [wWpn_Unused_ShotType], a
+	ld   [wPlIdleDelay], a	; Return to PL_MODE_GROUND after $10 frames
+	;--
+	
+	; Shoot the fist forward
+	ld   a, SHOT_UNK_PROCFLAG|WPN_HA ; Shot ID
+	ld   c, SHOTSPR_HA ; Sprite ID
+	jp   WpnCtrlS_SpawnShotFwd
+	
+; =============== WpnCtrl_MagnetMissile ===============
+; Magnet Missile.
+; A magnet fired forward, it can rotate 90° towards enemies.
+WpnCtrl_MagnetMissile:
+	ld   a, WPU_MG
+	ld   [wWpnUnlockMask], a
+	
+	; Check for shoot button
 	ldh  a, [hJoyNewKeys]
-	bit  1, a
-	jp   z, L01403A
+	bit  KEYB_B, a
+	jp   z, WpnCtrlS_End
+	
+	; Max 2 shots on-screen
 	ld   hl, wShot0
 	ld   a, [hl]
 	or   a
-	jr   z, L0143A7
-L01439F: db $21;X
-L0143A0: db $70;X
-L0143A1: db $CC;X
-L0143A2: db $7E;X
-L0143A3: db $B7;X
-L0143A4: db $C2;X
-L0143A5: db $3A;X
-L0143A6: db $40;X
-L0143A7:;R
-	call L003A0B
-	jp   c, L01403A
-	ld   a, $8B
-	ld   c, $15
-	jp   L014085
-L0143B4:;C
-	ld   a, [wPlIdleDelay]
-	or   a
-	jr   z, L0143C3
-	dec  a
-	ld   [wPlIdleDelay], a
-	jr   nz, L0143C3
-	ld   [wPlMode], a
-L0143C3:;R
-	ld   hl, wShot0
-	ld   a, [hl]
-	or   a
-	call nz, L0143E4
+	jr   z, .chkAmmo
 	ld   hl, wShot1
 	ld   a, [hl]
 	or   a
-	call nz, L0143E4
+	jp   nz, WpnCtrlS_End
+	
+.chkAmmo:
+	; Use up (more) ammo (than you'd think), if there isn't enough don't spawn the shot
+	call WpnS_UseAmmo
+	jp   c, WpnCtrlS_End
+	
+	; This is fired forward
+	ld   a, SHOT_UNK_PROCFLAG|WPN_MG ; A = Shot ID
+	ld   c, SHOTSPR_MGH ; C = Sprite ID
+	jp   WpnCtrlS_SpawnShotFwd
+
+; =============== WpnS_Do ===============
+; Processes all active weapon shots.
+WpnS_Do:
+
+	; Return to the idle state when the freeze timer elapses.
+	; This is exclusively used by Hard Knucle to freeze the player after shooting (see WpnCtrl_HardKnuckle),
+	; and it's up to us to re-enable the player controls here.
+	; It's also notoriously buggy, but... the location of the bug is elsewhere (see ???)
+	ld   a, [wPlIdleDelay]
+	or   a					; Is the timer already elapsed?
+	jr   z, .chkSlots		; If so, skip
+	dec  a					; Otherwise, timer--
+	ld   [wPlIdleDelay], a
+	jr   nz, .chkSlots		; Did it elapse *now*? (A = 0)
+	ld   [wPlMode], a		; If so, unlock the player's controls (A = PL_MODE_GROUND)
+	
+.chkSlots:
+	; Check each of the individual shot slots, processing all that are active.
+	ld   hl, wShot0		; HL = Ptr to slot
+	ld   a, [hl]		; Read iShotId
+	or   a				; Is the slot active?
+	call nz, WpnS_ProcSlot	; If so, process it
+	
+	ld   hl, wShot1		; Do the same for the other shots
+	ld   a, [hl]
+	or   a
+	call nz, WpnS_ProcSlot
+	
 	ld   hl, wShot2
 	ld   a, [hl]
 	or   a
-	call nz, L0143E4
+	call nz, WpnS_ProcSlot
+	
 	ld   hl, wShot3
 	ld   a, [hl]
 	or   a
-	call nz, L0143E4
+	call nz, WpnS_ProcSlot
+	
 	ret
-L0143E4:;C
-	push hl
-	ld   de, hActCur+iActId
-	ld   b, $0C
-L0143EA:;R
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	dec  b
-	jr   nz, L0143EA
-	call L014407
-	ldh  a, [hActCur+iActLayoutPtr]
-	bit  7, a
-	call z, L003384
-	pop  de
-	ld   hl, hActCur+iActId
-	ld   b, $0C
-L014400:;R
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	dec  b
-	jr   nz, L014400
+	
+; =============== WpnS_ProcSlot ===============
+; Processes a weapon shot slot.
+; IN
+; - HL: Ptr to slot
+WpnS_ProcSlot:
+	push hl	; Save slot ptr (source)
+	
+		;
+		; Copy the shot to a working area for processing.
+		; That's the same area used by actors, since it's free space at this point.
+		;
+		
+		; Worth noting the slot struct is only $0D bytes long, but it is aligned to a $10-byte boundary for convenience.
+		ld   de, hShotCur	; DE = Working area (destination)
+		ld   b, iShotC		; B = Bytes to copy
+	.wkInLoop:
+		ldi  a, [hl]		; Read byte from slot, SlotPtr++
+		ld   [de], a		; Copy over to wk
+		inc  de				; WkPtr++
+		dec  b				; Are we done?
+		jr   nz, .wkInLoop	; If not, loop
+		;--
+		
+		; Execute the weapon-specific code
+		call WpnS_ExecCode
+		
+		; Deflected shots deal no damage
+		ldh  a, [hShotCur+iShotFlags]
+		bit  SHOT3B_DEFLECT, a	; Is the shot deflected?
+		call z, Wpn_DoActColi	; If not, check for collision against all actors
+	;--
+	
+	; 
+	; Save back the changes made to the working area into the slot.
+	;
+	pop  de 			; DE = Slot ptr (destination)
+	ld   hl, hShotCur	; HL = Working area (source)
+	ld   b, iShotC		; B = Bytes to copy
+.wkOutLoop:
+	ldi  a, [hl]		; Read byte from wk, WkPtr++
+	ld   [de], a		; Copy back to slot
+	inc  de				; SlotPtr++
+	dec  b				; Are we done?
+	jr   nz, .wkOutLoop	; If not, loop
+	
 	ret
-L014407:;C
-	ldh  a, [hActCur+iActLayoutPtr]
-	bit  7, a
-	jr   nz, L01442C
-	ldh  a, [hActCur+iActId]
-	and  $7F
+	
+; =============== WpnS_ExecCode ===============
+; Executes weapon-specific shot code.
+WpnS_ExecCode:
+
+	; If a shot is deflected, execute the generic deflect code
+	ldh  a, [hShotCur+iShotFlags]
+	bit  SHOT3B_DEFLECT, a		; Is the shot deflected
+	jr   nz, Wpn_Deflected		; If so, jump
+	
+	; Otherwise, execute the normal shot's code
+	ldh  a, [hShotCur+iShotId]	; A = iShotId
+	and  $FF^SHOT_UNK_PROCFLAG	; Filter out flag
 	rst  $00 ; DynJump
-L014412: db $65
-L014413: db $44
-L014414: db $65;X
-L014415: db $44;X
-L014416: db $65;X
-L014417: db $44;X
-L014418: db $65;X
-L014419: db $44;X
-L01441A: db $77
-L01441B: db $44
-L01441C: db $A7
-L01441D: db $44
-L01441E: db $DC
-L01441F: db $44
-L014420: db $E4
-L014421: db $45
-L014422: db $51
-L014423: db $46
-L014424: db $CD
-L014425: db $46
-L014426: db $E2
-L014427: db $46
-L014428: db $39
-L014429: db $47
-L01442A: db $65
-L01442B: db $44
-L01442C:;R
-	ldh  a, [hActCur+iActYSub]
+	dw Wpn_Default       ; WPN_P 
+	dw Wpn_Default       ; WPN_RC ;X
+	dw Wpn_Default       ; WPN_RM ;X
+	dw Wpn_Default       ; WPN_RJ ;X
+	dw Wpn_TopSpin       ; WPN_TP
+	dw Wpn_AirShooter    ; WPN_AR
+	dw Wpn_LeafShield    ; WPN_WD
+	dw Wpn_MetalBlade    ; WPN_ME
+	dw Wpn_CrashBomb     ; WPN_CR
+	dw Wpn_NeedleCannon  ; WPN_NE
+	dw Wpn_HardKnuckle   ; WPN_HA
+	dw Wpn_MagnetMissile ; WPN_MG
+	dw Wpn_Default       ; WPN_SG
+
+; =============== Wpn_Deflected ===============
+; Deflected shot.
+; Moves diagonally up.
+Wpn_Deflected:
+
+	; Move upwards ~2.lpx/frame
+	ldh  a, [hShotCur+iShotYSub]
 	sub  $1C
-	ldh  [hActCur+iActYSub], a
-	ldh  a, [hActCur+iActY]
+	ldh  [hShotCur+iShotYSub], a
+	ldh  a, [hShotCur+iShotY]
 	sbc  $02
-	ldh  [hActCur+iActY], a
-	and  $F0
-	cp   $00
-	jr   nz, L014442
-	xor  a
-	ldh  [hActCur+iActId], a
+	ldh  [hShotCur+iShotY], a
+	
+	; If the shot went off-screen to the top, despawn it.
+	; Specifically, if its Y position is between $00-$0F, it's treated as off-screen.
+	; Not particularly necessary, given WpnS_DrawSprMap performs an offscreen check on its own. 
+	and  $F0			; Check 16px ranges
+	cp   $00			; In the topmost range? (offscreen)
+	jr   nz, .moveH		; If not, jump
+.despawn:
+	xor  a				; Otherwise, clear iShotId. This despawns the shot by marking the slot as free. 
+	ldh  [hShotCur+iShotId], a
 	ret
-L014442:;R
-	ldh  a, [hActCur+iActSprMap]
-	or   a
-	jr   z, L014456
-	ldh  a, [hActCur+iActXSub]
+	
+.moveH:
+	; Move backwards ~2.lpx/frame
+	ldh  a, [hShotCur+iShotDir]
+	or   a						; Facing right?
+	jr   z, .moveR				; If not, jump
+.moveL:
+	; Facing right -> move left
+	ldh  a, [hShotCur+iShotXSub]
 	sub  $1C
-	ldh  [hActCur+iActXSub], a
-	ldh  a, [hActCur+iActX]
+	ldh  [hShotCur+iShotXSub], a
+	ldh  a, [hShotCur+iShotX]
 	sbc  $02
-	ldh  [hActCur+iActX], a
-	jp   L0147B2
-L014456:;R
-	ldh  a, [hActCur+iActXSub]
+	ldh  [hShotCur+iShotX], a
+	jp   WpnS_DrawSprMap
+.moveR:
+	; Facing left -> move right
+	ldh  a, [hShotCur+iShotXSub]
 	add  $1C
-	ldh  [hActCur+iActXSub], a
-	ldh  a, [hActCur+iActX]
+	ldh  [hShotCur+iShotXSub], a
+	ldh  a, [hShotCur+iShotX]
 	adc  $02
-	ldh  [hActCur+iActX], a
-	jp   L0147B2
-L014465:;I
-	ld   hl, hActCur+iActX
-	ldh  a, [hActCur+iActSprMap]
-	or   a
-	jr   nz, L014472
+	ldh  [hShotCur+iShotX], a
+	jp   WpnS_DrawSprMap
+	
+; =============== Wpn_Default ===============
+; Default weapon.
+; A small shot moving forwards at 2px/frame.
+Wpn_Default:
+	ld   hl, hShotCur+iShotX	; HL = Ptr to X pos
+	ldh  a, [hShotCur+iShotDir]
+	or   a						; Facing right?
+	jr   nz, .moveR				; If so, jump
+.moveL:
+	dec  [hl]					; Move left 2px
 	dec  [hl]
-	dec  [hl]
-	jp   L0147B2
-L014472:;R
+	jp   WpnS_DrawSprMap
+.moveR:
+	inc  [hl]					; Move right 2px
 	inc  [hl]
-	inc  [hl]
-	jp   L0147B2
-L014477:;I
+	jp   WpnS_DrawSprMap
+	
+; =============== Wpn_TopSpin ===============
+; Top Spin.
+; Weapon code for Top Spin when activated, which makes the player spin, making the whole body damage enemies.
+;
+; The "spinning player" is internally a weapon shot that tracks the player's position, giving the illusion
+; of the player himself spinning.
+; To go with it, the normal player's sprite is hidden during this.
+Wpn_TopSpin:
+	; If the player is hurt, cancel out of the attack
 	ld   a, [wPlHurtTimer]
-	or   a
-	jr   z, L014484
-	xor  a
-	ldh  [hActCur+iActId], a
-	ld   [wWpnTpActive], a
+	or   a						; Did the player get hit?
+	jr   z, .spin				; If not, jump
+.abort:
+	xor  a						; Otherwise, despawn the shot
+	ldh  [hShotCur+iShotId], a
+	ld   [wWpnTpActive], a		; and enable the normal player sprite
 	ret
-L014484:;R
+.spin:
+
+	; Sync direction from player.
+	; The effects of doing this are basically unnoticeable due to the very fast animation.
 	ld   a, [wPlDirH]
-	and  $01
-	ldh  [hActCur+iActSprMap], a
-	ld   a, [wPlRelX]
-	ldh  [hActCur+iActX], a
-	ld   a, [wPlRelY]
-	sub  $08
-	ldh  [hActCur+iActY], a
-	ldh  a, [hActCur+iActRtnId]
-	inc  a
-	and  $07
-	ldh  [hActCur+iActRtnId], a
-	srl  a
-	add  $18
-	ldh  [hActCur+iActSpdXSub], a
-	jp   L0147B2
-L0144A7:;I
-	ldh  a, [hActCur+iActRtnId]
-	ld   bc, $0100
+	and  PLDIR_R				; Filter L/R bit
+	ldh  [hShotCur+iShotDir], a
+	
+	; Sync position
+	ld   a, [wPlRelX]			; iShotX = PlX (middle)
+	ldh  [hShotCur+iShotX], a
+	ld   a, [wPlRelY]			; iShotY = PlY (low)
+	sub  $08					; (consistent with init code at WpnCtrl_TopSpin)
+	ldh  [hShotCur+iShotY], a
+	
+	; Tick animation timer (cycles from 0 to 7)
+	ldh  a, [hShotCur+iShotTpAnimTimer]
+	inc  a								; Timer++
+	and  $07							; Timer %= 8
+	ldh  [hShotCur+iShotTpAnimTimer], a	; Save back
+	
+	; Use the timer as offset to the sprite mapping.
+	; This has the effect of cycling the animation from SHOTSPR_TP0 to SHOTSPR_TP3
+	srl  a						; Slowed down x2 (each sprite lasts 2 frames, 4 sprites)
+	add  SHOTSPR_TP0				; Add base frame
+	ldh  [hShotCur+iShotSprId], a
+	
+	jp   WpnS_DrawSprMap		; Draw the sprite
+	
+; =============== Wpn_AirShooter ===============
+; Air Shooter.
+; The weapon fires three whirlwinds at once that rise upwards.
+; This is the code for an individual whirlwind.
+Wpn_AirShooter:
+
+	;
+	; Each of the three shots has its own horizontal speed:
+	; - 0: 1.0px/frame
+	; - 1: 1.5px/frame
+	; - 2: 2.0px/frame
+	;
+	; BC = Speed for the current shot
+	;
+	ldh  a, [hShotCur+iShotArNum]
+	ld   bc, $0100		; BC = 1px/frame
+	dec  a				; ShotNum == 0?
+	jr   z, .moveH		; If so, jump
+	ld   c, $80			; ...
 	dec  a
-	jr   z, L0144B7
-	ld   c, $80
-	dec  a
-	jr   z, L0144B7
+	jr   z, .moveH
 	ld   bc, $0200
-L0144B7:;R
-	ld   hl, hActCur+iActXSub
-	ldh  a, [hActCur+iActSprMap]
-	or   a
-	ld   a, [hl]
-	jr   nz, L0144C7
+	
+.moveH:
+	;
+	; Move forward by the aforemented speed.
+	;
+	ld   hl, hShotCur+iShotXSub
+	ldh  a, [hShotCur+iShotDir]	; # Get direction
+	or   a						; # Facing right? (iShotDir != PLDIR_L)
+	ld   a, [hl]				; Read cur subpixels
+	jr   nz, .moveR				; # If so, jump
+.moveL:
+	; iShotX -= BC
 	sub  c
-	ldi  [hl], a
-	ld   a, [hl]
+	ldi  [hl], a ; iShotXSub
+	ld   a, [hl] ; iShotX
 	sbc  b
-	ldi  [hl], a
-	jr   L0144CC
-L0144C7:;R
-	add  c
-	ldi  [hl], a
-	ld   a, [hl]
+	ldi  [hl], a ; iShotX
+	jr   .setY
+.moveR:
+	; iShotX += BC
+	add  c						
+	ldi  [hl], a ; iShotXSub
+	ld   a, [hl] ; iShotX
 	adc  b
-	ldi  [hl], a
-L0144CC:;R
-	inc  hl
+	ldi  [hl], a ; iShotX
+.setY:
+
+	;
+	; Move upwards at a fixed speed of 2px/frame
+	;
+	inc  hl ; iShotYSub
+	dec  [hl]	; iShotY -= 2
 	dec  [hl]
-	dec  [hl]
-	inc  hl
-	ld   a, [hl]
+	
+	;
+	; Cycle between sprite mappings $01-$02
+	; [TCRF] Off by one, this animation has a third frame that gets cut off.
+	;
+	inc  hl ; iShotSprId
+	ld   a, [hl]		; A = iShotSprId++
 	inc  a
-	cp   $03
-	jr   c, L0144D8
-	ld   a, $01
-L0144D8:;R
-	ld   [hl], a
-	jp   L0147B2
-L0144DC:;I
-	ldh  a, [hActCur+iActRtnId]
-	bit  7, a
-	jr   nz, L014551
-	ld   c, a
-	srl  a
-	srl  a
-	ld   b, a
-	add  a
-	add  b
-	add  $03
-	cp   $0C
-	jr   c, L0144F1
-	dec  a
-L0144F1:;R
-	ld   b, a
-	ld   a, c
-	and  $03
+	cp   SHOTSPR_AR2		; Reached the last frame? (should have been cp SHOTSPR_AR2+1)
+	jr   c, .setSpr		; If not, jump
+	ld   a, SHOTSPR_AR0	; Otherwise, reset to the first one
+.setSpr:
+	ld   [hl], a		; Save to iShotSprId
+	
+	jp   WpnS_DrawSprMap
+	
+; =============== Wpn_LeafShield ===============
+; Leaf Shield.
+; A shield made of 4 leaves that pierces through everything (but can get deflected).
+; This is the code for an individual leaf.
+; Code for all leaves is executed on the same frame, making sure they don't get misaligned.
+Wpn_LeafShield:
+	ldh  a, [hShotCur+iShotWdAnim]
+	bit  SHOTWDB_ROTATE, a			; Intro anim done?
+	jr   nz, Wpn_LeafShield_Main	; If so, jump
+	; Fall-through
+	
+; =============== Wpn_LeafShield_Intro ===============
+; When Leaf Shield spawns, the four leaves move into position from (what they intended to be) the center of the player.
+; The animation goes by so quickly it's hard to notice without frame by frame, and the bugs don't help.
+Wpn_LeafShield_Intro:
+
+
+	
+	ld   c, a ; Save iShotWdAnim
+		;--
+		;
+		; Determine the leaf position, relative to the player.
+		; B = 3 + (iShotWdAnim / 4) * 3
+		;     IF (B >= $0C) B--
+		;
+		; bits2-3 of iShotWdAnim are used a timer for this animation.
+		; With the above formula, for each frame of the animation, the leaves will be diagonally offset by:
+		; Timer - Offset
+		;     0 - $06
+		;     1 - $09
+		;     2 - $0B
+		;     3 - $0E
+		;
+		; This gives the effect of the leaves moving, over time, from the player's origin to one of the four corners.
+		;
+		
+		; A = 3 + (iShotWdAnim / 4) * 3
+		; The lower 2 bits are unrelated to the timer.
+		srl  a		; >> 2
+		srl  a		;
+		; Multiply it by 3
+		ld   b, a	; Save this
+		add  a		; A *= 2
+		add  b		; A += B (*3)
+		; Add base offset
+		add  $03	; A += 3
+		
+		; To "slow down" the movement speed by the end, decrement any offset that would be >= $0C, which triggers once the timer ticks to 2.
+		; Needless to say, it doesn't quite work when the whole animation is 4 frames long.
+		cp   $0C		; A < $0C?
+		jr   c, .setOff	; If so, jump
+		dec  a			; Otherwise, A--
+	.setOff:
+		ld   b, a
+		;--
+		
+	; The last two bits of iShotWdAnim identify the leaf number.
+	; Each leaf moves to a particular corner.
+	ld   a, c 	; A = iShotWdAnim
+	and  %11	; Filter leaf number
 	rst  $00 ; DynJump
-L0144F6: db $FE
-L0144F7: db $44
-L0144F8: db $0E
-L0144F9: db $45
-L0144FA: db $1E
-L0144FB: db $45
-L0144FC: db $2E
-L0144FD: db $45
-L0144FE:;I
-	ld   hl, hActCur+iActX
+	dw .moveUR
+	dw .moveDR
+	dw .moveDL
+	dw .moveUL
+.moveUR:
+	; Set the leaf <B> pixels to the top-right of the player.
+	; Will move to the top-right corner over time.
+	ld   hl, hShotCur+iShotX
+	ld   a, [wPlRelX]	; iShotX = wPlRelX + B
+	add  b
+	ldi  [hl], a
+	inc  hl
+	; [BUG] All of these intro movement routines target the wrong Y position.
+	;       They intended to target the center of the player, but that requires subtracting
+	;       the player's vertical radius (PLCOLI_V) to get there.
+	;       (The main rotation code gets it right)
+	ld   a, [wPlRelY]	; iShotY = wPlRelY - B
+	sub  b
+	ld   [hl], a
+	jr   .nextTick
+.moveDR:
+	; See above, but to the bottom-right
+	ld   hl, hShotCur+iShotX
 	ld   a, [wPlRelX]
 	add  b
 	ldi  [hl], a
 	inc  hl
 	ld   a, [wPlRelY]
-	sub  b
-	ld   [hl], a
-	jr   L01453C
-L01450E:;I
-	ld   hl, hActCur+iActX
-	ld   a, [wPlRelX]
-	add  b
-	ldi  [hl], a
-	inc  hl
-	ld   a, [wPlRelY]
 	add  b
 	ld   [hl], a
-	jr   L01453C
-L01451E:;I
-	ld   hl, hActCur+iActX
+	jr   .nextTick
+.moveDL:
+	; ... bottom-left
+	ld   hl, hShotCur+iShotX
 	ld   a, [wPlRelX]
 	sub  b
 	ldi  [hl], a
@@ -800,9 +1319,10 @@ L01451E:;I
 	ld   a, [wPlRelY]
 	add  b
 	ld   [hl], a
-	jr   L01453C
-L01452E:;I
-	ld   hl, hActCur+iActX
+	jr   .nextTick
+.moveUL:
+	; ... top-left
+	ld   hl, hShotCur+iShotX
 	ld   a, [wPlRelX]
 	sub  b
 	ldi  [hl], a
@@ -810,577 +1330,823 @@ L01452E:;I
 	ld   a, [wPlRelY]
 	sub  b
 	ld   [hl], a
-L01453C:;R
-	ldh  a, [hActCur+iActRtnId]
-	add  $04
-	cp   $10
-	jr   c, L01454C
-	and  $03
-	swap a
-	add  $08
-	or   $80
-L01454C:;R
-	ldh  [hActCur+iActRtnId], a
-	jp   L0147B2
-L014551:;R
-	ld   d, a
-	and  $3F
-	ld   b, $00
-	ld   c, a
-	bit  6, d
-	jr   nz, L014573
-	ld   hl, $4C0C
-	add  hl, bc
-	ld   a, [wPlRelX]
-	add  [hl]
-	ldh  [hActCur+iActX], a
-	ld   hl, $4BFC
-	add  hl, bc
-	ld   a, [wPlRelY]
-	add  [hl]
-	sub  $0C
-	ldh  [hActCur+iActY], a
-	jr   L014585
-L014573:;R
-	ld   hl, $4C5C
-	add  hl, bc
-	ldh  a, [hActCur+iActX]
-	add  [hl]
-	ldh  [hActCur+iActX], a
-	ld   hl, $4C4C
-	add  hl, bc
-	ldh  a, [hActCur+iActY]
-	add  [hl]
-	ldh  [hActCur+iActY], a
-L014585:;R
-	ld   a, c
-	inc  a
-	and  $3F
-	ld   c, a
-	ld   a, d
-	and  $C0
-	or   c
-	ldh  [hActCur+iActRtnId], a
-	bit  6, a
-	jr   nz, L0145B9
+.nextTick:
+
+	; Advance the animation timer.
+	; Keep in mind the lower two bits are unrelated, hence the << 2's
+	ldh  a, [hShotCur+iShotWdAnim]
+	add  $01<<2			; Timer++
+	cp   $04<<2			; Timer < $04?
+	jr   c, .setAnim	; If so, just update the timer
+	
+	; Otherwise, prepare for the main rotation animation.
+	
+	; Calculate the rotation position index from the leaf number,
+	; to evenly distribute the leaves around the circle.
+	; PosId = LeafNum * $10 + 8 
+	and  $03			; Get the leaf number
+	swap a				; * 10
+	add  $08			; + 8
+	; Mark the intro as finished
+	or   SHOTWD_ROTATE
+.setAnim:
+	ldh  [hShotCur+iShotWdAnim], a
+	jp   WpnS_DrawSprMap
+	
+; =============== Wpn_LeafShield_Main ===============
+; Main rotation state.
+Wpn_LeafShield_Main:
+
+	ld   d, a ; Save iShotWdAnim
+	
+		;
+		; Rotate the leaf around a circle path.
+		;
+	
+		; BC = Position index
+		and  $FF^(SHOTWD_THROW|SHOTWD_ROTATE)
+		ld   b, $00
+		ld   c, a
+		
+		bit  SHOTWDB_THROW, d		; Is the shield thrown?
+		jr   nz, .rotSelf			; If so, jump
+		
+	.rotPl:
+		;
+		; When the shield isn't thrown yet, rotate the leaf around the player.
+		;
+		ld   hl, WpnS_WdPlRotX		; iShotX = wPlRelX + WpnS_WdPlRotX[BC]
+		add  hl, bc
+		ld   a, [wPlRelX]			; From origin (horizontally centered)
+		add  [hl]					; + offset
+		ldh  [hShotCur+iShotX], a
+		
+		ld   hl, WpnS_WdPlRotY		; iShotY = wPlRelY + WpnS_WdPlRotY[BC] - PLCOLI_V
+		add  hl, bc
+		ld   a, [wPlRelY]			; From origin (bottom)
+		add  [hl]					; + offset
+		sub  PLCOLI_V				; Vertically centered
+		ldh  [hShotCur+iShotY], a
+		
+		jr   .nextPos
+	.rotSelf:
+		;
+		; When the shield is thrown, still rotate the leaves, but not around the player anymore.
+		; This means the offsets used are relative to the previous position, necessitating
+		; the use of a different set of tables.
+		;
+		ld   hl, WpnS_WdSelfRotX	; iShotX += WpnS_WdSelfRotX[BC]
+		add  hl, bc
+		ldh  a, [hShotCur+iShotX]
+		add  [hl]
+		ldh  [hShotCur+iShotX], a
+		
+		ld   hl, WpnS_WdSelfRotY	; iShotY += WpnS_WdSelfRotY[BC]
+		add  hl, bc
+		ldh  a, [hShotCur+iShotY]
+		add  [hl]
+		ldh  [hShotCur+iShotY], a
+		
+	.nextPos:
+		; Increment the position index, cycling between $00 - $3F.
+		ld   a, c
+		inc  a		; PosId++
+		and  $3F	; Loop around $40 to $00
+		ld   c, a
+		
+	; Save back the updated index into iShotWdAnim
+	ld   a, d							; A = iShotWdAnim
+	and  SHOTWD_THROW|SHOTWD_ROTATE		; Keep flags
+	or   c								; Merge with new index
+	ldh  [hShotCur+iShotWdAnim], a		; Save back
+	
+.chkThrowCtrl:
+
+	;
+	; Pressing any directional key while the shield is around the player will throw it
+	; to that particular direction.
+	;
+
+	; If the shield was already thrown, keep moving it to the previous direction
+	bit  SHOTWDB_THROW, a
+	jr   nz, .thrown
+	
+	
+	; If no directional keys are being held, don't throw it
 	ldh  a, [hJoyKeys]
-	and  $F0
-	jp   z, L0147B2
-	ld   b, $03
-	rla  
-	jr   c, L0145A9
-	dec  b
-	rla  
-	jr   c, L0145A9
-	dec  b
-	rla  
-	jr   nc, L0145A9
-	dec  b
-L0145A9:;R
+	and  KEY_DOWN|KEY_UP|KEY_LEFT|KEY_RIGHT
+	jp   z, WpnS_DrawSprMap
+	
+	; Otherwise, throw the shield in the respective direction.
+	; Check the individual direction by shifting key bits into the carry.
+	ld   b, MEDIR_D		; B = MEDIR_D
+	rla 				; KEY_DOWN is set?
+	jr   c, .setDir		; If so, move down
+	dec  b				; B = MEDIR_U
+	rla  				; KEY_UP is set?
+	jr   c, .setDir		; If so, move up
+	dec  b				; B = MEDIR_R
+	rla  				; KEY_LEFT is set?
+	jr   nc, .setDir	; If *NOT*, move right (B = MEDIR_R confirmed)
+	dec  b				; Otherwise, B = MEDIR_L
+.setDir:
 	ld   a, b
-	ldh  [hActCur+iActSprMap], a
-	ldh  a, [hActCur+iActRtnId]
-	or   $40
-	ldh  [hActCur+iActRtnId], a
+	ldh  [hShotCur+iShotDir], a
+	
+	; Flag the shield has having been thrown
+	ldh  a, [hShotCur+iShotWdAnim]
+	or   SHOTWD_THROW
+	ldh  [hShotCur+iShotWdAnim], a
+	
+	; [POI] Why does wWpnWdUseAmmoOnThrow exist?
+	;       This could be speculated on but what we do know is that its value will always be $01 when we get here.
 	ld   hl, wWpnWdUseAmmoOnThrow
-	dec  [hl]
-	call z, L003A0B
-L0145B9:;R
-	ldh  a, [hActCur+iActSprMap]
+	dec  [hl]					; UseLeft--
+	call z, WpnS_UseAmmo		; Is it 0? If so, use up ammo (always taken)
+	
+.thrown:
+	; The shield moves at 2px/frame in a straight line
+	ldh  a, [hShotCur+iShotDir]
 	rst  $00 ; DynJump
-L0145BC: db $C4
-L0145BD: db $45
-L0145BE: db $CC
-L0145BF: db $45
-L0145C0: db $D4
-L0145C1: db $45
-L0145C2: db $DC
-L0145C3: db $45
-L0145C4:;I
-	ld   hl, hActCur+iActX
+	dw .throwL
+	dw .throwR
+	dw .throwU
+	dw .throwD
+.throwL:
+	ld   hl, hShotCur+iShotX
 	dec  [hl]
 	dec  [hl]
-	jp   L0147B2
-L0145CC:;I
-	ld   hl, hActCur+iActX
+	jp   WpnS_DrawSprMap
+.throwR:
+	ld   hl, hShotCur+iShotX
 	inc  [hl]
 	inc  [hl]
-	jp   L0147B2
-L0145D4:;I
-	ld   hl, hActCur+iActY
+	jp   WpnS_DrawSprMap
+.throwU:
+	ld   hl, hShotCur+iShotY
 	dec  [hl]
 	dec  [hl]
-	jp   L0147B2
-L0145DC:;I
-	ld   hl, hActCur+iActY
+	jp   WpnS_DrawSprMap
+.throwD:
+	ld   hl, hShotCur+iShotY
 	inc  [hl]
 	inc  [hl]
-	jp   L0147B2
-L0145E4:;I
-	ldh  a, [hActCur+iActRtnId]
+	jp   WpnS_DrawSprMap
+	
+; =============== Wpn_MetalBlade ===============
+; Metal Blade.
+; 8-way shot replacement.
+Wpn_MetalBlade:
+
+	; Alternate between two animation frames (SHOTSPR_ME0, SHOTSPR_ME1)
+	ldh  a, [hShotCur+iShotMeAnimTimer]
 	xor  $01
-	ldh  [hActCur+iActRtnId], a
-	add  $05
-	ldh  [hActCur+iActSpdXSub], a
-	ldh  a, [hActCur+iActSprMap]
+	ldh  [hShotCur+iShotMeAnimTimer], a
+	add  SHOTSPR_ME0
+	ldh  [hShotCur+iShotSprId], a
+	
+	; Move 2px/frame according to its direction
+	ldh  a, [hShotCur+iShotDir]
 	rst  $00 ; DynJump
-L0145F1: db $01
-L0145F2: db $46
-L0145F3: db $09
-L0145F4: db $46
-L0145F5: db $11
-L0145F6: db $46
-L0145F7: db $19
-L0145F8: db $46
-L0145F9: db $21
-L0145FA: db $46
-L0145FB: db $2D
-L0145FC: db $46
-L0145FD: db $39;X
-L0145FE: db $46;X
-L0145FF: db $45
-L014600: db $46
-L014601:;I
-	ld   hl, hActCur+iActX
+	dw .moveL ; MEDIR_L
+	dw .moveR ; MEDIR_R
+	dw .moveU ; MEDIR_U
+	dw .moveD ; MEDIR_D
+	dw .moveUL ; MEDIR_UL
+	dw .moveUR ; MEDIR_UR
+	dw .moveDL ; MEDIR_DL
+	dw .moveDR ; MEDIR_DR
+
+.moveL:
+	ld   hl, hShotCur+iShotX	; iShotX -= 2
 	dec  [hl]
 	dec  [hl]
-	jp   L0147B2
-L014609:;I
-	ld   hl, hActCur+iActX
+	jp   WpnS_DrawSprMap
+	
+.moveR:
+	ld   hl, hShotCur+iShotX	; iShotX += 2
 	inc  [hl]
 	inc  [hl]
-	jp   L0147B2
-L014611:;I
-	ld   hl, hActCur+iActY
+	jp   WpnS_DrawSprMap
+	
+.moveU:
+	ld   hl, hShotCur+iShotY	; iShotY -= 2
 	dec  [hl]
 	dec  [hl]
-	jp   L0147B2
-L014619:;I
-	ld   hl, hActCur+iActY
+	jp   WpnS_DrawSprMap
+	
+.moveD:
+	ld   hl, hShotCur+iShotY	; iShotY += 2
 	inc  [hl]
 	inc  [hl]
-	jp   L0147B2
-L014621:;I
-	ld   hl, hActCur+iActX
+	jp   WpnS_DrawSprMap
+	
+.moveUL:
+	ld   hl, hShotCur+iShotX	; iShotX += 2
 	dec  [hl]
 	dec  [hl]
-	inc  hl
-	inc  hl
+	inc  hl ; iShotYSub
+	inc  hl ; iShotY
+	dec  [hl]					; iShotY -= 2
+	dec  [hl]
+	jp   WpnS_DrawSprMap
+	
+.moveUR:
+	ld   hl, hShotCur+iShotX	; iShotX += 2
+	inc  [hl]
+	inc  [hl]
+	inc  hl ; iShotYSub
+	inc  hl ; iShotY
+	dec  [hl]					; iShotY -= 2
+	dec  [hl]
+	jp   WpnS_DrawSprMap
+	
+.moveDL:
+	ld   hl, hShotCur+iShotX	; iShotX -= 2
 	dec  [hl]
 	dec  [hl]
-	jp   L0147B2
-L01462D:;I
-	ld   hl, hActCur+iActX
+	inc  hl ; iShotYSub
+	inc  hl ; iShotY
+	inc  [hl]					; iShotY += 2
+	inc  [hl]
+	jp   WpnS_DrawSprMap
+	
+.moveDR:
+	ld   hl, hShotCur+iShotX	; iShotX += 2
 	inc  [hl]
 	inc  [hl]
-	inc  hl
-	inc  hl
-	dec  [hl]
-	dec  [hl]
-	jp   L0147B2
-L014639: db $21;X
-L01463A: db $A5;X
-L01463B: db $FF;X
-L01463C: db $35;X
-L01463D: db $35;X
-L01463E: db $23;X
-L01463F: db $23;X
-L014640: db $34;X
-L014641: db $34;X
-L014642: db $C3;X
-L014643: db $B2;X
-L014644: db $47;X
-L014645:;I
-	ld   hl, hActCur+iActX
+	inc  hl ; iShotYSub
+	inc  hl ; iShotY
+	inc  [hl]					; iShotY += 2
 	inc  [hl]
-	inc  [hl]
-	inc  hl
-	inc  hl
-	inc  [hl]
-	inc  [hl]
-	jp   L0147B2
-L014651:;I
-	ldh  a, [hActCur+iActRtnId]
-	or   a
-	jr   nz, L014670
-	ldh  a, [hActCur+iActY]
+	jp   WpnS_DrawSprMap
+	
+; =============== Wpn_CrashBomb ===============
+; Crash Bomb
+; A medium-sized projectile that sticks to walls, then explodes.
+Wpn_CrashBomb:
+
+	ldh  a, [hShotCur+iShotCrTimer]
+	or   a					; Hit a solid block already?
+	jr   nz, .solidHit		; If so, jump
+	
+	;
+	; Move the bomb 2px/frame forward, while checking for collision with any solid blocks in the way.
+	;
+	
+	; Y COLLISION TARGET = ShotY
+	ldh  a, [hShotCur+iShotY]	
 	ld   [wTargetRelY], a
-	ld   hl, hActCur+iActX
-	ldh  a, [hActCur+iActSprMap]
-	or   a
-	ld   b, $FF
-	jr   z, L014667
-	ld   b, $01
-L014667:;R
-	call L0146BF
-	call c, L0146BF
-	jp   c, L0147B2
-L014670:;R
-	ld   hl, hActCur+iActRtnId
-	inc  [hl]
+	
+	; X COLLISION TARGET = 1px in front of iShotX
+	ld   hl, hShotCur+iShotX	
+	ldh  a, [hShotCur+iShotDir]
+	or   a						; # Facing right?
+	ld   b, -$01				; B = 1px to the left
+	jr   z, .chkMove			; # If not, jump
+	ld   b, +$01				; B = 1px to the right
+.chkMove:
+	; Move 1px to the right twice, aborting early in case of collision
+	call .moveFwd				; Move 1px right
+	call c, .moveFwd			; Hit a solid block? If not, move again
+	jp   c, WpnS_DrawSprMap		; Hit a solid block? If not, return
+	
+.solidHit:
+	ld   hl, hShotCur+iShotCrTimer
+	inc  [hl]			; Timer++
+	
+	;
+	; After hitting a solid block, perform these actions in sequence:
+	; - Flash for around 2.1 seconds ($00-$7F, after which it overflows to SHOTCR_EXPLODE)
+	; - Exploding for 1 second ($80-$BC)
+	; - Despawn
+	;
+	
 	ld   a, [hl]
-	cp   $BC
-	jr   c, L01467D
+	cp   SHOTCR_EXPLODE+$3C		; Timer < $BC?
+	jr   c, .chkFlash			; If so, jump
+.despawn:						; Otherwise, despawn the shot
 	xor  a
-	ldh  [hActCur+iActId], a
+	ldh  [hShotCur+iShotId], a
 	ret
-L01467D:;R
-	cp   $80
-	jr   nc, L014690
+	
+.chkFlash:
+	cp   SHOTCR_EXPLODE			; Timer >= $80?
+	jr   nc, .explode			; If so, jump
+.flash:
+	; Flash the bomb by alternating between SHOTSPR_CRFLASH0 and SHOTSPR_CRFLASH1 every 8 frames.
+	srl  a						; A = Timer / 8
 	srl  a
 	srl  a
-	srl  a
-	and  $01
-	add  $08
-	ldh  [hActCur+iActSpdXSub], a
-	jp   L0147B2
-L014690:;R
-	and  $7F
-	srl  a
-	ld   hl, $46A1
+	and  $01					; Filter valid range
+	add  SHOTSPR_CRFLASH0		; Add base sprite
+	ldh  [hShotCur+iShotSprId], a
+	jp   WpnS_DrawSprMap
+	
+.explode:
+	; Animate the explosion.
+	; The explosion is not a separate object that deals damage, it's simply the Crash Bomb going
+	; through a list of sprite mappings that have no effect on gameplay.
+	; As a result, keeps the same collision box as before, making it very weak.
+	;
+	; Worth noting this could have been amended by simply adjusting the current shot's collision box
+	; and flags right here.
+	
+	; Get table index
+	and  $FF^SHOTCR_EXPLODE		; Remove MSB (as A is always >= $80)
+	srl  a						; Slowed down x2
+	
+	; Read out sprite mapping ID from  .explTbl
+	ld   hl, .explTbl			; Index .explTbl with it
 	ld   b, $00
-	ld   c, a
+	ld   c, a			
 	add  hl, bc
-	ld   a, [hl]
-	ldh  [hActCur+iActSpdXSub], a
-	jp   L0147B2
-L0146A1: db $0C
-L0146A2: db $0B
-L0146A3: db $0A
-L0146A4: db $0B
-L0146A5: db $0C
-L0146A6: db $0F
-L0146A7: db $0E
-L0146A8: db $0D
-L0146A9: db $0E
-L0146AA: db $0F
-L0146AB: db $12
-L0146AC: db $11
-L0146AD: db $10
-L0146AE: db $11
-L0146AF: db $12
-L0146B0: db $0C
-L0146B1: db $0B
-L0146B2: db $0A
-L0146B3: db $0B
-L0146B4: db $0C
-L0146B5: db $0F
-L0146B6: db $0E
-L0146B7: db $0D
-L0146B8: db $0E
-L0146B9: db $0F
-L0146BA: db $12
-L0146BB: db $11
-L0146BC: db $10
-L0146BD: db $11
-L0146BE: db $12
-L0146BF:;C
-	ld   a, [hl]
+	ld   a, [hl]		
+	ldh  [hShotCur+iShotSprId], a	; And set it as sprite
+	jp   WpnS_DrawSprMap
+	
+; =============== .explTbl ===============
+; Animation cycle for the Crash Bomb explosions.
+; Needs to have as many entries as the amount of frames / 2 it executes .explode.
+; The explosion lasts 1 second ($3C frames), so this table should have 30 entries.
+.explTbl: 
+	db SHOTSPR_CREXPL2 ; $00
+	db SHOTSPR_CREXPL1 ; $02
+	db SHOTSPR_CREXPL0 ; $04
+	db SHOTSPR_CREXPL1 ; $06
+	db SHOTSPR_CREXPL2 ; $08
+	db SHOTSPR_CREXPL5 ; $0A
+	db SHOTSPR_CREXPL4 ; $0C
+	db SHOTSPR_CREXPL3 ; $0E
+	db SHOTSPR_CREXPL4 ; $10
+	db SHOTSPR_CREXPL5 ; $12
+	db SHOTSPR_CREXPL8 ; $14
+	db SHOTSPR_CREXPL7 ; $16
+	db SHOTSPR_CREXPL6 ; $18
+	db SHOTSPR_CREXPL7 ; $1A
+	db SHOTSPR_CREXPL8 ; $1C
+	db SHOTSPR_CREXPL2 ; $1E
+	db SHOTSPR_CREXPL1 ; $20
+	db SHOTSPR_CREXPL0 ; $22
+	db SHOTSPR_CREXPL1 ; $24
+	db SHOTSPR_CREXPL2 ; $26
+	db SHOTSPR_CREXPL5 ; $28
+	db SHOTSPR_CREXPL4 ; $2A
+	db SHOTSPR_CREXPL3 ; $2C
+	db SHOTSPR_CREXPL4 ; $2E
+	db SHOTSPR_CREXPL5 ; $30
+	db SHOTSPR_CREXPL8 ; $32
+	db SHOTSPR_CREXPL7 ; $34
+	db SHOTSPR_CREXPL6 ; $36
+	db SHOTSPR_CREXPL7 ; $38
+	db SHOTSPR_CREXPL8 ; $3A
+	                  
+; =============== .moveFwd ===============
+; Moves the shot forward.
+; IN
+; - HL: Ptr to iShotX
+; - B: Movement speed (1 or -1, depending on the direction)
+; - wTargetRelY: iShotY
+; OUT
+; - C Flag: If set, it didn't hit a solid wall
+.moveFwd:
+	; Move shot forward
+	ld   a, [hl]	; iShotX += B
 	add  b
 	ld   [hl], a
+	
+	; Perform the collision check at this new position
 	ld   [wTargetRelX], a
 	push bc
 	push hl
-	call Lvl_GetBlockId
+		call Lvl_GetBlockId	; C Flag = Is empty?
 	pop  hl
 	pop  bc
 	ret
-L0146CD:;I
-	ld   hl, hActCur+iActRtnId
+	
+; =============== Wpn_NeedleCannon ===============
+; Needle Cannon.
+; A normal shot that can be rapid-fired.
+Wpn_NeedleCannon:
+	
+	; And due to the rapid-fire, for cooldown purposes it has to keep track
+	; of how many frames have passed since the shot was spawned.
+	ld   hl, hShotCur+iShotNeTimer
 	inc  [hl]
-	ld   l, $A5
-	ldh  a, [hActCur+iActSprMap]
-	or   a
-	jr   nz, L0146DD
-L0146D8: db $35;X
-L0146D9: db $35;X
-L0146DA: db $C3;X
-L0146DB: db $B2;X
-L0146DC: db $47;X
-L0146DD:;R
+	
+	; Move forward 2px/frame, like a normal shot
+	ld   l, LOW(hShotCur+iShotX)
+	ldh  a, [hShotCur+iShotDir]
+	or   a				; Facing right?
+	jr   nz, .moveR		; If so, jump
+.moveL:
+	dec  [hl]
+	dec  [hl]
+	jp   WpnS_DrawSprMap
+.moveR:
 	inc  [hl]
 	inc  [hl]
-	jp   L0147B2
-L0146E2:;I
+	jp   WpnS_DrawSprMap
+	
+; =============== Wpn_HardKnuckle ===============
+; Hard Knuckle
+; Slow moving fist which can be vertically adjusted.
+Wpn_HardKnuckle:
+
+	;
+	; VERTICAL MOVEMENT
+	; 
+	; On its own, the fist moves only horizontally, not vertically.
+	; By holding UP or DOWN, its vertical position be adjusted, at
+	; the low speed of 0.125px/frame.
+	;
 	ldh  a, [hJoyKeys]
-	rla  
-	jr   c, L0146F7
-	rla  
-	jr   nc, L014702
-	ld   hl, hActCur+iActYSub
+	rla 				; Holding DOWN?
+	jr   c, .moveD		; If so, move up
+	rla  				; Holding UP?
+	jr   nc, .moveH	; If not, jump
+.moveU:					; Otherwise, move down
+	; Move 0.125px/frame up
+	ld   hl, hShotCur+iShotYSub
 	ld   a, [hl]
 	sub  $20
 	ldi  [hl], a
 	ld   a, [hl]
 	sbc  $00
 	ld   [hl], a
-	jr   L014702
-L0146F7:;R
-	ld   hl, hActCur+iActYSub
+	jr   .moveH
+.moveD:
+	; Move 0.125px/frame down
+	ld   hl, hShotCur+iShotYSub
 	ld   a, [hl]
 	add  $20
 	ldi  [hl], a
 	ld   a, [hl]
 	adc  $00
 	ld   [hl], a
-L014702:;R
-	ld   hl, hActCur+iActRtnId
+	
+.moveH:
+	;
+	; HORIZONTAL MOVEMENT
+	;
+	; The fist speeds up over time.
+	; Specifically, it has two movement phases depending on how much time has passed since it has spawned:
+	; - The first 16 frames, it moves forward at 1px/frame
+	; - From the 17th frame onwards, it moves at 1.5px/frame
+	;
+	
+	ld   hl, hShotCur+iShotHaTimer
 	ld   a, [hl]
-	cp   $10
-	jr   nc, L01471B
-	inc  [hl]
-	ld   hl, hActCur+iActX
-	ldh  a, [hActCur+iActSprMap]
-	or   a
-	jr   nz, L014717
-	dec  [hl]
-	jp   L0147B2
-L014717:;R
-	inc  [hl]
-	jp   L0147B2
-L01471B:;R
-	ld   hl, hActCur+iActXSub
-	ldh  a, [hActCur+iActSprMap]
-	or   a
-	jr   nz, L01472E
-	ld   a, [hl]
+	cp   $10				; Timer >= 16?
+	jr   nc, .moveFastH		; If so, use fast movement
+.moveSlowH:
+	inc  [hl]				; Timer++
+	
+	ld   hl, hShotCur+iShotX
+	ldh  a, [hShotCur+iShotDir]
+	or   a					; Facing right?
+	jr   nz, .moveSlowR		; If so, jump
+.moveSlowL:
+	dec  [hl]				; Facing left: Move left 1px
+	jp   WpnS_DrawSprMap
+.moveSlowR:
+	inc  [hl]				; Facing right: Move right 1px
+	jp   WpnS_DrawSprMap
+	
+.moveFastH:
+	ld   hl, hShotCur+iShotXSub
+	ldh  a, [hShotCur+iShotDir]
+	or   a					; Facing right?
+	jr   nz, .moveFastR		; If so, jump
+.moveFastL:
+	ld   a, [hl]			; Facing left: Move left 1.5px
 	sub  $80
 	ldi  [hl], a
-	ld   a, [hl]
+	ld   a, [hl] ; iShotX
 	sbc  $01
 	ld   [hl], a
-	jp   L0147B2
-L01472E:;R
-	ld   a, [hl]
+	jp   WpnS_DrawSprMap
+.moveFastR:
+	ld   a, [hl]			; Facing right: Move right 1.5px
 	add  $80
 	ldi  [hl], a
-	ld   a, [hl]
+	ld   a, [hl] ; iShotX
 	adc  $01
 	ld   [hl], a
-	jp   L0147B2
-L014739:;I
-	ldh  a, [hActCur+iActRtnId]
-	or   a
-	jr   nz, L014798
-	ldh  a, [hActCur+iActX]
+	jp   WpnS_DrawSprMap
+	
+; =============== Wpn_MagnetMissile ===============
+; Magnet Missile.
+; A magnet fired forward, which can lock in vertically once to any actor.
+Wpn_MagnetMissile:
+
+	; If we locked on to something before, continue moving vertically
+	ldh  a, [hShotCur+iShotMgMoveV]
+	or   a				; Moving vertically?
+	jr   nz, .moveV		; If so, jump
+	
+.scanAct:
+
+	;
+	; Find if there any suitable actor to vertically lock on at the current horizontal location.
+	;
+	
+	ldh  a, [hShotCur+iShotX]	; B = X Position searched for
 	ld   b, a
-	ld   hl, wAct
-L014744:;R
-	ldi  a, [hl]
-	or   a
-	jr   z, L014767
-	ld   e, l
+	
+
+	ld   hl, wAct		; From the first actor...
+.loopAct:
+	; Ignore empty slots
+	ldi  a, [hl]		; A = iActId, seek to iActRtnId
+	or   a				; Is the slot empty?
+	jr   z, .nextAct	; If so, skip to the next one
+	
+	; Only try to target actors that aren't fully invulnerable.
+	; Unfortunately, this has both a bug and a design flaw.
+	; - This does not actually check if the actor is *immune* to Magnet Missile,
+	;   so it may target otherwise defeatable actors that reflect Magnet Missile.
+	; - It tries to target invulnerable enemies (see below)
+	ld   e, l			; DE = Ptr to iActRtnId
 	ld   d, h
-	inc  d
-	inc  e
-	ld   a, [de]
-	bit  7, a
-	jr   nz, L014759
-	cp   $02
-	jr   z, L014759
-	cp   $03
-	jr   nz, L014767
-L014759:;R
-	inc  l
-	inc  l
-	inc  l
-	inc  l
-	ldi  a, [hl]
-	sub  b
-	jr   nc, L014763
-	cpl  
+	inc  d				; Seek to iActColiBoxV
+	inc  e				; Seek to iActColiType
+	ld   a, [de]		; Read iActColiType
+	
+	; Actors with collision types >= $80 are partially vulnerable on top (see Wpn_OnActColi.typePartial),
+	; which is good enough for us.
+	; [POI] Note that this isn't the full range of values for this collision type.
+	;       The actual range is $08-$FF, and as a result Magnet Missile won't target partially vulnerable
+	;       actors in ranges $08-$7F. The actors using this collision type don't use that range though.
+	bit  ACTCOLIB_8_HI, a	; Is this a partially vulnerable actor?
+	jr   nz, .calcDistX		; If so, jump (ok)
+	
+	; Target vulnerable enemies
+	cp   ACTCOLI_2		; iActColiType == ACTCOLI_2?
+	jr   z, .calcDistX	; If so, jump (ok)
+	
+	; [BUG] Target invulnerable enemies
+	; This is pretty egregious, it's specifically checking if the actor uses the collision type for
+	; invulnerable enemies (ie: Hanging battons or Mets hiding) and... only skips targeting it if that's not the case.
+	; What this should have done instead is jumping unconditionally to .nextAct.
+	cp   ACTCOLI_3		; iActColiType == ACTCOLI_3?
+	jr   nz, .nextAct	; If not, seek to the next slot
+	
+.calcDistX:
+	inc  l ; iActSprMap
+	inc  l ; iActLayoutPtr
+	inc  l ; iActXSub
+	inc  l ; iActX
+	
+	; If the shot is within 5 pixels from the actor, we found a target
+	ldi  a, [hl] 		; A = iActX, seek to iActYSub
+	sub  b				; Find distance (-= iShotX)
+	; Distance should be absolute
+	jr   nc, .chkDistX	; Did we underflow? If not, skip
+	cpl  				; Otherwise, force positive sign
 	inc  a
-L014763:;R
-	cp   $05
-	jr   c, L014771
-L014767:;R
+.chkDistX:
+	cp   $05			; Distance < 5?
+	jr   c, .foundAct	; If so, jump
+	
+.nextAct:
+	; Seek to the next slot
 	ld   a, l
-	and  $F0
-	add  $10
-	ld   l, a
-	jr   nz, L014744
-	jr   L014782
-L014771:;R
-	ldh  a, [hActCur+iActY]
-	inc  l
-	cp   [hl]
-	ld   a, $02
-	jr   nc, L01477A
-	inc  a
-L01477A:;R
-	ldh  [hActCur+iActSprMap], a
-	ld   hl, hActCur+iActRtnId
+	and  $F0			; Move back to iActId
+	add  iActEnd		; To next slot
+	ld   l, a			; Overflowed back to the first slot? (all 16 slots checked)
+	jr   nz, .loopAct	; If not, loop
+	
+	; No suitable actor found, keep moving forward
+	jr   .moveH
+	
+.foundAct:
+	;
+	; Found a suitable actor to lock on to.
+	; Determine if it's above or below us, and set the shot's direction accordingly.
+	;
+	ldh  a, [hShotCur+iShotY]	; A = iShotY
+	inc  l 						; Seek HL to iActY
+	cp   [hl]					; iShotY > iActY? (Shot is below actor?)
+	ld   a, MEDIR_U				; # A = MEDIR_U
+	jr   nc, .setDirV			; If so, jump (shot should move up, keep MEDIR_U)
+	inc  a						; # A = MEDIR_D (the actor is below, move shot down)
+.setDirV:
+	ldh  [hShotCur+iShotDir], a
+	
+	; Flag that we're moving vertically now
+	ld   hl, hShotCur+iShotMgMoveV
 	inc  [hl]
-	jr   L014798
-L014782:;R
-	ld   hl, hActCur+iActX
-	ldh  a, [hActCur+iActSprMap]
-	or   a
-	jr   nz, L014791
+	
+	; Immediately start moving vertically
+	jr   .moveV
+	
+.moveH:
+	;
+	; Not locked in to anything yet.
+	; Move forwards 2px/frame.
+	;
+	ld   hl, hShotCur+iShotX	; Seek HL to iShotX
+	ldh  a, [hShotCur+iShotDir]
+	or   a						; Facing right?
+	jr   nz, .moveR				; If so, jump
+.moveL:
 	ld   a, [hl]
 	sub  $02
 	ld   [hl], a
-	jp   L0147B2
-L014791:;R
+	jp   WpnS_DrawSprMap
+.moveR:
 	ld   a, [hl]
 	add  $02
 	ld   [hl], a
-	jp   L0147B2
-L014798:;R
-	ld   hl, hActCur+iActY
-	ldh  a, [hActCur+iActSprMap]
-	rra  
-	jr   c, L0147A9
+	jp   WpnS_DrawSprMap
+	
+.moveV:
+	;
+	; Locked in to an actor above or below.
+	; Move vertically 2px/frame.
+	;
+	ld   hl, hShotCur+iShotY	; Seek HL to iShotY
+	ldh  a, [hShotCur+iShotDir]
+	rra							; MEDIR_D is $03, when >> 1'd it will set the carry
+	jr   c, .moveD				; Is it set? If so, jump
+.moveU:
+	dec  [hl]					; iShotY -= 2
 	dec  [hl]
-	dec  [hl]
-	ld   a, $16
-	ldh  [hActCur+iActSpdXSub], a
-	jp   L0147B2
-L0147A9:;R
+	ld   a, SHOTSPR_MGU
+	ldh  [hShotCur+iShotSprId], a
+	jp   WpnS_DrawSprMap
+.moveD:
+	inc  [hl]					; iShotY += 2
 	inc  [hl]
-	inc  [hl]
-	ld   a, $17
-	ldh  [hActCur+iActSpdXSub], a
-	jp   L0147B2
-L0147B2:;J
-	ld   a, [wActScrollX]
+	ld   a, SHOTSPR_MGD
+	ldh  [hShotCur+iShotSprId], a
+	jp   WpnS_DrawSprMap
+	
+; =============== WpnS_DrawSprMap ===============
+; Draws the sprite mapping for the shot.
+WpnS_DrawSprMap:
+
+	; Adjust the shot's X position in case of screen scrolling
+	ld   a, [wActScrollX]		; iShotX += wActScrollX
 	ld   b, a
-	ldh  a, [hActCur+iActX]
+	ldh  a, [hShotCur+iShotX]
 	add  b
-	ldh  [hActCur+iActX], a
-	cp   $A8
-	jr   c, L0147C3
-	cp   $F8
-	jr   c, L014812
-L0147C3:;R
-	ldh  a, [hActCur+iActY]
-	cp   $98
-	jr   c, L0147CD
-	cp   $F8
-	jr   c, L014812
-L0147CD:;R
-	ld   d, $DF
+	ldh  [hShotCur+iShotX], a
+	
+.chkOffscrX:
+	; Check if the movement made it go off-screen horizontally.
+	; Despawn anything in the $A8-$F7 range.
+	cp   SCREEN_H+$08	; iShotY < $A8?
+	jr   c, .chkOffscrY	; If so, jump
+	cp   -$08			; iShotY < $F8?
+	jr   c, .despawn	; If so, jump
+	
+.chkOffscrY:
+	; Also do a vertical off-screen check.
+	; Despawn anything in the $98-$F7 range.
+	ldh  a, [hShotCur+iShotY]
+	cp   SCREEN_V+$08	; iShotY < $98?
+	jr   c, .getPtr		; If so, jump
+	cp   -$08			; iShotY < $F8?
+	jr   c, .despawn	; If so, jump
+	
+.getPtr:
+	; DE = Ptr to current wWorkOAM location
+	ld   d, HIGH(wWorkOAM)
 	ldh  a, [hWorkOAMPos]
 	ld   e, a
-	ldh  a, [hActCur+iActSpdXSub]
-	add  a
-	ld   hl, $4816
-	ld   b, $00
+	
+	; Read out the sprite definition off the table
+	; HL = WpnS_SprMapPtrTbl[iShotSprId*2]
+	ldh  a, [hShotCur+iShotSprId]
+	add  a				; *2 for word table
+	ld   hl, WpnS_SprMapPtrTbl	; HL = Table base
+	ld   b, $00			; BC = Offset
 	ld   c, a
-	add  hl, bc
-	ldi  a, [hl]
+	add  hl, bc			; Index it
+	ldi  a, [hl]		; Read out the pointer to HL
 	ld   h, [hl]
 	ld   l, a
+	
+	;
+	; Write the sprite mapping to the OAM mirror.
+	; See also: Relevant code in ActS_DrawSprMap since it's pretty much the same.
+	;
+	; This appears to be a little less optimized than the player and actor variants,
+	; as it merges the two flip loops in a single path.
+	;
+	
+	; Ignore blank sprite mappings
 	ldi  a, [hl]
-	or   a
-	ret  z
-	ld   b, a
-L0147E3:;R
-	ldh  a, [hActCur+iActY]
-	add  [hl]
-	inc  hl
-	ld   [de], a
-	inc  de
-	ldh  a, [hActCur+iActSprMap]
-	dec  a
-	ldi  a, [hl]
-	jr   nz, L0147F3
-	cpl  
+	or   a				; OBJCount == 0?
+	ret  z				; If so, we're done
+	
+	ld   b, a			; B = OBJCount
+.loop:					; For each individual OBJ...
+	
+	; YPos = iShotY + byte0
+	ldh  a, [hShotCur+iShotY]	; A = Absolute Y
+	add  [hl]					; += Relative Y (byte0)
+	inc  hl						; Seek to byte1
+	ld   [de], a				; Write to OAM mirror
+	inc  de						; Seek to XPos
+	
+	; X POSITION
+	; This is affected by the horizontal direction, since if it's facing right,
+	; the whole sprite mapping needs to get flipped.
+	;
+	; XPos = iShotX + byte1 (facing left)
+	; XPos = iShotX - byte1 - 8 (facing right)
+	
+	; Determine the shot's direction
+	ldh  a, [hShotCur+iShotDir]	; # Read direction
+	dec  a						; # Z Flag = Facing right? (PLDIR_R decremented to 0)
+	ldi  a, [hl]				; Read byte1 while we're here
+	jr   nz, .setX				; # If not, jump (facing left, keep raw byte1)
+.invX:
+	cpl  						; Otherwise, invert the rel. X position
 	inc  a
-	sub  $08
-L0147F3:;R
-	ld   c, a
-	ldh  a, [hActCur+iActX]
-	add  c
-	ld   [de], a
+	sub  TILE_H					; Account for tile width
+.setX:
+	; Set the X position
+	ld   c, a					; C = Relative X
+	ldh  a, [hShotCur+iShotX]	; A = Absolute X
+	add  c						; Get final pos
+	ld   [de], a				; Write to OAM mirror
 	inc  de
+	
+	; TileID = byte2
 	ldi  a, [hl]
 	ld   [de], a
 	inc  de
-	ldh  a, [hActCur+iActSprMap]
-	dec  a
-	ldi  a, [hl]
-	jr   nz, L014804
-	xor  $20
-L014804:;R
-	ld   c, a
-	ld   a, [wPlSprFlags]
-	or   c
-	ld   [de], a
-	inc  de
-	dec  b
-	jr   nz, L0147E3
-	ld   a, e
+	
+	; Flags = (byte3 | wPlSprFlags) (facing left)
+	; Flags = (byte3 | wPlSprFlags) ^ SPR_XFLIP (facing right)
+	ldh  a, [hShotCur+iShotDir]	; # Read direction
+	dec  a						; # Z Flag = Facing right? (PLDIR_R decremented to 0)
+	ldi  a, [hl]				; Read byte3 while we're here
+	jr   nz, .setFlags			; # If not, jump (facing left, keep raw byte3)
+	xor  SPR_XFLIP				; Horizontally flip the individual tile
+.setFlags:
+	ld   c, a					; C = Tile flags
+	ld   a, [wPlSprFlags]		; A = BG priority flag for stage
+	or   c						; Merge them
+	ld   [de], a				; Write to OAM mirror 
+	inc  de						; to next OBJ entry
+	
+	dec  b						; Finished copying all OBJ?
+	jr   nz, .loop				; If not, loop
+	
+	ld   a, e					; Save back current OAM ptr
 	ldh  [hWorkOAMPos], a
 	ret
-L014812:;R
+	
+.despawn:
 	xor  a
-	ldh  [hActCur+iActId], a
+	ldh  [hShotCur+iShotId], a
 	ret
-L014816: db $50
-L014817: db $48
-L014818: db $C8
-L014819: db $48
-L01481A: db $D9
-L01481B: db $48
-L01481C: db $EA;X
-L01481D: db $48;X
-L01481E: db $FB
-L01481F: db $48
-L014820: db $00
-L014821: db $49
-L014822: db $11
-L014823: db $49
-L014824: db $22
-L014825: db $49
-L014826: db $33
-L014827: db $49
-L014828: db $44
-L014829: db $49
-L01482A: db $55
-L01482B: db $49
-L01482C: db $96
-L01482D: db $49
-L01482E: db $D7
-L01482F: db $49
-L014830: db $18
-L014831: db $4A
-L014832: db $59
-L014833: db $4A
-L014834: db $9A
-L014835: db $4A
-L014836: db $DB
-L014837: db $4A
-L014838: db $1C
-L014839: db $4B
-L01483A: db $5D
-L01483B: db $4B
-L01483C: db $9E
-L01483D: db $4B
-L01483E: db $A7
-L01483F: db $4B
-L014840: db $B8
-L014841: db $4B
-L014842: db $C9
-L014843: db $4B
-L014844: db $DA
-L014845: db $4B
-L014846: db $55
-L014847: db $48
-L014848: db $7A
-L014849: db $48
-L01484A: db $A3
-L01484B: db $48
-L01484C: db $7A
-L01484D: db $48
-L01484E: db $EB
-L01484F: db $4B
-L014850: db $01
+	
+; =============== WpnS_SprMapPtrTbl ===============
+; Points to all weapon shot sprite mappings.
+WpnS_SprMapPtrTbl:
+	dw SprMap_WpnP        ; SHOTSPR_P
+	dw SprMap_WpnAr0      ; SHOTSPR_AR0
+	dw SprMap_WpnAr1      ; SHOTSPR_AR1
+	dw SprMap_WpnAr2      ; SHOTSPR_AR2 ; [TCRF] Unused sprite mapping
+	dw SprMap_WpnWd       ; SHOTSPR_WD
+	dw SprMap_WpnMe0      ; SHOTSPR_ME0
+	dw SprMap_WpnMe1      ; SHOTSPR_ME1
+	dw SprMap_WpnCrMove   ; SHOTSPR_CRMOVE
+	dw SprMap_WpnCrFlash0 ; SHOTSPR_CRFLASH0
+	dw SprMap_WpnCrFlash1 ; SHOTSPR_CRFLASH1
+	dw SprMap_WpnCrExpl0  ; SHOTSPR_CREXPL0
+	dw SprMap_WpnCrExpl1  ; SHOTSPR_CREXPL1
+	dw SprMap_WpnCrExpl2  ; SHOTSPR_CREXPL2
+	dw SprMap_WpnCrExpl3  ; SHOTSPR_CREXPL3
+	dw SprMap_WpnCrExpl4  ; SHOTSPR_CREXPL4
+	dw SprMap_WpnCrExpl5  ; SHOTSPR_CREXPL5
+	dw SprMap_WpnCrExpl6  ; SHOTSPR_CREXPL6
+	dw SprMap_WpnCrExpl7  ; SHOTSPR_CREXPL7
+	dw SprMap_WpnCrExpl8  ; SHOTSPR_CREXPL8
+	dw SprMap_WpnNe       ; SHOTSPR_NE
+	dw SprMap_WpnHa       ; SHOTSPR_HA
+	dw SprMap_WpnMgH      ; SHOTSPR_MGH
+	dw SprMap_WpnMgU      ; SHOTSPR_MGU
+	dw SprMap_WpnMgD      ; SHOTSPR_MGD
+	dw SprMap_WpnTp0      ; SHOTSPR_TP0
+	dw SprMap_WpnTp1      ; SHOTSPR_TP1
+	dw SprMap_WpnTp2      ; SHOTSPR_TP2
+	dw SprMap_WpnTp1      ; SHOTSPR_TP3
+	dw SprMap_WpnSg       ; SHOTSPR_SG
+
+; =============== SHOT SPRITE MAPPINGS ===============
+SprMap_WpnP: db $01
 L014851: db $FC
 L014852: db $FC
 L014853: db $66
 L014854: db $00
-L014855: db $09
+SprMap_WpnTp0: db $09
 L014856: db $F1
 L014857: db $F8
 L014858: db $57
@@ -1417,7 +2183,7 @@ L014876: db $09
 L014877: db $FD
 L014878: db $5F
 L014879: db $00
-L01487A: db $0A
+SprMap_WpnTp1: db $0A
 L01487B: db $F1
 L01487C: db $F3
 L01487D: db $50
@@ -1458,7 +2224,7 @@ L01489F: db $09
 L0148A0: db $FA
 L0148A1: db $28
 L0148A2: db $00
-L0148A3: db $09
+SprMap_WpnTp2: db $09
 L0148A4: db $F1
 L0148A5: db $F8
 L0148A6: db $58
@@ -1495,7 +2261,7 @@ L0148C4: db $09
 L0148C5: db $FB
 L0148C6: db $5F
 L0148C7: db $20
-L0148C8: db $04
+SprMap_WpnAr0: db $04
 L0148C9: db $F8
 L0148CA: db $F8
 L0148CB: db $50
@@ -1512,7 +2278,7 @@ L0148D5: db $00
 L0148D6: db $00
 L0148D7: db $53
 L0148D8: db $00
-L0148D9: db $04
+SprMap_WpnAr1: db $04
 L0148DA: db $F8
 L0148DB: db $F8
 L0148DC: db $54
@@ -1529,7 +2295,7 @@ L0148E6: db $00
 L0148E7: db $00
 L0148E8: db $57
 L0148E9: db $00
-L0148EA: db $04;X
+SprMap_WpnAr2: db $04;X
 L0148EB: db $F8;X
 L0148EC: db $F8;X
 L0148ED: db $58;X
@@ -1546,12 +2312,12 @@ L0148F7: db $00;X
 L0148F8: db $00;X
 L0148F9: db $5B;X
 L0148FA: db $00;X
-L0148FB: db $01
+SprMap_WpnWd: db $01
 L0148FC: db $FC
 L0148FD: db $FC
 L0148FE: db $5F
 L0148FF: db $00
-L014900: db $04
+SprMap_WpnMe0: db $04
 L014901: db $F8
 L014902: db $F8
 L014903: db $5C
@@ -1568,7 +2334,7 @@ L01490D: db $00
 L01490E: db $00
 L01490F: db $5C
 L014910: db $60
-L014911: db $04
+SprMap_WpnMe1: db $04
 L014912: db $F8
 L014913: db $F8
 L014914: db $5D
@@ -1585,7 +2351,7 @@ L01491E: db $00
 L01491F: db $00
 L014920: db $5D
 L014921: db $60
-L014922: db $04
+SprMap_WpnCrMove: db $04
 L014923: db $F8
 L014924: db $F8
 L014925: db $58
@@ -1602,7 +2368,7 @@ L01492F: db $00
 L014930: db $00
 L014931: db $5B
 L014932: db $00
-L014933: db $04
+SprMap_WpnCrFlash0: db $04
 L014934: db $F8
 L014935: db $F8
 L014936: db $5C
@@ -1619,7 +2385,7 @@ L014940: db $00
 L014941: db $00
 L014942: db $5B
 L014943: db $00
-L014944: db $04
+SprMap_WpnCrFlash1: db $04
 L014945: db $F8
 L014946: db $F8
 L014947: db $5C
@@ -1636,7 +2402,7 @@ L014951: db $00
 L014952: db $00
 L014953: db $5F
 L014954: db $00
-L014955: db $10
+SprMap_WpnCrExpl0: db $10
 L014956: db $F2
 L014957: db $EE
 L014958: db $6D
@@ -1701,7 +2467,7 @@ L014992: db $08
 L014993: db $08
 L014994: db $6D
 L014995: db $60
-L014996: db $10
+SprMap_WpnCrExpl1: db $10
 L014997: db $F2
 L014998: db $EE
 L014999: db $6E
@@ -1766,7 +2532,7 @@ L0149D3: db $08
 L0149D4: db $08
 L0149D5: db $6E
 L0149D6: db $60
-L0149D7: db $10
+SprMap_WpnCrExpl2: db $10
 L0149D8: db $F2
 L0149D9: db $EE
 L0149DA: db $6F
@@ -1831,7 +2597,7 @@ L014A14: db $08
 L014A15: db $08
 L014A16: db $6F
 L014A17: db $60
-L014A18: db $10
+SprMap_WpnCrExpl3: db $10
 L014A19: db $EC
 L014A1A: db $F6
 L014A1B: db $6D
@@ -1896,7 +2662,7 @@ L014A55: db $09
 L014A56: db $09
 L014A57: db $6D
 L014A58: db $60
-L014A59: db $10
+SprMap_WpnCrExpl4: db $10
 L014A5A: db $EC
 L014A5B: db $F6
 L014A5C: db $6E
@@ -1961,7 +2727,7 @@ L014A96: db $09
 L014A97: db $09
 L014A98: db $6E
 L014A99: db $60
-L014A9A: db $10
+SprMap_WpnCrExpl5: db $10
 L014A9B: db $EC
 L014A9C: db $F6
 L014A9D: db $6F
@@ -2026,7 +2792,7 @@ L014AD7: db $09
 L014AD8: db $09
 L014AD9: db $6F
 L014ADA: db $60
-L014ADB: db $10
+SprMap_WpnCrExpl6: db $10
 L014ADC: db $EE
 L014ADD: db $FA
 L014ADE: db $6D
@@ -2091,7 +2857,7 @@ L014B18: db $08
 L014B19: db $FE
 L014B1A: db $6D
 L014B1B: db $60
-L014B1C: db $10
+SprMap_WpnCrExpl7: db $10
 L014B1D: db $EE
 L014B1E: db $FA
 L014B1F: db $6E
@@ -2156,7 +2922,7 @@ L014B59: db $08
 L014B5A: db $FE
 L014B5B: db $6E
 L014B5C: db $60
-L014B5D: db $10
+SprMap_WpnCrExpl8: db $10
 L014B5E: db $EE
 L014B5F: db $FA
 L014B60: db $6F
@@ -2221,7 +2987,7 @@ L014B9A: db $08
 L014B9B: db $FE
 L014B9C: db $6F
 L014B9D: db $60
-L014B9E: db $02
+SprMap_WpnNe: db $02
 L014B9F: db $FC
 L014BA0: db $F8
 L014BA1: db $5E
@@ -2230,7 +2996,7 @@ L014BA3: db $FC
 L014BA4: db $00
 L014BA5: db $5F
 L014BA6: db $00
-L014BA7: db $04
+SprMap_WpnHa: db $04
 L014BA8: db $F8
 L014BA9: db $F8
 L014BAA: db $5B
@@ -2247,7 +3013,7 @@ L014BB4: db $00
 L014BB5: db $00
 L014BB6: db $5E
 L014BB7: db $00
-L014BB8: db $04
+SprMap_WpnMgH: db $04
 L014BB9: db $F8
 L014BBA: db $F8
 L014BBB: db $5C
@@ -2264,7 +3030,7 @@ L014BC5: db $00
 L014BC6: db $00
 L014BC7: db $5D
 L014BC8: db $40
-L014BC9: db $04
+SprMap_WpnMgU: db $04
 L014BCA: db $F8
 L014BCB: db $F8
 L014BCC: db $5E
@@ -2281,7 +3047,7 @@ L014BD6: db $00
 L014BD7: db $00
 L014BD8: db $5F
 L014BD9: db $20
-L014BDA: db $04
+SprMap_WpnMgD: db $04
 L014BDB: db $F8
 L014BDC: db $F8
 L014BDD: db $5F
@@ -2298,8 +3064,8 @@ L014BE7: db $00
 L014BE8: db $00
 L014BE9: db $5E
 L014BEA: db $60
-L014BEB: db $00
-L014BEC: db $F8
+SprMap_WpnSg: db $00
+Wpn_MePosXTbl: db $F8
 L014BED: db $07
 L014BEE: db $00
 L014BEF: db $00
@@ -2307,7 +3073,7 @@ L014BF0: db $F8
 L014BF1: db $07
 L014BF2: db $F8;X
 L014BF3: db $07
-L014BF4: db $F5
+Wpn_MePosYTbl: db $F5
 L014BF5: db $F5
 L014BF6: db $F0
 L014BF7: db $00
@@ -2315,7 +3081,7 @@ L014BF8: db $F5
 L014BF9: db $F5
 L014BFA: db $F5;X
 L014BFB: db $F5
-L014BFC: db $F0
+WpnS_WdPlRotY: db $F0
 L014BFD: db $F0
 L014BFE: db $F0
 L014BFF: db $F1
@@ -2331,7 +3097,7 @@ L014C08: db $FA
 L014C09: db $FB
 L014C0A: db $FD
 L014C0B: db $FE
-L014C0C: db $00
+WpnS_WdPlRotX: db $00
 L014C0D: db $02
 L014C0E: db $03
 L014C0F: db $05
@@ -2395,7 +3161,7 @@ L014C48: db $FA
 L014C49: db $FB
 L014C4A: db $FD
 L014C4B: db $FE
-L014C4C: db $00
+WpnS_WdSelfRotY: db $00
 L014C4D: db $00
 L014C4E: db $01
 L014C4F: db $00
@@ -2411,7 +3177,7 @@ L014C58: db $01
 L014C59: db $02
 L014C5A: db $01
 L014C5B: db $02
-L014C5C: db $02
+WpnS_WdSelfRotX: db $02
 L014C5D: db $01
 L014C5E: db $02
 L014C5F: db $01
@@ -2475,20 +3241,34 @@ L014C98: db $01
 L014C99: db $02
 L014C9A: db $01
 L014C9B: db $02
-L014C9C: db $10
-L014C9D: db $10
-L014C9E: db $10
-L014C9F: db $10
-L014CA0: db $00
-L014CA1: db $20
-L014CA2: db $00
-L014CA3: db $20;X
-L014CA4: db $20
-L014CA5: db $10
-L014CA6: db $10
-L014CA7: db $10
-L014CA8: db $10
-L014CA9: db $02
+
+; =============== Wpn_ShootTypeTbl ===============
+; Shooting animations used by the player for each weapon.
+Wpn_ShootTypeTbl: 
+	db PSA_SHOOT ; WPN_P  
+	db PSA_SHOOT ; WPN_RC 
+	db PSA_SHOOT ; WPN_RM 
+	db PSA_SHOOT ; WPN_RJ 
+	db PSA_NONE  ; WPN_TP 
+	db PSA_THROW ; WPN_AR 
+	db PSA_NONE  ; WPN_WD 
+	db PSA_THROW ; WPN_ME ; [TCRF] The correct value, unreferenced because for some reason the Metal Blade ctrl code doesn't go through WpnCtrlS_StartShootAnim
+	db PSA_THROW ; WPN_CR 
+	db PSA_SHOOT ; WPN_NE 
+	db PSA_SHOOT ; WPN_HA 
+	db PSA_SHOOT ; WPN_MG 
+	db PSA_SHOOT ; WPN_SG 
+
+; =============== Wpn_PropTbl ===============
+; Weapon properties table, indexed by weapon ID.
+; Each entry is 4 bytes long.
+;
+; FORMAT
+; - 0: Collision box, horizontal radius
+; - 1: Collision box, vertical radius
+; - 2: Ammo cost
+; - 3: "Piercing level" of the current weapon (WPNPIERCE_*)
+Wpn_PropTbl: db $02
 L014CAA: db $02
 L014CAB: db $00
 L014CAC: db $00
@@ -2973,12 +3753,12 @@ Module_Password:
 	;
 	
 	ld   a, [wWpnUnlock0]
-	and  WPN_MG|WPN_HA|WPN_NE|WPN_TP	; Got any of the second weapons?
+	and  WPU_MG|WPU_HA|WPU_NE|WPU_TP	; Got any of the second weapons?
 	jr   z, .passOk						; If not, skip
 	
 	ld   a, [wWpnUnlock0]
-	and  WPN_CR|WPN_ME|WPN_WD|WPN_AR	; Filter out 2nd weapons
-	cp   WPN_CR|WPN_ME|WPN_WD|WPN_AR	; Did we get *all* of the first weapons?
+	and  WPU_CR|WPU_ME|WPU_WD|WPU_AR	; Filter out 2nd weapons
+	cp   WPU_CR|WPU_ME|WPU_WD|WPU_AR	; Did we get *all* of the first weapons?
 	jr   nz, .passErr					; If not, reject ot
 	
 .passOk:
@@ -3863,7 +4643,7 @@ Game_Unused_RefillCur:
 	ld   c, $00
 	call Game_AddBarDrawEv
 	
-	ld   a, [wWpnSel]		; If a weapon is selected...
+	ld   a, [wWpnId]		; If a weapon is selected...
 	or   a
 	jr   z, .exec
 	ld   a, [wWpnAmmoCur]	; ...redraw the weapon bar too

@@ -2500,10 +2500,12 @@ Game_CalcCurLvlCol:
 	; Effetively the player's relative X position / column width in pixels.
 	;
 
-	; The target position is 8px to the left of the player, because ??? (origin quirk likely)
-	ld   a, [wPlRelX]			; B = wPl_Unk_Alt_X = wPlRelX - $08
-	sub  $08
-	ld   [wPl_Unk_Alt_X], a
+	; Account for the hardware offset.
+	; Since other subroutines that real with movement need it,
+	; save it separately to avoid doing that subtraction again.
+	ld   a, [wPlRelX]			; B = wPlRelRealX = wPlRelX - $08
+	sub  OBJ_OFFSET_X
+	ld   [wPlRelRealX], a
 	
 	; Determine how many columns are there to the left of the player
 	swap a						; B /= $10
@@ -2513,9 +2515,9 @@ Game_CalcCurLvlCol:
 	;
 	; Add that to the absolute column number of the leftmost column
 	;
-	ld   a, [wLvlColL]			; wLvl_Unk_CurCol = wLvlColL + B
+	ld   a, [wLvlColL]			; wLvlColPl = wLvlColL + B
 	add  b
-	ld   [wLvl_Unk_CurCol], a
+	ld   [wLvlColPl], a
 	ret
 	
 ; =============== Game_Unk_DoRoomTrs ===============
@@ -2944,8 +2946,8 @@ Game_Init:
 	ld   [wBossDmgEna], a
 	ld   [wBossIntroHealth], a
 	ld   [wShutterMode], a
-	ld   [wWpnSel], a 			; Start with the buster always
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnId], a 			; Start with the buster always
+	ld   [wWpnHelperActive], a
 	ld   [wWpnSGUseTimer], a
 	ld   [wUnk_Unused_CF5F], a
 	ld   [wLvlWarpDest], a
@@ -2967,19 +2969,19 @@ Game_Init:
 	; Defeating Crash Man unlocks Rush Coil
 .chkRC:
 	ld   a, [wWpnUnlock0]	
-	bit  WPNB_CR, a		; Crash Bomb unlocked?
+	bit  WPUB_CR, a		; Crash Bomb unlocked?
 	jr   z, .chkRM		; If not, skip
-	set  WPNB_RC, [hl]	; Otherwise, enable Rush Coil
+	set  WPUB_RC, [hl]	; Otherwise, enable Rush Coil
 .chkRM:
 	; Defeating Metal Man unlocks Rush Marine
-	bit  WPNB_ME, a
+	bit  WPUB_ME, a
 	jr   z, .chkRJ
-	set  WPNB_RM, [hl]
+	set  WPUB_RM, [hl]
 .chkRJ:
 	; Defeating Air Man unlocks Rush Jet
-	bit  WPNB_AR, a
+	bit  WPUB_AR, a
 	jr   z, .setPlPos
-	set  WPNB_RJ, [hl]
+	set  WPUB_RJ, [hl]
 	; NOTE: The Sakugarne unlock is set later on, at ???
 	
 .setPlPos:
@@ -3057,7 +3059,7 @@ Game_Do:
 	xor  a
 	ld   [wActScrollX], a
 	ld   [wPlColiBlockL], a
-	ld   [$CF3C], a
+	ld   [wPlColiBlockR], a
 	; Fall-through
 	
 ; =============== Game_Do_Shutter ===============
@@ -3412,7 +3414,7 @@ Game_Do_ChkSpawnWaterBubble:
 	
 	; Y Sensor: Player's Y origin - collision box height (top border)
 	ld   a, [wPlRelY]		; Get Y origin
-	sub  PLCOLI_V*2			; Subtract (vertical collision box radius * 2) to get to the top border
+	sub  PLCOLI_V			; Subtract (vertical collision box radius) to get to the player's mouth
 	ld   [wTargetRelY], a
 	
 	; Perform the block check.
@@ -3474,7 +3476,7 @@ Pl_DoCtrl:
 	rst  $00 ; DynJump
 	dw PlMode_Ground         ; PL_MODE_GROUND
 	dw PlMode_Jump           ; PL_MODE_JUMP
-	dw PlMode_JumpAbsorb     ; PL_MODE_JUMPABSORB
+	dw PlMode_JumpHigh       ; PL_MODE_JUMPHI
 	dw PlMode_Fall           ; PL_MODE_FALL
 	dw PlMode_Climb          ; PL_MODE_CLIMB
 	dw PlMode_ClimbInInit    ; PL_MODE_CLIMBININIT
@@ -3487,7 +3489,7 @@ Pl_DoCtrl:
 	dw PlMode_ClimbUTrs      ; PL_MODE_CLIMBUTRS
 	dw PlMode_FallTrsInit    ; PL_MODE_FALLTRSINIT
 	dw PlMode_FallTrs        ; PL_MODE_FALLTRS
-	dw PlMode_NoCtrl         ; PL_MODE_NOCTRL
+	dw PlMode_NoCtrl         ; PL_MODE_FROZEN
 	dw PlMode_Slide          ; PL_MODE_SLIDE
 	dw PlMode_RushMarine     ; PL_MODE_RM
 	dw PlMode_WarpInInit     ; PL_MODE_WARPININIT
@@ -3500,43 +3502,78 @@ Pl_DoCtrl:
 	dw PlMode_TeleporterInit ; PL_MODE_TLPINIT
 	dw PlMode_Teleporter     ; PL_MODE_TLP
 	dw PlMode_TeleporterEnd  ; PL_MODE_TLPEND
-PlMode_Ground:;I
+	
+; =============== PlMode_Ground ===============
+; Player is on the ground, including when walking.
+PlMode_Ground:
+
+	;
+	; SAKUGARNE "IDLE" STATE
+	;
+	
+	; Not applicable if not riding one
 	ld   a, [wWpnSGRide]
 	or   a
-	jr   z, L000EB8
+	jr   z, .noSg
+	
+.sg:
+	; A -> Jump
+	;
+	; The pogo stick has a "delayed" jump mechanic caused by how, like actual pogo sticks,
+	; you constantly jump even when idle, by a little bit.
+	;
+	; Since it's not possible to jump while in the air, it leaves a small window to perform
+	; the high jump -- thankfully, unlike normal jumps, the A button can be held to 
+	; automatically perform an high jump as soon as possible.
 	ldh  a, [hJoyKeys]
-	bit  0, a
-	jr   nz, L000EA0
-	ld   bc, $0200
-	ld   a, $1C
-	jr   L000EA5
-L000EA0:;R
-	ld   bc, $0400
-	ld   a, $1D
-L000EA5:;R
-	ld   [wPlSprMapId], a
-	ld   a, c
+	bit  KEYB_A, a			; Holding A?
+	jr   nz, .sgJump		; If so, jump
+.sgIdle:
+	ld   bc, $0200			; Otherwise, use small 2px/frame jump
+	ld   a, $1C				; Set idle frame
+	jr   .sgSet
+.sgJump:
+	ld   bc, $0400			; Use high 4px/frame jump 
+	ld   a, $1D				; Set jump frame
+.sgSet:
+	ld   [wPlSprMapId], a	; Save the new frame
+	ld   a, c				; Save the jump speed
 	ld   [wPlSpdY], a
 	ld   a, b
 	ld   [wPlSpdYSub], a
-	ld   a, $02
+	ld   a, PL_MODE_JUMPHI	; New mode
 	ld   [wPlMode], a
-	jp   Pl_DrawSprMap
-L000EB8:;R
+	jp   Pl_DrawSprMap		; Draw the Sakugarne
+	
+.noSg:
+	;
+	; In the hurt pose, make the player move backwards and prevent him from shooting.
+	;
 	ld   a, [wPlHurtTimer]
-	or   a
-	jr   z, L000ED0
-	call L00186E
-	jp   z, L00101A
-	call L0017E0
-	call L0018AE
-	call L0018FE
+	or   a					; Is the player hurt?
+	jr   z, .notHurt		; If not, jump
+.hurt:
+	;--
+	; [POI] Nonsense logic impossible to trigger with the used level designs.
+	;       If getting hurt while *inside* a ladder top block, attempt to start falling.
+	;       This does nothing except skip the remainder of the code.
+	;
+	;       There's a similar nonsensical check when falling, which does have a (buggy)
+	;       effect, but again, the used level designs don't let it happen.
+	call Pl_IsInLadderTop		; Standing on a laddder?
+	jp   z, Pl_Unk_StartFall	; If so, jump
+	;--
+	; No Pl_DoWpnCtrl call, preventing shots from being fired
+	call Pl_DoConveyor
+	call Pl_DoHurtSpeed ; Replaces Pl_DoMoveSpeed
+	call Pl_BgColiApplySpeedX
 	jp   L00100E
-L000ED0:;R
-	call L014000 ; BANK $01
-	call L0017E0
-	call L001895
-	call L0018FE
+.notHurt:
+	call Pl_DoWpnCtrl ; BANK $01
+	call Pl_DoConveyor
+	call Pl_DoMoveSpeed
+	call Pl_BgColiApplySpeedX
+	
 	ld   a, [wPlInvulnTimer]
 	or   a
 	jr   nz, L000EFC
@@ -3551,7 +3588,7 @@ L000ED0:;R
 	cp   $20
 	jp   c, L0017A5
 L000EFC:;R
-	ld   a, [$CF3C]
+	ld   a, [wPlColiBlockR]
 	cp   $38
 	jr   nz, L000F2E
 	call Pause_StartHelperWarp
@@ -3565,7 +3602,7 @@ L000EFC:;R
 	jr   c, L000F2E
 	call ActS_DespawnAll
 	xor  a
-	ld   [$CF3C], a
+	ld   [wPlColiBlockR], a
 	ld   a, $01
 	ld   [wShutterMode], a
 	ld   a, $04
@@ -3682,12 +3719,12 @@ L00100E:;JR
 	and  $03
 	cp   $03
 	jr   nz, L00102C
-L00101A:;X
+Pl_Unk_StartFall:;X
 	ld   a, $00
 	ld   [wPlSpdY], a
 	ld   a, $01
 	ld   [wPlSpdYSub], a
-	ld   a, $03
+	ld   a, PL_MODE_FALL
 	ld   [wPlMode], a
 	jp   Pl_DrawSprMap
 L00102C:;R
@@ -3721,19 +3758,19 @@ L001060:;R
 	ld   [wPlSprMapId], a
 	jp   Pl_DrawSprMap
 PlMode_Jump:;I
-	call L014000 ; BANK $01
-	call L001895
-	call L0018FE
+	call Pl_DoWpnCtrl ; BANK $01
+	call Pl_DoMoveSpeed
+	call Pl_BgColiApplySpeedX
 	ld   a, $07
 	ld   [wPlSprMapId], a
 	ldh  a, [hJoyKeys]
 	bit  0, a
 	jr   nz, L001093
 	jp   L00115D
-PlMode_JumpAbsorb:;I
-	call L014000 ; BANK $01
-	call L001895
-	call L0018FE
+PlMode_JumpHigh:;I
+	call Pl_DoWpnCtrl ; BANK $01
+	call Pl_DoMoveSpeed
+	call Pl_BgColiApplySpeedX
 	ld   a, [wWpnSGRide]
 	or   a
 	jr   nz, L0010C0
@@ -3839,13 +3876,13 @@ PlMode_Fall:;I
 	ld   a, [wPlHurtTimer]
 	or   a
 	jr   z, L00117D
-	call L0018AE
-	call L0018FE
+	call Pl_DoHurtSpeed
+	call Pl_BgColiApplySpeedX
 	jr   L001186
 L00117D:;R
-	call L014000 ; BANK $01
-	call L001895
-	call L0018FE
+	call Pl_DoWpnCtrl ; BANK $01
+	call Pl_DoMoveSpeed
+	call Pl_BgColiApplySpeedX
 L001186:;R
 	ld   a, [wWpnSGRide]
 	or   a
@@ -3879,7 +3916,7 @@ L0011BE:;R
 	ld   a, [wPlRelY]
 	add  b
 	ld   [wPl_Unk_RelY_Copy], a
-	call L00186E
+	call Pl_IsInLadderTop
 	jp   z, L0011FD
 	ld   a, [wPl_Unk_RelY_Copy]
 	ld   [wTargetRelY], a
@@ -3971,7 +4008,7 @@ L00128F:;J
 	ldh  [hSFXSet], a
 	jp   Pl_DrawSprMap
 PlMode_Climb:;I
-	call L014000 ; BANK $01
+	call Pl_DoWpnCtrl ; BANK $01
 	ld   a, $09
 	ld   [wPlSprMapId], a
 	ld   a, [wPlRelX]
@@ -4194,7 +4231,7 @@ PlMode_NoCtrl:;I
 PlMode_Slide:;I
 	ld   a, $0A
 	ld   [wPlSprMapId], a
-	call L0017E0
+	call Pl_DoConveyor
 	ldh  a, [hJoyKeys]
 	ld   b, a
 	and  $30
@@ -4210,8 +4247,8 @@ L0014B4:;R
 	ld   a, b
 	ldh  [hJoyKeys], a
 L0014B7:;R
-	call L001890
-	call L0018FE
+	call Pl_DoSlideSpeed
+	call Pl_BgColiApplySpeedX
 	call Pl_DrawSprMap
 	call L001836
 	ld   a, [wColiGround]
@@ -4254,7 +4291,7 @@ L0014EC:;R
 	ld   [wPlMode], a
 	ret
 PlMode_RushMarine:;I
-	call L014000 ; BANK $01
+	call Pl_DoWpnCtrl ; BANK $01
 	ld   hl, wPlRmSpdL
 	ldh  a, [hJoyKeys]
 	bit  5, a
@@ -4288,7 +4325,7 @@ L00153D:;R
 	or   a
 	jr   z, L001567
 	ld   bc, $0100
-	call L0018CC
+	call Pl_IncSpeed
 	xor  a
 	ld   [wPlRmSpdL], a
 	jr   L001567
@@ -4296,7 +4333,7 @@ L00155E:;R
 	ld   a, [wPlRmSpdL]
 	ld   c, a
 	ld   b, $00
-	call L0018BD
+	call Pl_DecSpeed
 L001567:;R
 	ld   hl, wPlRmSpdR
 	ldh  a, [hJoyKeys]
@@ -4331,7 +4368,7 @@ L00158C:;R
 	or   a
 	jr   z, L0015B6
 	ld   bc, $0100
-	call L0018BD
+	call Pl_DecSpeed
 	xor  a
 	ld   [wPlRmSpdR], a
 	jr   L0015B6
@@ -4339,7 +4376,7 @@ L0015AD:;R
 	ld   a, [wPlRmSpdR]
 	ld   c, a
 	ld   b, $00
-	call L0018CC
+	call Pl_IncSpeed
 L0015B6:;R
 	ld   hl, wPlRmSpdU
 	ldh  a, [hJoyKeys]
@@ -4418,7 +4455,7 @@ L001628:;R
 	adc  $00
 	ld   [wPlRmSpdY], a
 L00163B:;R
-	call L0018DB
+	call Pl_ApplySpeedX
 	jp   L001A89
 L001641:;C
 	ld   [wTargetRelX], a
@@ -4629,51 +4666,69 @@ L0017BC:;R
 	ld   [wLvlEnd], a
 	jp   Pl_DrawSprMap
 L0017D2:;C
-	ld   a, [wWpnSel]
+	ld   a, [wWpnId]
 	cp   $04
 	ret  nz
 	xor  a
 	ld   [wWpnTpActive], a
 	ld   [wShot0], a
 	ret
-L0017E0:;C
+	
+; =============== Pl_DoConveyor ===============
+; Handles automatic movement if standing on a conveyor belt.
+Pl_DoConveyor:
+	; ??? Ignore if standing on an actor
 	ld   a, [wCF4A_Unk_ActTargetSlot]
 	cp   $FF
 	ret  nz
-	ld   a, [wPlRelY]
+	
+	;
+	; If either of the player's left or right ground sensors point to a
+	; conveyor belt block, update the movement speed accordingly.
+	;
+	; Updating the current speed makes it account for instances where the
+	; player's speed isn't 0 (ie: moving or sliding), however keep in mind
+	; that, when idle, the player's speed is reset.
+	;
+	
+.chkL:
+	; Check the left sensor
+	ld   a, [wPlRelY]		; YPos = PlY + 1 (ground)
 	inc  a
 	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
+	ld   a, [wPlRelX]		; XPos = PlX - 6 (left)
 	sub  $06
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	ld   bc, $0080
-	cp   $30
-	jr   c, L001811
-	jp   z, L0018CC
-	cp   $31
-	jp   z, L0018BD
-	cp   $32
-	jp   z, L0018CC
-	cp   $33
-	jp   z, L0018BD
-L001811:;R
-	ld   a, [wPlRelX]
+	call Lvl_GetBlockId		; A = Block ID
+	ld   bc, $0080			; BC = 0.5px/frame
+	cp   BLOCKID_CONVEDGE_R	; BlockID < First conveyor block?
+	jr   c, .chkR			; If so, skip to checking the right sensor
+	jp   z, Pl_IncSpeed		; BlockID == Right arrow? If so, move right
+	cp   BLOCKID_CONVEDGE_L	; BlockID == Left arrow?
+	jp   z, Pl_DecSpeed		; If so, move left
+	cp   BLOCKID_CONVMID_R	; BlockID == Right conveyor?
+	jp   z, Pl_IncSpeed		; If so, move right
+	cp   BLOCKID_CONVMID_L	; BlockID == Left conveyor?
+	jp   z, Pl_DecSpeed		; If so, move left
+.chkR:
+	; Check the right sensor, with identical logic otherwise
+	ld   a, [wPlRelX]		; XPos = PlX + 6 (right)
 	add  $06
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
+	call Lvl_GetBlockId		; ...
 	ld   bc, $0080
-	cp   $30
-	jr   c, L001835
-	jp   z, L0018CC
-	cp   $31
-	jp   z, L0018BD
-	cp   $32
-	jp   z, L0018CC
-	cp   $33
-	jp   z, L0018BD
-L001835:;R
+	cp   BLOCKID_CONVEDGE_R
+	jr   c, .ret
+	jp   z, Pl_IncSpeed
+	cp   BLOCKID_CONVEDGE_L
+	jp   z, Pl_DecSpeed
+	cp   BLOCKID_CONVMID_R
+	jp   z, Pl_IncSpeed
+	cp   BLOCKID_CONVMID_L
+	jp   z, Pl_DecSpeed
+.ret:
 	ret
+	
 L001836:;C
 	ld   a, [wCF4A_Unk_ActTargetSlot]
 	cp   $FF
@@ -4686,63 +4741,106 @@ L001842:;R
 	inc  a
 	ld   [wTargetRelY], a
 	ld   a, [wPlRelX]
-	sub  $06
+	sub  PLCOLI_H
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
 	cp   $21
 	ld   hl, wColiGround
 	rl   [hl]
 	ld   a, [wPlRelX]
-	add  $06
+	add  PLCOLI_H
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
 	cp   $21
 	ld   hl, wColiGround
 	rl   [hl]
 	ret
-L00186E:;C
-	ld   a, [wPlRelY]
+	
+; =============== Pl_IsInLadderTop ===============
+; Checks if the player is fully inside on a ladder top block.
+; OUT
+; - Z Flag: If set, the player is standing on one
+Pl_IsInLadderTop:
+
+	; To count as fully inside on a top ladder, the player should not be horizontally between two blocks.
+	; Since ladders are never adjacent to each other, this can be determined
+	; by checking if both the left and right ground sensors point to a ladder top block.
+	; This gives us 16-(6*2) = 4px of leeway to pass the checks.
+	
+	; Check if the block to the left of the player, at origin level, is a ladder top block.
+	; If it isn't, return early
+	ld   a, [wPlRelY]		; YPos = PlY (body)
 	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
-	sub  $06
+	ld   a, [wPlRelX]		; XPos = PlX - 6 (left border)
+	sub  PLCOLI_H
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	cp   $21
-	ret  nz
-	ld   a, [wPlRelX]
-	add  $06
+	call Lvl_GetBlockId		; A = Block ID
+	cp   BLOCKID_LADDERTOP	; Is it a ladder top block?
+	ret  nz					; If not, return (Z Flag = Clear)
+	
+	; Do the same but to the right of the player
+	ld   a, [wPlRelX]		; XPos = PlX + 6 (right border)
+	add  PLCOLI_H
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	cp   $21
-	ret
-L001890:;C
-	ld   bc, $0180
-	jr   L001898
-L001895:;C
-	ld   bc, $0100
-L001898:;R
+	call Lvl_GetBlockId		; A = Block ID
+	cp   BLOCKID_LADDERTOP	; Is it a ladder top block?
+	ret						; Z Flag = Yes
+	
+; =============== Pl_DoSlideSpeed ===============
+; Updates the player's speed for sliding forwards.
+Pl_DoSlideSpeed:
+	ld   bc, $0180	; Slide speed: 1.5px/frame
+	jr   Pl_DoMoveSpeed.chkDir
+	
+; =============== Pl_DoMoveSpeed ===============
+; Updates the player's speed for moving forwards (walking or jumping).
+Pl_DoMoveSpeed:
+	ld   bc, $0100	; Normal speed: 1px/frame
+.chkDir:
+	; Depending on the direction the player is moving, set their direction and speed accordingly.
 	ldh  a, [hJoyKeys]
-	bit  5, a
-	jr   z, L0018A4
-	xor  a
+	bit  KEYB_LEFT, a	; Holding left?
+	jr   z, .chkR		; If not, jump
+.dirL:
+	xor  a				; Set facing left
 	ld   [wPlDirH], a
-	jr   L0018BD
-L0018A4:;R
-	bit  4, a
-	ret  z
-	ld   a, $01
+	jr   Pl_DecSpeed	; Speed -= BC
+.chkR:
+	bit  KEYB_RIGHT, a	; Holding right?
+	ret  z				; If not, return (staying idle)
+.dirR:
+	ld   a, $01			; Set facing right
 	ld   [wPlDirH], a
-	jr   L0018CC
-L0018AE:;C
-	ld   bc, $0040
+	jr   Pl_IncSpeed	; Speed += BC
+	
+; =============== Pl_DoHurtSpeed ===============
+; Updates the player's speed in the hurt pose.
+Pl_DoHurtSpeed:
+	; Specifically, it makes the player move back 0.25px/frame,
+	; which is subtracted from the current speed.
+	ld   bc, $0040			; BC = 0.25px/frame
+	; Subtracting is relative to the direction the player's facing
 	ld   a, [wPlDirH]
-	or   a
-	jr   z, L0018CC
-	jr   L0018BD
-L0018B9:;JC
-	bit  7, a
-	jr   nz, L0018CC
-L0018BD:;JCR
+	or   a					; Facing left?
+	jr   z, Pl_IncSpeed		; If so, move right 
+	jr   Pl_DecSpeed		; Otherwise, move left
+	
+; =============== Pl_Unk_SetSpeedByActDir ===============
+; Updates the player's speed, towards the same direction the actor is facing.
+; Used by enemies in Air Man's stage that blow the player away.
+; IN
+; - A: iActSprMap
+; - BC: Offset
+Pl_Unk_SetSpeedByActDir:
+	bit  ACTDIRB_R, a		; Is the actor facing right?
+	jr   nz, Pl_IncSpeed	; If so, move the player right
+	; Fall-through
+	
+; =============== Pl_DecSpeed ===============
+; Decreases the player's speed by the specified amount.
+; IN
+; - BC: Offset
+Pl_DecSpeed:
 	ld   a, [wPlSpdXSub]
 	sub  c
 	ld   [wPlSpdXSub], a
@@ -4750,7 +4848,12 @@ L0018BD:;JCR
 	sbc  b
 	ld   [wPlSpdX], a
 	ret
-L0018CC:;JCR
+	
+; =============== Pl_IncSpeed ===============
+; Increases the player's speed by the specified amount.
+; IN
+; - BC: Offset
+Pl_IncSpeed:
 	ld   a, [wPlSpdXSub]
 	add  c
 	ld   [wPlSpdXSub], a
@@ -4758,196 +4861,352 @@ L0018CC:;JCR
 	adc  b
 	ld   [wPlSpdX], a
 	ret
-L0018DB:;C
-	ld   a, [wPlSpdX]
-	or   a
-	ret  z
-	bit  7, a
-	jr   z, L0018F4
-	xor  $FF
+	
+; =============== Pl_ApplySpeedX ===============
+; Applies the horizontal movement speed for the current frame.
+; In short, actually moves the player horizontally.
+Pl_ApplySpeedX:
+	ld   a, [wPlSpdX]	; A = H Speed
+	or   a				; Speed already 0?
+	ret  z				; If so, nothing to do
+	
+	; Determine which direction we're moving to through the speed's sign.
+	; Speed is not relative to the direction the player is facing, rather,
+	; negative speed always moves the player left, positive speed always to the right.
+	; This is unlike actors, whose sprite direction usually affects their movement direction.
+	bit  7, a			; Speed > 0? (MSB clear)  
+	jr   z, .loopR		; If so, jump (move right)
+	; The player's remaining speed is used as a loop counter, it must be positive.
+	xor  $FF			; Otherwise, Speed = -Speed
 	inc  a
 	ld   [wPlSpdX], a
-L0018EA:;R
-	call L001961
-	ld   hl, wPlSpdX
-	dec  [hl]
-	jr   nz, L0018EA
+.loopL:
+	; Movement happens pixel by pixel, doing the whole process for every step of movement.
+	; Speed also doesn't persist, the pixel value is essentially guaranteed to be reset
+	; when exiting the subroutine.
+	call Pl_MoveL		; Move left 1px
+	ld   hl, wPlSpdX	; Speed--
+	dec  [hl]			; Elapsed the speed?
+	jr   nz, .loopL		; If not, move again
 	ret
-L0018F4:;R
-	call L0019F5
-	ld   hl, wPlSpdX
-	dec  [hl]
-	jr   nz, L0018F4
+.loopR:
+	call Pl_MoveR		; Move right 1px
+	ld   hl, wPlSpdX	; Speed--
+	dec  [hl]			; Elapsed the speed?
+	jr   nz, .loopR		; If not, move again
 	ret
-L0018FE:;JC
-	ld   a, [wPlSpdX]
-	or   a
-	ret  z
-	bit  7, a
-	jr   z, L001917
-	xor  $FF
+	
+; =============== Pl_BgColiApplySpeedX ===============
+; Variation of Pl_ApplySpeedX that also checks for solid collision,
+; preventing movement over solid blocks.
+Pl_BgColiApplySpeedX:
+	ld   a, [wPlSpdX]	; A = H Speed
+	or   a				; Speed already 0?
+	ret  z				; If so, nothing to do
+	bit  7, a			; Speed > 0? (MSB clear)  
+	jr   z, .loopR		; If so, jump (move right)
+	xor  $FF			; Otherwise, Speed = -Speed
 	inc  a
 	ld   [wPlSpdX], a
-L00190D:;R
-	call L001921
-	ld   hl, wPlSpdX
-	dec  [hl]
-	jr   nz, L00190D
+.loopL:
+	call Pl_BgColiMoveL	; Move left 1px, with solid collision checks
+	ld   hl, wPlSpdX	; Speed--
+	dec  [hl]			; Elapsed the speed?
+	jr   nz, .loopL		; If not, move again
 	ret
-L001917:;R
-	call L0019B5
-	ld   hl, wPlSpdX
-	dec  [hl]
-	jr   nz, L001917
+.loopR:
+	call Pl_BgColiMoveR	; Move right 1px, with solid collision checks
+	ld   hl, wPlSpdX	; Speed--
+	dec  [hl]			; Elapsed the speed?
+	jr   nz, .loopR		; If not, move again
 	ret
-L001921:;C
-	ld   a, [wPlRelX]
-	sub  $07
+	
+; =============== Pl_BgColiMoveL ===============
+; Moves the player 1 pixel to the left if there isn't a solid block in the way.
+Pl_BgColiMoveL:
+	;
+	; The player typically is 24 pixels tall, meaning two blocks need to be checked.
+	; The sensors are located 8 pixels apart, therefore 4 of them are needed.
+	;
+	
+	; All of these sensors are located 1 pixel to the left
+	; of the right border of the collision box.
+	; This is enough given only one pixel of movement ever happens at a time.
+	ld   a, [wPlRelX]		; XPos = PlX - 7
+	sub  PLCOLI_H+1
 	ld   [wTargetRelX], a
-	ld   a, [wPlRelY]
+	
+	;
+	; Y Positions 0, 7 and 15 belong to the low block,
+	; and must be always checked.
+	;
+	
+	; LOW BLOCK, bottom
+	ld   a, [wPlRelY]		; YPos = PlY
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	ld   [wPlColiBlockL], a
-	ret  nc
-	ld   a, [wPlRelY]
-	sub  $07
+	call Lvl_GetBlockId		; A = Block ID
+	ld   [wPlColiBlockL], a	; Set it as left block (??? is this used)
+	ret  nc					; Is the block empty? If not, return
+	
+	; LOW BLOCK, middle
+	ld   a, [wPlRelY]		; YPos = PlY - 7
+	sub  (8*1)-1
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	ret  nc
-	ld   a, [wPlRelY]
-	sub  $0F
+	call Lvl_GetBlockId		; A = Block ID
+	ret  nc					; Is the block empty? If not, return
+	
+	; LOW BLOCK, top
+	ld   a, [wPlRelY]		; YPos = PlY - 15
+	sub  (8*2)-1
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	ret  nc
+	call Lvl_GetBlockId		; A = Block ID
+	ret  nc					; Is the block empty? If not, return
+	
+	;
+	; Y position 23 belongs to the block above.
+	; When sliding, the player's height is halved, and as such it fits within the low block.
+	;
 	ld   a, [wPlMode]
-	cp   $10
-	jr   z, L001961
-	ld   a, [wPlRelY]
-	sub  $17
+	cp   PL_MODE_SLIDE		; Player sliding?
+	jr   z, Pl_MoveL		; If so, skip
+	
+	; HIGH BLOCK, middle
+	ld   a, [wPlRelY]		; YPos = PlY - 23
+	sub  (8*3)-1
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	ret  nc
-L001961:;CR
+	call Lvl_GetBlockId		; A = Block ID
+	ret  nc					; Is the block empty? If not, return
+	; Fall-through
+	
+; =============== Pl_MoveL ===============
+; Moves the player 1 pixel to the left.
+Pl_MoveL:
+
+	;
+	; The player's coordinates in this game directly map to the hardware sprites'
+	; positions and as such are always relative to the screen.
+	; Hence, special care must be taken to account for both the hardware offset
+	; and to how, the player sprite doesn't really move when the screen also scrolls.
+	;
+
+
+	; Prevent moving off-screen to the left.
 	ld   a, [wPlRelX]
-	cp   $10
-	ret  c
-	ld   a, [wPl_Unk_Alt_X]
+	cp   OBJ_OFFSET_X + 8		; wPlRelX < 8?
+	ret  c						; If so, return
+	
+	;
+	; If we crossed a block boundary, decrement the current column number.
+	;
+.chkCross:
+	ld   a, [wPlRelRealX]		; wPlRelRealX--
 	dec  a
-	ld   [wPl_Unk_Alt_X], a
-	and  $0F
-	cp   $0F
-	jr   nz, L00198A
-	ld   hl, wLvl_Unk_CurCol
+	ld   [wPlRelRealX], a
+	and  BLOCK_H-1				; A %= BLOCK_H	
+	cp   BLOCK_H-1				; A != BLOCK_H - 1?
+	jr   nz, .chkMoveType		; If not, skip (didn't cross)
+	
+	ld   hl, wLvlColPl			; ColNum--
 	dec  [hl]
+	
+	;--
+	;
+	; If the screen isn't locked, redraw the edge of the screen, spawning actors as needed.
+	;
+	; [POI] This being checked here is... odd.
+	;       It only makes sense to perform the redraw when the viewport crosses a block
+	;       boundary, not when the player does it!
+	;       In practice, when the player does, the viewport also does it, so all it serves
+	;       is calling LvlScroll_DrawEdgeL before hScrollX and wLvlColL get updated.
+	;
+	
+	; Boss corridors and boss rooms lock the screen.
+	; We can detect if we're in one of the two by checking if we went through a shutter, 
+	; as in this game they only ever are at the end of a level.
 	ld   a, [wShutterNum]
-	or   a
-	jr   nz, L00199B
-	ld   h, $CB
-	ld   a, [wLvl_Unk_CurCol]
+	or   a							; Went through a shutter?	
+	jr   nz, .lock					; If so, skip
+	
+	; Then check for a standard screen lock, from the current column number.
+	ld   h, HIGH(wLvlScrollLocks)	; HL = wLvlScrollLocks[ColNum]
+	ld   a, [wLvlColPl]
 	ld   l, a
-	ld   a, [hl]
-	bit  7, a
-	call nz, LvlScroll_DrawEdgeL
-L00198A:;R
+	ld   a, [hl]					; A = Lock info
+	bit  SLKB_OPEN, a				; Is the player on an unlocked column?
+	call nz, LvlScroll_DrawEdgeL	; If so, do the redraw
+	;--
+	
+.chkMoveType:
+
+	;
+	; Perform the actual player movement.
+	; This can be done in two ways:
+	; - If the screen is locked, move the player left
+	; - If the screen isn't locked, move the viewport left
+	;
+	
+	; Boss corridors and boss rooms lock the screen.
 	ld   a, [wShutterNum]
-	or   a
-	jr   nz, L00199B
-	ld   h, $CB
-	ld   a, [wLvl_Unk_CurCol]
+	or   a						; Went through a shutter?	
+	jr   nz, .lock				; If so, skip
+	
+	; Then check for a standard screen lock, from the current column number.
+	ld   h, HIGH(wLvlScrollLocks)	; HL = wLvlScrollLocks[ColNum]
+	ld   a, [wLvlColPl]
 	ld   l, a
-	ld   a, [hl]
-	bit  7, a
-	jr   nz, L0019A0
-L00199B:;R
+	ld   a, [hl]				; A = Lock info
+	bit  SLKB_OPEN, a			; Is scrolling unlocked for this column? 
+	jr   nz, .noLock			; If so, jump
+.lock:
+	; Screen is locked.
+	; Move the player left by 1 pixel.
 	ld   hl, wPlRelX
 	dec  [hl]
 	ret
-L0019A0:;R
-	ld   hl, wActScrollX
+.noLock:
+	; Screen is unlocked.
+	; Keep the player at the current position, and instead...
+	ld   hl, wActScrollX		; ...move all actors 1px to the right
 	inc  [hl]
-	ldh  a, [hScrollX]
+	ldh  a, [hScrollX]			; ...move the viewport left (scroll the screen right)
 	dec  a
 	ldh  [hScrollX], a
-	and  $0F
-	ldh  [hScrollXNybLow], a
-	cp   $0F
-	ret  nz
-	ld   hl, wLvlColL
+	; If the *viewport* crossed a block boundary, decrement the column base
+	and  BLOCK_H-1				; A %= BLOCK_H	
+	ldh  [hScrollXNybLow], a	; Keep this in sync
+	cp   BLOCK_H-1				; A != BLOCK_H - 1? (went from $x0 to $xF)
+	ret  nz						; If not, return (didn't cross)
+	ld   hl, wLvlColL			; Otherwise, move to previous base col
 	dec  [hl]
 	ret
-L0019B5:;C
-	ld   a, [wPlRelX]
-	add  $07
+
+; =============== Pl_BgColiMoveR ===============
+; Moves the player 1 pixel to the right if there isn't a solid block in the way.
+; See also: Pl_BgColiMoveL
+Pl_BgColiMoveR:
+
+	;
+	; Check for solid collision
+	;
+	ld   a, [wPlRelX]		; XPos = PlX + 7
+	add  PLCOLI_H+1
 	ld   [wTargetRelX], a
-	ld   a, [wPlRelY]
+	
+	; LOW BLOCK, bottom
+	ld   a, [wPlRelY]		; YPos = PlY
+	ld   [wTargetRelY], a
+	call Lvl_GetBlockId		; A = Block ID
+	ld   [wPlColiBlockR], a	; Set it as right block (??? is this used)
+	ret  nc					; Is the block empty? If not, return
+	
+	; LOW BLOCK, middle
+	ld   a, [wPlRelY]		; YPos = PlY - 7
+	sub  (8*1)-1
 	ld   [wTargetRelY], a
 	call Lvl_GetBlockId
-	ld   [$CF3C], a
 	ret  nc
-	ld   a, [wPlRelY]
-	sub  $07
+	
+	; LOW BLOCK, top
+	ld   a, [wPlRelY]		; YPos = PlY - 15
+	sub  (8*2)-1
 	ld   [wTargetRelY], a
 	call Lvl_GetBlockId
 	ret  nc
-	ld   a, [wPlRelY]
-	sub  $0F
-	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	ret  nc
+	
+	; Check the top block only if not sliding
 	ld   a, [wPlMode]
-	cp   $10
-	jr   z, L0019F5
-	ld   a, [wPlRelY]
-	sub  $17
+	cp   PL_MODE_SLIDE		; Player sliding?
+	jr   z, Pl_MoveR		; If so, skip
+	; HIGH BLOCK, middle
+	ld   a, [wPlRelY]		; YPos = PlY - 23
+	sub  (8*3)-1
 	ld   [wTargetRelY], a
 	call Lvl_GetBlockId
 	ret  nc
-L0019F5:;CR
+	; Fall-through
+	
+; =============== Pl_MoveR ===============
+; Moves the player 1 pixel to the right.
+Pl_MoveR:
+
+	; Prevent moving off-screen to the right.
+	; (screen size + box radius + 1 pixel of movement - hardware offset)
 	ld   a, [wPlRelX]
-	cp   $9F
-	ret  nc
+	cp   SCREEN_GAME_H+PLCOLI_H+1-OBJ_OFFSET_X	; wPlRelX >= $9F?
+	ret  nc										; If so, return
+	
+	;
+	; Perform the actual player movement.
+	; This can be done in two ways:
+	; - If the screen is locked, move the player right
+	; - If the screen isn't locked, move the viewport right
+	;
 	ld   a, [wShutterNum]
-	or   a
-	jr   nz, L001A0C
-	ld   h, $CB
-	ld   a, [wLvl_Unk_CurCol]
+	or   a					; Went through a shutter?	
+	jr   nz, .lock			; If so, skip
+	; Then check for a standard screen lock, from the current column number.
+	ld   h, HIGH(wLvlScrollLocks)	; HL = wLvlScrollLocks[ColNum]
+	ld   a, [wLvlColPl]
 	ld   l, a
-	ld   a, [hl]
-	bit  7, a
-	jr   nz, L001A12
-L001A0C:;R
+	ld   a, [hl]			; A = Lock info
+	bit  SLKB_OPEN, a
+	jr   nz, .noLock
+.lock:
+	; Screen is locked.
+	; Move the player right by 1 pixel.
 	ld   hl, wPlRelX
 	inc  [hl]
-	jr   L001A25
-L001A12:;R
-	ld   hl, wActScrollX
+	jr   .chkCross
+.noLock:
+	; Screen is unlocked.
+	; Keep the player at the current position, and instead...
+	ld   hl, wActScrollX	; ...move all actors 1px to the left
 	dec  [hl]
-	ldh  a, [hScrollX]
+	ldh  a, [hScrollX]		; ...move the viewport right (scroll the screen left)
 	inc  a
 	ldh  [hScrollX], a
-	and  $0F
-	ldh  [hScrollXNybLow], a
-	jr   nz, L001A25
-	ld   hl, wLvlColL
+	; If the *viewport* crossed a block boundary, increment the column base
+	and  BLOCK_H-1				; A %= BLOCK_H	
+	ldh  [hScrollXNybLow], a	; Keep this in sync
+	jr   nz, .chkCross			; Is it != 0? (went from $xF to $x0). If not, skip
+	ld   hl, wLvlColL			; Otherwise, move to next base col
 	inc  [hl]
-L001A25:;R
-	ld   a, [wPl_Unk_Alt_X]
+.chkCross:
+	;
+	; If we crossed a block boundary, increment the current column number.
+	;
+	; Notice how these checks are happening at the end of the subroutine, compared
+	; to Pl_MoveL where they took place at the start.
+	;
+	ld   a, [wPlRelRealX]		; wPlRelRealX++
 	inc  a
-	ld   [wPl_Unk_Alt_X], a
-	and  $0F
-	ret  nz
-	ld   hl, wLvl_Unk_CurCol
+	ld   [wPlRelRealX], a
+	and  BLOCK_H-1				; A %= BLOCK_H	
+	ret  nz						; Is it != 0? (went from $xF to $x0). If not, return
+	ld   hl, wLvlColPl			; ColNum++
 	inc  [hl]
+	
+	;
+	; If the screen isn't locked, redraw the edge of the screen, spawning actors as needed.
+	;
+	; [POI] The same note from Pl_MoveL applies here, except we're at the end of the subroutine.
+	;       Here, hScrollX and wLvlColL already got updated.
+	;
+	
+	; Boss corridors and boss rooms lock the screen.
 	ld   a, [wShutterNum]
-	or   a
-	ret  nz
-	ld   h, $CB
-	ld   a, [wLvl_Unk_CurCol]
+	or   a						; Went through a shutter?	
+	ret  nz						; If so, return
+	
+	; Then check for a standard screen lock, from the current column number.
+	ld   h, HIGH(wLvlScrollLocks)	; HL = wLvlScrollLocks[ColNum]
+	ld   a, [wLvlColPl]
 	ld   l, a
-	ld   a, [hl]
-	bit  7, a
-	ret  z
-	jp   LvlScroll_DrawEdgeR
+	ld   a, [hl]					; A = Lock info
+	bit  SLKB_OPEN, a				; Is the player on an unlocked column?
+	ret  z							; If not, return
+	jp   LvlScroll_DrawEdgeR		; Otherwise, do the redraw
+	
 L001A45:;C
 	ld   a, [wPlRelX]
 	ld   b, a
@@ -4961,10 +5220,10 @@ L001A45:;C
 	ld   a, [wPlRelX]
 	sub  b
 	ld   [wPlRelX], a
-	ld   a, [wPl_Unk_Alt_X]
+	ld   a, [wPlRelRealX]
 	ld   c, a
 	sub  b
-	ld   [wPl_Unk_Alt_X], a
+	ld   [wPlRelRealX], a
 	xor  c
 	bit  4, a
 	ret  z
@@ -4981,10 +5240,10 @@ L001A6C:;R
 	ld   a, [wPlRelX]
 	add  b
 	ld   [wPlRelX], a
-	ld   a, [wPl_Unk_Alt_X]
+	ld   a, [wPlRelRealX]
 	ld   c, a
 	add  b
-	ld   [wPl_Unk_Alt_X], a
+	ld   [wPlRelRealX], a
 	xor  c
 	bit  4, a
 	ret  z
@@ -5252,6 +5511,8 @@ Pl_DrawSprMap:
 	; XPos = -(wPlRelX + byte1) - TILE_H + 1
 	; For flipping the sprite mapping
 	; [POI] This is offset 1 pixel to the right compared to actor sprites.
+	;       The consequences are that actors or shots that spawn from the
+	;       player might need to be also offset by +1 when facing right.
 	ld   a, [wPlRelX]	; C = Absolute X
 	ld   c, a
 	ld   a, [de]		; A = Relative X
@@ -5412,14 +5673,14 @@ ActS_DespawnAll:
 	; By despawning all actors, we also despawned Rush & the Sakugarne.
 	; Clear out their flags that affect the player.
 	xor  a
-	ld   [wWpnHelperWarp], a			; Rush/SG no longer there, can be recalled
+	ld   [wWpnHelperActive], a			; Rush/SG no longer there, can be recalled
 	ld   [wWpnSGRide], a			; Disable pogo movement mode
 	
 	; Remove all weapon shots/actors.
 	
 	; Top Spin is melee weapon, and its "shot" is allowed to move through rooms.
-	ld   a, [wWpnSel]
-	cp   WPNSEL_TP
+	ld   a, [wWpnId]
+	cp   WPN_TP
 	ret  z
 	
 	; The rest get deleted though
@@ -5579,7 +5840,7 @@ ActS_SpawnFromLayout:
 ; Spawns the eight explosion particles when a player or boss dies.
 ; These originate from the player's position and move outwards.
 ActS_SpawnLargeExpl:
-	ld   a, ACT_EXPLPART			; Explosion particle
+	ld   a, ACT_EXPLLGPART			; Explosion particle
 	ld   [wActSpawnId], a
 	xor  a							; Not part of the layout
 	ld   [wActSpawnLayoutPtr], a
@@ -5637,7 +5898,7 @@ ActS_SpawnLargeExpl:
 ; These move inwards from the sides of the screen towards the center,
 ; which is where the player is expected to be.
 ActS_SpawnAbsorb:
-	ld   a, ACT_EXPLPART			; Explosion particle
+	ld   a, ACT_EXPLLGPART			; Explosion particle
 	ld   [wActSpawnId], a
 	xor  a							; Not part of the layout
 	ld   [wActSpawnLayoutPtr], a
@@ -7737,12 +7998,12 @@ ActS_Despawn:
 	; Clear that for later, otherwise they can't be called in again.
 	;
 	ldh  a, [hActCur+iActId]
-	cp   ACT_E0			; iActId < $E0?
+	cp   ACT_UNK_PROCFLAG|ACT_WPN_RC			; iActId < $E0?
 	jr   c, .despawn	; If so, skip
-	cp   ACT_E4			; iActId >= $E4?
+	cp   ACT_UNK_PROCFLAG|ACT_WPN_SG+1		; iActId >= $E4?
 	jr   nc, .despawn	; If so, skip
 	xor  a
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	
 .despawn:
 	; Mark the slot as free
@@ -8084,19 +8345,19 @@ Game_Main:
 	
 	; If all 8 bosses are defeated, warp to the pre-Quint room
 	ld   a, [wWpnUnlock0]
-	cp   WPN_MG|WPN_HA|WPN_NE|WPN_CR|WPN_ME|WPN_WD|WPN_AR|WPN_TP
+	cp   WPU_MG|WPU_HA|WPU_NE|WPU_CR|WPU_ME|WPU_WD|WPU_AR|WPU_TP
 	jp   z, Game_Main_ToPreQuint
 	
 	; If any, but not all, of the second set of bosses is defeated,
 	; warp to the teleport room
 	ld   a, [wWpnUnlock0]
-	and  WPN_MG|WPN_HA|WPN_NE|WPN_TP
+	and  WPU_MG|WPU_HA|WPU_NE|WPU_TP
 	jr   nz, Game_Main_ToTeleport
 	
 	; If the first set of bosses is defeated, but noone in the second,
 	; warp to the Wily Castle cutscene.
 	ld   a, [wWpnUnlock0]
-	cp   WPN_CR|WPN_ME|WPN_WD|WPN_AR
+	cp   WPU_CR|WPU_ME|WPU_WD|WPU_AR
 	jr   z, Game_Main_ToWilyCastle
 	
 .toStageSel:
@@ -8327,7 +8588,7 @@ Module_Game:
 	
 	call Game_Do ; Run gameplay
 	call L00354A ; Process player-actor collision
-	call L0143B4 ; BANK $01 ; Process on-screen shots 
+	call WpnS_Do ; BANK $01 ; Process on-screen shots 
 	
 	;
 	; Run actor code.
@@ -8419,7 +8680,7 @@ L002896:;R
 	rst  $08 ; Wait Frame
 	xor  a
 	ldh  [hWorkOAMPos], a
-	call L0143B4 ; BANK $01
+	call WpnS_Do ; BANK $01
 	push af
 		ld   a, BANK(L024000) ; BANK $02
 		ldh  [hRomBankLast], a
@@ -8735,7 +8996,7 @@ L002A97:;C
 	xor  a
 	ldh  [hWorkOAMPos], a
 	call Game_Do
-	call L0143B4 ; BANK $01
+	call WpnS_Do ; BANK $01
 	push af
 	ld   a, BANK(L024000); BANK $02
 	ldh  [hRomBankLast], a
@@ -8873,7 +9134,7 @@ Game_DoRefill:
 	; [BUG] This is accidentally returning early instead of skipping to .end.
 	;       If player's health is being refilled, it will prevent it from being redrawn
 	;       while ammo is also being refilled.
-	ld   a, [wWpnSel]
+	ld   a, [wWpnId]
 	or   a
 	ret  z
 	;--
@@ -10662,284 +10923,520 @@ Lvl_GetBlockId:
 	ld   a, [hl]				; A = Block ID
 	scf  						; C Flag = Always set
 	ret
-	
-; =============== Wpn_DoActColi ===============
+	; =============== Wpn_DoActColi ===============
 ; Checks a shot for collision against all actors.
-L003384:;C
-	xor  a
-L003385:;R
-	ld   d, $CD
+Wpn_DoActColi:
+	DEF tActCenterX = wActSpawnX
+	DEF tActCenterY = wActSpawnY
+	; Loop through all 16 actors
+	xor  a		; Start from the first slot
+.loop:
+	; Prepare main slot pointer
+	ld   d, HIGH(wAct)			; DE = Ptr to main slot (wAct)
 	ld   e, a
-	ld   [wActCurSlotPtr], a
+	ld   [wActCurSlotPtr], a	; Save ptr for future use
+	
+	; Skip empty slots
 	ld   a, [de]
-	or   a
-	jr   z, L0033CF
-	and  $7F
-	ld   [wTmpColiActId], a
-	ld   h, $CE
+	or   a						; iActId == 0?
+	jr   z, .nextSlot			; If so, jump
+	
+	and  $FF^ACT_UNK_PROCFLAG	; Save original actor ID (without flags) for future reference
+	ld   [wTmpColiActId], a		; as it might get replaced with an explosion if it gets defeated.
+	
+	; Prepare collision data slot pointer.
+	; This is exactly $100 bytes after DE.
+	ld   h, HIGH(wActColi)		; HL = Ptr to respective wActColi entry
 	ld   l, e
-	ld   a, e
-	add  $05
+	
+	;##
+	;
+	; BOUNDING BOX CHECKS
+	;
+	; In general, these are performed by calculating the distance between the actor and a shot,
+	; then checking if it's less than the sum of their collision box radiuses.
+	; If it is, the shot is overlapping with the actor on that particular axis.
+	; 
+	; Since the actors and shots can potentially be at any position, for this to work the calculation
+	; should be the same regardless of their relative position to each other. That is to say,
+	; the origins of actors and shots should be perfectly centered, so that the distance between
+	; the origin and its border alongside a specific axis will always be its respective bounding box radius.
+	;
+	; The horizontal origins are already centered and don't need adjusting, but the vertical ones for actors
+	; (and the player) do, as they are at the bottom, so they need to be subtracted by the vertical radius.
+	;
+	
+	
+	;
+	; HORIZONTAL BOUNDING BOX CHECK
+	;
+
+	; Set up fields
+	ld   a, e					; DE = Ptr to iActX
+	add  iActX
 	ld   e, a
-	ld   a, [$CFEC]
+	ld   a, [wWpnColiBoxH]		; C = wWpnColiBoxH
 	ld   c, a
-	ldh  a, [hActCur+iActX]
+	ldh  a, [hShotCur+iShotX]	; B = iShotX
 	ld   b, a
-	ld   a, [de]
-	ld   [wActSpawnX], a
-	sub  b
-	jr   nc, L0033AD
-	xor  $FF
+	
+	; Calculate the absolute distance
+	ld   a, [de]				; A = iActX
+	ld   [tActCenterX], a		; (Not used)
+	sub  b						; Get distance (iActX - iShotX)
+	jr   nc, .setDistX			; Is that a positive value? If so, skip
+	xor  $FF					; Otherwise, convert to positive
 	inc  a
-	scf  
-L0033AD:;R
-	ld   b, a
-	ldi  a, [hl]
-	add  c
-	cp   b
-	jr   c, L0033CF
-	ld   a, [$CFED]
+	scf  						; ???
+.setDistX:
+	ld   b, a					; B = Distance
+	; If the shot isn't horizontally overlapping with the collision box, seek to the next slot.
+	ldi  a, [hl]				; Get actor radius (A = iActColiBoxH, seek to iActColiBoxV)
+	add  c						; Sum with shot radius, that's the max distance (A += wWpnColiBoxH)
+	cp   b						; MaxDistance - Distance < 0? (Distance > MaxDistance?)
+	jr   c, .nextSlot			; If so, jump (not colliding, too far)
+	
+	;
+	; VERTICAL BOUNDING BOX CHECK
+	; 
+	
+	; Set up fields
+	ld   a, [wWpnColiBoxV]		; C = wWpnColiBoxV
 	ld   c, a
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hShotCur+iShotY]	; B = iShotY
 	ld   b, a
-	inc  e
-	inc  e
-	ld   a, [de]
-	sub  [hl]
-	ld   [wActSpawnY], a
-	sub  b
-	jr   nc, L0033C8
-	xor  $FF
+	inc  e ; iActYSub
+	inc  e ; iActY
+	
+	; Calculate the absolute distance, like above
+	ld   a, [de]				; A = iActY
+	;--
+	; The actor's origin is at the bottom of the sprite.
+	; For the distance calculation, pretend it's centered by subtracting its vertical radius.
+	sub  [hl]					; A -= iActColiBoxV
+	ld   [tActCenterY], a		; Save centered value for a later check
+	;--
+	sub  b						; Get distance (iActY - iShotY)
+	jr   nc, .setDistY			; Is that a positive value? If so, skip
+	xor  $FF					; Otherwise, convert to positive
 	inc  a
-	scf  
-L0033C8:;R
-	ld   b, a
-	ldi  a, [hl]
-	add  c
-	cp   b
-	call nc, L0033D7
-L0033CF:;R
-	ld   a, [wActCurSlotPtr]
-	add  $10
-	jr   nz, L003385
+	scf  						; ???
+.setDistY:
+	ld   b, a					; B = Distance
+	; Do the bounds check
+	ldi  a, [hl]				; A = iActColiBoxV, seek to iActColiType
+	add  c						; A += wWpnColiBoxV
+	cp   b						; MaxDistance - Distance >= 0? (Distance <= MaxDistance?)
+	call nc, Wpn_OnActColi		; If so, we're in range. Handle collision.
+								; Otherwise, seek to the next slot
+	;##
+.nextSlot:
+	
+	ld   a, [wActCurSlotPtr]	; A = Low byte of slot pointer
+	add  iActEnd				; Next slot
+	
+	jr   nz, .loop				; Processed all 16 slots (overflowed back to $00?) If not, loop
 	ret
-L0033D7:;C
-	ldi  a, [hl]
-	cp   $02
-	ret  c
-	jr   z, L0033F1
-	cp   $03
-	jp   z, L003508
-	cp   $08
-	ret  c
+	
+; =============== Wpn_OnActColi ===============
+; Handles collision for a shot against a specific actors.
+; IN
+; - HL: Ptr to the actor's collision type (iActColiType)
+Wpn_OnActColi:
+
+	;
+	; Determine how to handle it depending on the actor's collision type.
+	;
+	ldi  a, [hl]		; A = iActColiType, seek to iActColiDamage
+	; ACTCOLI_0 are completely intangible and ACTCOLI_1 is used by ???
+	; Shots should pass through them, so return.
+	cp   ACTCOLI_2		; A < ACTCOLI_2?
+	ret  c				; If so, return
+	; ACTCOLI_2 is for vulnerable enemies (can hit)
+	jr   z, .typeEnemyHit	; A == ACTCOLI_2? If so, jump
+	; ACTCOLI_3 is for invulerable enemies (always deflect)
+	cp   ACTCOLI_3			; A == ACTCOLI_3
+	jp   z, .deflect
+	; ACTCOLI_4 to ACTCOLI_7 are for ???
+	; Shots pass through them.
+	cp   ACTCOLI_8_START	; A < ACTCOLI_8_START?
+	ret  c					; If so, return
+	
+; --------------- .typePartial ---------------
+.typePartial:
+	;
+	; All types above ACTCOLI_7 are used for "partially resistant" collision.
+	; The collision type is treated as an offset relative to the vertical center of the actor.
+	;
+	; The actor will be damaged only if the shot's position is below that point.
+	;
+	; This is exclusively used by Quint and the final boss.
+	;
+	
+	; B = Absolute threshold point (relative to the screen)
+	ld   b, a				; B = Relative thresold value (iActColiType)
+	ld   a, [tActCenterY]	; A = Actor's Y position
+	add  b					; ActPos += Rel, to get the actual threshold
 	ld   b, a
-	ld   a, [wActSpawnY]
-	add  b
-	ld   b, a
-	ldh  a, [hActCur+iActY]
-	cp   b
-	jp   nc, L003508
-L0033F1:;R
-	inc  l
-	inc  l
-	ldd  a, [hl]
-	or   a
-	ret  nz
+	
+	; If you shoot anywhere below that point, deflect it
+	ldh  a, [hShotCur+iShotY]	; A = iShotY
+	cp   b						; iShotY >= Threshold?
+	jp   nc, .deflect			; If so, it's deflected
+	
+	; Otherwise, deal damage
+	
+; --------------- .typeEnemyHit ---------------
+.typeEnemyHit:
+	
+	; If the actor has mercy invincibility, ignore the collision.
+	; [POI] Unlike other games, the shot does not get despawned when this happens
+	;       which is the reason rapid-fired shots may pass through enemies.
+	inc  l ; iActColiHealth
+	inc  l ; iActColiInvulnTimer
+	ldd  a, [hl]	; A = iActColiInvulnTimer, seek to iActColiHealth
+	or   a			; Invuln != 0?
+	ret  nz			; If so, return
+	
+	
 	push hl
-	ld   a, [wWpnSel]
-	cp   $0C
-	jr   nz, L003406
-	ld   a, [wWpnSGRide]
-	or   a
-	jr   z, L00340A
-	ld   a, $0C
-L003406:;R
-	sub  $03
-	jr   nc, L00340B
-L00340A:;X
-	xor  a
-L00340B:;R
-	ld   e, a
-	ld   a, [wTmpColiActId]
-	ld   c, a
-	swap a
-	and  $0F
-	ld   b, a
-	ld   a, c
-	swap a
-	and  $F0
-	or   $06
-	add  e
-	ld   c, a
-	ld   hl, $4000
-	add  hl, bc
-	push af
-	ld   a, $03
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
-	pop  af
-	ld   a, [hl]
-	ld   [wWpnActDmg], a
-	push af
-	ldh  a, [hRomBankLast]
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
-	pop  af
+		;
+		; Determine how weak the actor is to the weapon shot.
+		;
+		; This data is stored from the 6th byte of a ActS_ColiTbl entry, roughly
+		; ordered by weapon ID.
+		; To save space, this data isn't *exactly* in the same order as WPN_*, 
+		; as it skips over weapons that can't do damage like the items.
+		;
+		; Therefore, first calculate the weapon index relative to the 6th byte.
+		;
+		
+		; There's a special case with the Sakugarne item, since the player can fire normal shots when not riding it.
+		; Those shots should not count as Sakugarne shots.
+		ld   a, [wWpnId]
+		cp   WPN_SG				; Sakugarne selected?
+		jr   nz, .idxSubItems	; If not, jump
+		ld   a, [wWpnSGRide]
+		or   a					; Actually riding it?
+		jr   z, .idxUseDefault	; If not, treat it as the default weapon
+		; Otherwise, use the Sakugarne index.
+		; + 3 to balance out the - 3 below
+		; - iRomActColiDmgP to balance out the base index added later
+		ld   a, iRomActColiDmgSg - iRomActColiDmgP + 3
+	.idxSubItems:
+		; The three items are skipped and shift almost all entries up by 3.
+		; If we were using a default weapon or Rush (IDs 0 to 3), this will cause the index
+		; to either fall back to 0 (P Shooter), or underflow.
+		; If it underflowed, fall back to the P Shooter entry too.
+		; This which works out, given Rush forms allow to fire normal shots in some way or another.
+		sub  $03				; A -= 3
+		jr   nc, .calcColiIdx	; Underflowed? If not, skip
+	.idxUseDefault:
+		xor  a ; iRomActColiDmgP - iRomActColiDmgP
+	.calcColiIdx:
+		ld   e, a				; E = Struct index (- iRomActColiDmgP)
+		
+		; Seek to the value we're looking for in the actor collision table.
+		; Each entry is $10 bytes long, so:
+		; BC = (wTmpColiActId * $10) + iRomActColiDmgP + E
+		ld   a, [wTmpColiActId]
+		ld   c, a
+			swap a		; B = wTmpColiActId >> 4
+			and  $0F
+			ld   b, a
+		ld   a, c		
+		swap a			; A = wTmpColiActId << 4
+		and  $F0
+		or   iRomActColiDmgP	; From first weapon entry
+		add  e			; Add the struct index
+		ld   c, a		; Save to C
+		
+		; Read the byte to wWpnActDmg
+		ld   hl, ActS_ColiTbl
+		add  hl, bc
+		push af
+			ld   a, BANK(ActS_ColiTbl) ; BANK $03
+			ldh  [hRomBank], a
+			ld   [MBC1RomBank], a
+		pop  af
+		ld   a, [hl]
+		ld   [wWpnActDmg], a
+		push af
+			ldh  a, [hRomBankLast] ; Back to BANK $01
+			ldh  [hRomBank], a
+			ld   [MBC1RomBank], a
+		pop  af
+		
 	pop  hl
+	
+	; If this weapon deals zero damage to the actor (enemy is immune to it), deflect the shot.
 	ld   a, [wWpnActDmg]
-	or   a
-	jp   z, L003508
-	ld   b, a
-	ld   a, e
-	cp   $09
-	jr   nz, L003455
+	or   a					; wWpnActDmg == 0?
+	jp   z, .deflect			; If so, deflect it
+	ld   b, a				; B = Damage dealt
+	
+	;--
+	;
+	; The Sakugarne always rebounds on contact with another enemy.
+	; This same exact check will be repeated other times, such as when the enemy is immune,
+	; with the same result.
+	;
+	ld   a, e				; A = Struct index
+	cp   iRomActColiDmgSg - iRomActColiDmgP	; Pointing to the Sakugarne?
+	jr   nz, .decHealth		; If not, skip
+	; Otherwise, do small jump at $00.02px/frame
 	ld   a, $00
 	ld   [wPlSpdY], a
 	ld   a, $02
 	ld   [wPlSpdYSub], a
-	ld   a, $02
+	ld   a, PL_MODE_JUMPHI
 	ld   [wPlMode], a
-L003455:;R
-	ld   a, [hl]
-	sub  b
-	jr   z, L00349F
-	jr   c, L00349F
-	ldi  [hl], a
-	ld   [wBossHealth], a
+	;--
+.decHealth:
+
+	; Deal damage to the actor.
+	ld   a, [hl]			; A = iActColiHealth (Enemy health)
+	sub  b					; Subtract the damage inflicted
+	jr   z, .actDead		; If the enemy has no health left, jump
+	jr   c, .actDead		; Same it if has underflowed
+	
+; --------------- .actHit ---------------
+.actHit:
+	ldi  [hl], a			; Save back the updated health to iActColiInvulnTimer, seek to iActColiInvulnTimer
+	ld   [wBossHealth], a	; Set this one in case we're in the boss room
 	push hl
-	ld   a, [wWpnPierceLvl]
-	cp   $02
-	jr   nc, L00346A
-	xor  a
-	ldh  [hActCur+iActId], a
-L00346A:;R
-	ld   a, [wWpnSel]
-	cp   $04
-	call z, L003A0B
+		; When the actor survives the hit, despawn the shot if doesn't fully pierce
+		ld   a, [wWpnPierceLvl]
+		cp   WPNPIERCE_ALWAYS	; Does this weapon always pierce? (wWpnPierceLvl >= 2)
+		jr   nc, .actHitTp		; If so, skip
+		xor  a					; Otherwise, despawn the shot
+		ldh  [hShotCur+iShotId], a
+	.actHitTp:
+		
+		; If we're using Top Spin, use up ammo on contact.
+		; This is only the case with bosses, as enemies are set to either die in 1 hit (.actDead),
+		; or completely resist the attack.
+		ld   a, [wWpnId]
+		cp   WPN_TP
+		call z, WpnS_UseAmmo
+		
+
+	; Give 12 frames of mercy invincibility to non-boss enemies.
+	; This is a bit excessive, although keep in mind the flashing animation is directly tied to this invulerability period.
 	pop  hl
-	ld   [hl], $0C
-	ld   a, $03
+	ld   [hl], $0C	; iActColiInvulnTimer = $12
+	
+	; Play hit sound
+	ld   a, SFX_ENEMYHIT
 	ldh  [hSFXSet], a
+	
+	;
+	; If we hit a boss, make that invulnerability period last longer,
+	; and also redraw the status bar.
+	;
+	
+	; For performance, boss damage checks aren't always enabled
 	ld   a, [wBossDmgEna]
 	or   a
 	ret  z
+	
+	; Check for the actor ID ranges used by bosses
 	ld   a, [wTmpColiActId]
-	cp   $50
-	ret  c
-	cp   $54
-	jr   c, L00348E
-	cp   $68
-	ret  c
-	cp   $70
-	ret  nc
-L00348E:;R
-	ld   [hl], $1E
-	ld   a, [wBossHealth]
+	; Final bosses in range $50-$53 (Quint and the three Wily Machine forms) 
+	cp   ACT_SPECBOSS_START		; ID < $50?
+	ret  c						; If so, return
+	cp   ACT_SPECBOSS_END		; ID < $54?
+	jr   c, .bossHit			; If so, jump
+	; Main bosses in range $68-$6F
+	cp   ACT_BOSS_START			; ID < $68?
+	ret  c						; If so, return
+	cp   ACT_BOSS_END			; ID >= $70?
+	ret  nc						; If so, return
+.bossHit:
+	; Half a second of mercy invulerability
+	ld   [hl], $1E				; iActColiInvulnTimer = $1E
+	
+	; Redraw the boss' health bar.
+	; This boss health value, unlike most others, is measured in bars and not in units of health.
+	; wBossHealthBar expects the latter, so...
+	ld   a, [wBossHealth]		; Get units of health
+	add  a						; A *= 8, as each bar is worth 8 units
 	add  a
 	add  a
-	add  a
-	ld   [wBossHealthBar], a
-	ld   hl, wStatusBarRedraw
-	set  2, [hl]
+	ld   [wBossHealthBar], a	; Set bar redraw value
+	ld   hl, wStatusBarRedraw	; Trigger redraw
+	set  BARID_BOSS, [hl]
 	ret
-L00349F:;R
+	
+; --------------- .actDead ---------------
+.actDead:
+	; When the actor dies from the hit, despawn the shot only if never pierces.
+	; This allows shots that only pierce when the actor dies to pass through.
 	ld   a, [wWpnPierceLvl]
-	cp   $01
-	jr   nc, L0034A9
-	xor  a
-	ldh  [hActCur+iActId], a
-L0034A9:;R
-	ld   a, [wWpnSel]
-	cp   $04
-	call z, L003A0B
-	ld   h, $CD
+	cp   WPNPIERCE_LASTHIT	; wWpnPierceLvl >= $01? (wWpnPierceLvl != WPNPIERCE_NONE)
+	jr   nc, .actDeadTp		; If so, skip
+	xor  a					; Otherwise, despawn the shot
+	ldh  [hShotCur+iShotId], a
+	
+.actDeadTp:
+	; Top Spin uses up ammo on successful contact
+	; (and only when it destroys the enemy, which it did if we got here)
+	ld   a, [wWpnId]
+	cp   WPN_TP
+	call z, WpnS_UseAmmo
+	
+	;
+	; Convert the defeated actor into an explosion
+	;
+	
+	ld   h, HIGH(wAct)			; HL = Ptr to actor slot
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
-	ld   a, $80
-	ldi  [hl], a
+	
+	; Replace ID with the explosion one
+	ld   a, ACT_UNK_PROCFLAG|ACT_EXPLSM
+	ldi  [hl], a ; iActId
+	
 	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   h, $CE
+	ldi  [hl], a ; iActRtnId
+	ldi  [hl], a ; iActSprMap
+	
+	; Make the actor intangible, as explosions shouldn't damage the player.
+	ld   h, HIGH(wActColi)		; HL = Ptr to respective collision entry
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
-	inc  l
-	inc  l
+	
+	inc  l ; iActColiBoxV
+	inc  l ; iActColiType
 	xor  a
-	ld   [hl], a
+	ld   [hl], a				; Set ACTCOLI_0
+	
+	;
+	; If the actor we just defeated was a boss.
+	; These are nearly the same checks used for .bossHit
+	;
+	;--
+	; For performance, boss damage checks aren't always enabled.
+	; This has the difference with .bossHit, as if we aren't in a boss room,
+	; it leads to code that ???
 	ld   a, [wBossDmgEna]
 	or   a
 	jp   z, L001E25
+	;--
+	
+	; Check for the actor ID ranges used by bosses
 	ld   a, [wTmpColiActId]
-	cp   $50
-	ret  c
-	cp   $54
-	jr   c, L0034DE
-	cp   $68
-	ret  c
-	cp   $70
-	ret  nc
-L0034DE:;R
+	; Final bosses in range $50-$53 (Quint and the three Wily Machine forms) 
+	cp   ACT_SPECBOSS_START		; ID < $50?
+	ret  c						; If so, return
+	cp   ACT_SPECBOSS_END		; ID < $54?
+	jr   c, .bossDead			; If so, jump
+	; Main bosses in range $68-$6F
+	cp   ACT_BOSS_START			; ID < $68?
+	ret  c						; If so, return
+	cp   ACT_BOSS_END			; ID >= $70?
+	ret  nc						; If so, return
+	
+.bossDead:
+	; In case of a double KO, do not trigger the boss' explosion animation as it'd give the victory to the player.
+	; However, still hide the health bar as the boss was converted to an explosion actor already.
 	ld   a, [wLvlEnd]
-	cp   $01
-	jr   z, L0034FE
-	ld   h, $CD
+	cp   EXPL_PL			; Player has exploded already?
+	jr   z, .bossClrBar			; If so, skip
+	
+	; The explosions should originate from the center of the boss.
+	; As bosses are generally the same height as the player, and also have their
+	; origin at the bottom, the player's radius can be reused to get to the center.
+	ld   h, HIGH(wAct)		; HL = Ptr to slot's iActX
 	ld   a, [wActCurSlotPtr]
-	add  $05
+	add  iActX
 	ld   l, a
-	ld   a, [hl]
+	ld   a, [hl]			; X Origin = Actor's X origin (middle)
 	ld   [wExplodeOrgX], a
-	inc  l
-	inc  l
-	ld   a, [hl]
-	sub  $0C
+	inc  l ; iActYSub
+	inc  l ; iActY
+	ld   a, [hl]			; Y Origin = Actor's Y origin (bottom)
+	sub  PLCOLI_V			; More or less move up to middle
 	ld   [wExplodeOrgY], a
-	ld   a, $02
+	
+	; And trigger it
+	ld   a, EXPL_BOSS
 	ld   [wLvlEnd], a
-L0034FE:;X
+	
+.bossClrBar:
+	; Draw an health bar with no energy left.
 	xor  a
 	ld   [wBossHealthBar], a
 	ld   hl, wStatusBarRedraw
-	set  2, [hl]
+	set  BARID_BOSS, [hl]
 	ret
-L003508:;J
-	ld   a, [wWpnSel]
-	cp   $04
-	jr   nz, L003514
-	ld   a, $05
+	
+; --------------- .deflect ---------------
+; The shot dealt no damage.
+; Most weapons just get their shots deflected, a few have special handling though.
+.deflect:
+	;
+	; Top Spin continues as normal if an enemy resistant to it is hit.
+	; Chances are the player gets hit when this happens, due to the player's collision box
+	; being barely covered by Top Spin's.
+	;
+	ld   a, [wWpnId]
+	cp   WPN_TP				; Using Top Spin?
+	jr   nz, .deflectCr		; If not, jump
+	; At least no weapon ammo is consumed.
+	ld   a, SFX_DEFLECT
 	ldh  [hSFXSet], a
 	ret
-L003514:;R
-	cp   $08
-	jr   nz, L003522
-	ldh  a, [hActCur+iActRtnId]
-	bit  7, a
-	ret  nz
-	ld   a, $80
-	ldh  [hActCur+iActRtnId], a
+.deflectCr:
+	;
+	; Crash Bombs explode on contact against a resistant enemy.
+	;
+	cp   WPN_CR				; Using Crash Bombs?
+	jr   nz, .deflectSg		; If not, jump
+	
+	ldh  a, [hShotCur+iShotWkTimer]
+	bit  SHOTCRB_EXPLODE, a			; Is it exploding already?
+	ret  nz							; If so, return
+	ld   a, SHOTCR_EXPLODE			; Otherwise, overwrite the timer to point
+	ldh  [hShotCur+iShotWkTimer], a	; to the start of the explosion phase
 	ret
-L003522:;R
+	
+.deflectSg:
+	;
+	; As before, the Sakugarne always rebounds on contact with another enemy.
+	;
 	ld   a, [wWpnSGRide]
-	or   a
-	jr   z, L00353C
+	or   a					; Riding the Sakugarne?
+	jr   z, .deflectNorm	; If not, jump
+	; Do small jump at $00.02px/frame
 	ld   a, $00
 	ld   [wPlSpdY], a
 	ld   a, $02
 	ld   [wPlSpdYSub], a
-	ld   a, $02
+	ld   a, PL_MODE_JUMPHI
 	ld   [wPlMode], a
-	ld   a, $05
+	; Play deflect sound
+	ld   a, SFX_DEFLECT
 	ldh  [hSFXSet], a
 	ret
-L00353C:;R
+	
+.deflectNorm:
+	;
+	; Any other weapon gets deflected as normal.
+	;
+	
+	; Reset timer
 	xor  a
-	ldh  [hActCur+iActRtnId], a
-	ldh  a, [hActCur+iActLayoutPtr]
-	or   $80
-	ldh  [hActCur+iActLayoutPtr], a
-	ld   a, $05
+	ldh  [hShotCur+iShotWkTimer], a
+	; Mark the shot as being deflected
+	ldh  a, [hShotCur+iShotFlags]
+	or   SHOT3_DEFLECT
+	ldh  [hShotCur+iShotFlags], a
+	; Play respective sound
+	ld   a, SFX_DEFLECT
 	ldh  [hSFXSet], a
 	ret
+	
 ; =============== Pl_DoActColi ===============
 ; Checks for player collision against all actors.
 L00354A:;C
@@ -11091,11 +11588,11 @@ L003636:;R
 	ld   [wPlDirH], a
 	rrca 
 	ld   bc, $0080
-	call L0018B9
-	jp   L0018FE
+	call Pl_Unk_SetSpeedByActDir
+	jp   Pl_BgColiApplySpeedX
 L003656:;R
 	ld   b, a
-	ld   a, [wWpnHelperWarp]
+	ld   a, [wWpnHelperActive]
 	cp   $FF
 	ret  nz
 	ld   a, b
@@ -11169,7 +11666,7 @@ L0036D9:;J
 	jr   nz, L0036E5
 	ld   a, $80
 	ld   bc, $0080
-	jp   L0018B9
+	jp   Pl_Unk_SetSpeedByActDir
 L0036E5:;R
 	cp   $06
 	ret  nz
@@ -11254,7 +11751,7 @@ L00374D:;I
 ; =============== Pause_Do ===============
 ; Main loop of the pause menu.
 Pause_Do:
-	; Save any changes immediately, before wWpnSel can change
+	; Save any changes immediately, before wWpnId can change
 	call WpnS_SaveCurAmmo
 	
 	;
@@ -11266,22 +11763,22 @@ Pause_Do:
 	; As usual, the writes are performed during VBlank, using the TilemapDef system,
 	; and to minimize the waiting time groups of bars are applied at once.
 	;
-	ld   a, [wWpnSel]
-	push af						; Save wWpnSel for much later
+	ld   a, [wWpnId]
+	push af						; Save wWpnId for much later
 	
 		; PLAYER HEALTH
 	.plBar:
 		ld   hl, wPlHealth		; HL = Ptr to value
 		ld   de, wTilemapBuf	; DE = Ptr to write buffer
-		ld   c, $00				; C = Selection (WPNSEL_*)
+		ld   c, $00				; C = Selection (WPN_*)
 		ldi  a, [hl]			; Read wPlHealth, seek to wWpnAmmoRC
 		call Pause_AddBarDrawEv	; Draw the weapon name & small lifebar
 		
 		; RUSH ITEMS
 		; These are on the first three bits of wWpnUnlock1.
 		; The way this is done by shifting bits right and incrementing the selection 
-		; absolutely requires wWpnUnlock1, wWpnSel and the weapon array to be consistent.
-		; ie: RC, RM and RJ are in the same order both in WPN_* and WPNSEL_*, even though
+		; absolutely requires wWpnUnlock1, wWpnId and the weapon array to be consistent.
+		; ie: RC, RM and RJ are in the same order both in WPU_* and WPN_*, even though
 		; they start at different indexes. This pattern is also required for the 8 main weapons.
 	.rushBars:
 		ld   a, [wWpnUnlock1]	; B = Item unlock bitmask
@@ -11322,10 +11819,10 @@ Pause_Do:
 		; SAKUGARNE
 		ld   de, wTilemapBuf	; Reset buffer pos
 		ld   a, [wWpnUnlock1]
-		and  WPN_SG				; Pogo unlocked?
+		and  WPU_SG				; Pogo unlocked?
 		jr   z, .etanks			; If not, skip
 		ld   a, [wWpnAmmoSG]
-		ld   c, WPNSEL_SG
+		ld   c, WPN_SG
 		call Pause_AddBarDrawEv
 		
 	.etanks:
@@ -11448,7 +11945,7 @@ Pause_Do:
 		jr   z, .main
 		; A/START: Select weapon
 		and  KEY_START|KEY_A		; ## Pressed A or START?
-		ld   a, [wWpnSel]			; (A = Selected entry)
+		ld   a, [wWpnId]			; (A = Selected entry)
 		jr   nz, .redrawName		; ## If so, skip ahead
 		
 		; DOWN: Move cursor down
@@ -11462,7 +11959,7 @@ Pause_Do:
 		; LEFT/RIGHT: Move cursor horizontally.
 		; There are only two columns, so this can get away with toggling the lowest bit of the cursor position.
 		; Of course, this requires the cursor positions to be ordered left to right, top to bottom.
-		ld   a, [wWpnSel]
+		ld   a, [wWpnId]
 		xor  $01					; Move to other column
 		call Pause_CanMoveSel		; Can we move there?
 		jr   c, .redrawName			; If so, jump
@@ -11470,9 +11967,9 @@ Pause_Do:
 		
 		DEF PAUSESCR_COLS = 2
 		DEF PAUSESCR_ROWS = 7
-		DEF PAUSESCR_OOB  = WPNSEL_EN+1
+		DEF PAUSESCR_OOB  = WPN_EN+1
 	.selUp:
-		ld   a, [wWpnSel]			; A = wWpnSel
+		ld   a, [wWpnId]			; A = wWpnId
 	.selUp2:
 		; This may need to repeat the check several times, since we move row by row and weapons may not be unlocked.
 		; Just in case, a limit to the amount of times it can repeat the check is made, which corresponds to the
@@ -11492,7 +11989,7 @@ Pause_Do:
 		
 	.selDown:
 		; Same thing, but for moving down
-		ld   a, [wWpnSel]
+		ld   a, [wWpnId]
 		ld   b, PAUSESCR_ROWS-1
 	.selDownLoop:
 		sub  PAUSESCR_COLS
@@ -11511,7 +12008,7 @@ Pause_Do:
 		; Needed when either moving the cursor or selecting an option.
 		; This is the same code used in Pause_FlashWpnName, but simplified.
 		push af ; Save new cursor pos
-			ld   a, [wWpnSel]		; A = wWpnSel * 4
+			ld   a, [wWpnId]		; A = wWpnId * 4
 			add  a
 			add  a
 			ld   hl, Pause_BarTbl	; HL = Table base
@@ -11536,7 +12033,7 @@ Pause_Do:
 			
 			rst  $10 ; Wait tilemap load
 		pop  af ; Restore new cursor pos
-		ld   [wWpnSel], a		; and apply it
+		ld   [wWpnId], a		; and apply it
 		
 		; If we pressed A or START, select the current option
 		ldh  a, [hJoyNewKeys]
@@ -11546,8 +12043,8 @@ Pause_Do:
 		jr   .main
 		
 	.doSel:
-		ld   a, [wWpnSel]
-		cp   WPNSEL_EN		; wWpnSel < WPNSEL_EN?
+		ld   a, [wWpnId]
+		cp   WPN_EN			; wWpnId < WPN_EN?
 		jr   c, .selWpn		; If so, jump (weapon selected)
 		
 	.selETank:
@@ -11646,7 +12143,7 @@ Pause_Do:
 		;
 		
 		; Seek to the tile IDs for the font from its Pause_BarTbl entry
-		ld   a, [wWpnSel]					; A = wWpnSel * 4
+		ld   a, [wWpnId]					; A = wWpnId * 4
 		add  a
 		add  a
 		ld   hl, Pause_BarTbl+iPBar_Tiles	; HL = Pause_BarTbl+2
@@ -11666,13 +12163,13 @@ Pause_Do:
 		
 		;
 		; Set the active weapon's ammo if the selected weapon uses ammo.
-		; wWpnAmmoCur = wWpnAmmoTbl[wWpnSel]
+		; wWpnAmmoCur = wWpnAmmoTbl[wWpnId]
 		;
-		ld   a, [wWpnSel]
-		or   a ; WPNSEL_P			; Default weapon selected?
+		ld   a, [wWpnId]
+		or   a ; WPN_P				; Default weapon selected?
 		jr   z, .selDrawBar			; If so, skip
 		ld   hl, wWpnAmmoTbl
-		ld   b, $00					; Index by wWpnSel
+		ld   b, $00					; Index by wWpnId
 		ld   c, a
 		add  hl, bc
 		ld   a, [hl]				; Read saved ammo
@@ -11684,8 +12181,8 @@ Pause_Do:
 		;
 		xor  a						; Just in case
 		ld   [wBarQueuePos], a
-		ld   a, [wWpnSel]
-		or   a ; WPNSEL_P			; # Default weapon selected?
+		ld   a, [wWpnId]
+		or   a ; WPN_P				; # Default weapon selected?
 		ld   a, [wWpnAmmoCur]		; A = Weapon ammo
 		jr   nz, .selBarEv			; # If not, jump
 		ld   a, $FF					; Otherwise, A = Value higher than BAR_MAX
@@ -11705,9 +12202,9 @@ Pause_Do:
 		; - Reset weapon-related fields
 		; - Make any helpers (Rush/Sakugarne) teleport out on the spot
 		;
-		ld   a, [wWpnSel]	; B = New wWpnSel
+		ld   a, [wWpnId]	; B = New wWpnId
 		ld   b, a
-	pop  af					; A = Old wWpnSel
+	pop  af					; A = Old wWpnId
 	cp   b					; Has it changed?
 	jr   z, .loadGfx		; If not, skip
 	call Pause_ClrShots
@@ -11717,18 +12214,18 @@ Pause_Do:
 	;
 	; Load the set of graphics for the selected weapon.
 	;
-	; Each WPNSEL_* value is mapped to a set of graphics, each being 16 tiles long and getting loaded to $8500-$85FF.
+	; Each WPN_* value is mapped to a set of graphics, each being 16 tiles long and getting loaded to $8500-$85FF.
 	; All weapon graphics fit into this limit (with multiple weapons being stored on the same set, even), except for the Sakugarne.
 	; Therefore, its graphics are split in two. One set is loaded when riding it, the other when not, and so:
-	; SetId = wWpnSel + wWpnSGRide
+	; SetId = wWpnId + wWpnSGRide
 	;
 	; What this means is the set for the ridden Sakugarne must come immediately after the standalone one.
-	; Thankfully, after WPNSEL_SG comes WPNSEL_EN, which is not for a weapon. 
+	; Thankfully, after WPN_SG comes WPN_EN, which is not for a weapon. 
 	;
 	
 	;--
 	; HL = Source GFX ptr
-	ld   a, [wWpnSel]			; Build index
+	ld   a, [wWpnId]			; Build index
 	ld   b, a
 	ld   a, [wWpnSGRide]	
 	add  b
@@ -11843,26 +12340,26 @@ Pause_CopyFontTileGFX:
 ; =============== Pause_WpnGfxPtrTbl ===============
 ; Maps each weapon to its graphics.
 ;
-; Specifically, it maps the selected weapon (wWpnSel/WPNSEL_*) to the high byte of a pointer to a weapon art set.
+; Specifically, it maps the selected weapon (wWpnId/WPN_*) to the high byte of a pointer to a weapon art set.
 ; These sets of graphics are all in BANK $0B, are all $100 bytes long, and are all aligned to a $100 byte boundary,
 ; making their low byte always be $00.
 ;
 ; To save space, graphics for multiple weapons may be stored into the same art set.
 Pause_WpnGfxPtrTbl:
-	db HIGH(L0B4500) ; WPNSEL_P 
-	db HIGH(GFX_Space1OBJ) ; WPNSEL_RC
-	db HIGH(L0B4900) ; WPNSEL_RM
-	db HIGH(L0B4A00) ; WPNSEL_RJ
-	db HIGH(L0B4B00) ; WPNSEL_TP
-	db HIGH(L0B4E00) ; WPNSEL_AR
-	db HIGH(GFX_Space1OBJ) ; WPNSEL_WD
-	db HIGH(L0B4F00) ; WPNSEL_ME
-	db HIGH(L0B4D00) ; WPNSEL_CR
-	db HIGH(L0B4F00) ; WPNSEL_NE
-	db HIGH(GFX_Space1OBJ) ; WPNSEL_HA
-	db HIGH(L0B4E00) ; WPNSEL_MG
-	db HIGH(L0B4D00) ; WPNSEL_SG (wWpnSGRide = $00)
-	db HIGH(L0B4C00) ; WPNSEL_SG (wWpnSGRide = $01)
+	db HIGH(L0B4500) ; WPN_P 
+	db HIGH(GFX_Space1OBJ) ; WPN_RC
+	db HIGH(L0B4900) ; WPN_RM
+	db HIGH(L0B4A00) ; WPN_RJ
+	db HIGH(L0B4B00) ; WPN_TP
+	db HIGH(L0B4E00) ; WPN_AR
+	db HIGH(GFX_Space1OBJ) ; WPN_WD
+	db HIGH(L0B4F00) ; WPN_ME
+	db HIGH(L0B4D00) ; WPN_CR
+	db HIGH(L0B4F00) ; WPN_NE
+	db HIGH(GFX_Space1OBJ) ; WPN_HA
+	db HIGH(L0B4E00) ; WPN_MG
+	db HIGH(L0B4D00) ; WPN_SG (wWpnSGRide = $00)
+	db HIGH(L0B4C00) ; WPN_SG (wWpnSGRide = $01)
 
 
 ; =============== Pause_ClrShots ===============
@@ -11906,13 +12403,13 @@ Pause_StartHelperWarp:
 	; Actor IDs between $E0-$E3 are reserved to the helpers.
 	; If the actor ID for the slot is outside this range, seek to the next.
 	ld   a, [hl]		; A = iActId
-	cp   ACT_E0			; A < ACT_E0?
+	cp   ACT_UNK_PROCFLAG|ACT_WPN_RC			; A < ACT_WPN_RC?
 	jr   c, .next		; If so, skip
-	cp   ACT_E4			; A >= ACT_E4?
+	cp   ACT_UNK_PROCFLAG|ACT_WPN_SG+1		; A >= ACT_E4?
 	jr   nc, .next		; If so, skip
 	
 	; If the actor is already in the middle of teleporting out, there's nothing to do.
-	ld   a, [wWpnHelperWarp]
+	ld   a, [wWpnHelperActive]
 	cp   AHW_WARPOUT_START
 	jr   z, .notFound
 	cp   AHW_MODE_7
@@ -11929,7 +12426,7 @@ Pause_StartHelperWarp:
 	ld   [hl], a		; iActRtnId = 0
 	
 	ld   a, AHW_WARPOUT_START
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	
 	scf ; C Flag = set
 	ret
@@ -11950,11 +12447,11 @@ Pause_StartHelperWarp:
 ; Saves the current weapon's ammo back to the array.
 WpnS_SaveCurAmmo:
 	; Nothing to save if no weapon is selected
-	ld   a, [wWpnSel]
+	ld   a, [wWpnId]
 	or   a
 	ret  z
 	
-	; Otherwise, wWpnAmmoTbl[wWpnSel] = wWpnAmmoCur
+	; Otherwise, wWpnAmmoTbl[wWpnId] = wWpnAmmoCur
 	ld   hl, wWpnAmmoTbl
 	ld   b, $00
 	ld   c, a
@@ -11963,27 +12460,41 @@ WpnS_SaveCurAmmo:
 	ld   [hl], a
 	ret
 	
-L003A00:;C
+; =============== WpnS_HasAmmoForShot ===============
+; Checks if the player has enough ammo to fire the weapon.
+; OUT
+; - C Flag: If set, there's not enough ammo
+WpnS_HasAmmoForShot:
 	push bc
-	ld   a, [wWpnShotCost]
-	ld   b, a
-	ld   a, [wWpnAmmoCur]
-	cp   b
+		ld   a, [wWpnShotCost]	; B = Ammo cost for a shot
+		ld   b, a
+		ld   a, [wWpnAmmoCur]	; A = Current ammo
+		cp   b					; C Flag = CurAmmo < ShotCost?
 	pop  bc
 	ret
-L003A0B:;JC
+	
+; =============== WpnS_UseAmmo ===============
+; Uses up ammo for a weapon shot.
+WpnS_UseAmmo:
 	push hl
 	push bc
-	ld   a, [wWpnShotCost]
-	ld   b, a
-	ld   a, [wWpnAmmoCur]
-	sub  b
-	jr   c, L003A22
-	ld   [wWpnAmmoCur], a
-	ld   [wWpnAmmoBar], a
-	ld   hl, wStatusBarRedraw
-	set  1, [hl]
-L003A22:;R
+		; Subtract the cost of a shot to the current ammo.
+		; A = wWpnAmmoCur - wWpnShotCost
+		ld   a, [wWpnShotCost]
+		ld   b, a
+		ld   a, [wWpnAmmoCur]
+		sub  b
+		; If we underflowed, we don't have enough ammo to fire a shot.
+		jr   c, .end
+		
+		; Otherwise, save the updated ammo
+		ld   [wWpnAmmoCur], a
+		
+		; And redraw the ammo bar
+		ld   [wWpnAmmoBar], a		; Set bar redraw value
+		ld   hl, wStatusBarRedraw	; Request redraw
+		set  BARID_WPN, [hl]
+.end:
 	pop  bc
 	pop  hl
 	ret
@@ -12247,7 +12758,7 @@ Game_LivesFontMaps:
 ; See also: Game_AddBarDrawEv
 ; IN
 ; - A: Bar value
-; - C: Weapon selection ID (WPNSEL_*)
+; - C: Weapon selection ID (WPN_*)
 ; - DE: Tilemap destination ptr
 Pause_AddBarDrawEv:
 	;
@@ -12265,7 +12776,7 @@ Pause_AddBarDrawEv:
 			
 			;
 			; Build the TilemapDef starting from the weapon's name.
-			; The table containing this data, indexed by WPNSEL_*, also contains the tilemap pointer.
+			; The table containing this data, indexed by WPN_*, also contains the tilemap pointer.
 			; After drawing the tilemap name (2 bytes), the bar will be immediately drawn to the right.
 			;
 		
@@ -12354,7 +12865,7 @@ Pause_AddBarDrawEv:
 	ret
 	
 ; =============== Pause_BarTbl ===============
-; Defines the location and name for each entry in the pause screen, indexed by weapon selection ID.
+; Defines the location and name for each entry in the pause screen, indexed by weapon ID / current selection.
 ; The tilemap pointer refers to where the name gets written, while the gauge is drawn two tiles to the right.
 MACRO mPBarDef
 	db HIGH(\1),LOW(\1) ; Tilemap pointer (reverse order)
@@ -12362,22 +12873,22 @@ MACRO mPBarDef
 ENDM
 Pause_BarTbl:
 	SETCHARMAP pause
-	mPBarDef $9C62, "P " ; WPNSEL_P 
+	mPBarDef $9C62, "P " ; WPN_P 
 .wpn:
-	mPBarDef $9C6B, "RC" ; WPNSEL_RC
-	mPBarDef $9CA2, "RM" ; WPNSEL_RM
-	mPBarDef $9CAB, "RJ" ; WPNSEL_RJ
-	mPBarDef $9CE2, "TP" ; WPNSEL_TP
-	mPBarDef $9CEB, "AR" ; WPNSEL_AR
-	mPBarDef $9D22, "WD" ; WPNSEL_WD
-	mPBarDef $9D2B, "ME" ; WPNSEL_ME
-	mPBarDef $9D62, "CL" ; WPNSEL_CR
-	mPBarDef $9D6B, "NE" ; WPNSEL_NE
-	mPBarDef $9DA2, "HA" ; WPNSEL_HA
-	mPBarDef $9DAB, "MG" ; WPNSEL_MG
-	mPBarDef $9DE2, "SG" ; WPNSEL_SG
+	mPBarDef $9C6B, "RC" ; WPN_RC
+	mPBarDef $9CA2, "RM" ; WPN_RM
+	mPBarDef $9CAB, "RJ" ; WPN_RJ
+	mPBarDef $9CE2, "TP" ; WPN_TP
+	mPBarDef $9CEB, "AR" ; WPN_AR
+	mPBarDef $9D22, "WD" ; WPN_WD
+	mPBarDef $9D2B, "ME" ; WPN_ME
+	mPBarDef $9D62, "CL" ; WPN_CR
+	mPBarDef $9D6B, "NE" ; WPN_NE
+	mPBarDef $9DA2, "HA" ; WPN_HA
+	mPBarDef $9DAB, "MG" ; WPN_MG
+	mPBarDef $9DE2, "SG" ; WPN_SG
 .en:
-	mPBarDef $9DEB, "EN" ; WPNSEL_EN
+	mPBarDef $9DEB, "EN" ; WPN_EN
 	
 ; =============== Pause_FlashWpnName ===============
 ; Flashes the selected weapon's name every 8 frames.
@@ -12390,12 +12901,12 @@ Pause_FlashWpnName:
 	
 	;
 	; Build the TilemapDef for the weapon name only.
-	; The table containing this data, indexed by WPNSEL_*, also contains the tilemap pointer.
+	; The table containing this data, indexed by WPN_*, also contains the tilemap pointer.
 	; After drawing the tilemap name (2 bytes), the bar will be immediately drawn to the right.
 	;
 	
 	; bytes0-1: Destination pointer
-	ld   a, [wWpnSel]		; A = wWpnSel * 4
+	ld   a, [wWpnId]		; A = wWpnId * 4
 	add  a
 	add  a
 	ld   hl, Pause_BarTbl	; HL = Table base
@@ -12457,41 +12968,41 @@ ENDR
 ; Checks if the cursor can move to the specified location.
 ; In practice, it mostly checks if the weapons are unlocked.
 ; IN
-; - A: Cursor position (WPNSEL_*)
+; - A: Current weapon / Cursor selection (WPN_*)
 ; OUT
 ; - C flag: If set, the cursor can move.
 ;           (ie: the weapon is unlocked)
 Pause_CanMoveSel:
 	; The basic player weapon is always selectable
-	or   a ; WPNSEL_P	; Selecting the default weapon?
+	or   a ; WPN_P	; Selecting the default weapon?
 	jr   nz, .chkTank	; If not, skip
 	scf  				; Otherwise, C Flag = Set
 	ret
 .chkTank:
 	; And so are E-Tanks
-	cp   WPNSEL_EN
+	cp   WPN_EN
 	jr   nz, .chkWpns
 	scf  
 	ret
 .chkWpns:
 	; The rest is all unlockable weapons/items.
 	; This opts to do checks by shifting the relevant bit to the carry, and it assumes
-	; that cursor poin a way that can't be represented by the WPNB_* constants,
+	; that cursor poin a way that can't be represented by the WPUB_* constants,
 	push bc
 		ld   c, a ; Save cursor pos
 			; Sakugarne requires bit3 of wWpnUnlock1
 			; This is just a manual check, as it's the exception to the convention (see .chkItems)
-			cp   WPNSEL_SG			; Selecting Sakugarne?
+			cp   WPN_SG			; Selecting Sakugarne?
 			jr   nz, .chkItems		; If not, skip
 			ld   a, [wWpnUnlock1]	; Get unlock bits
 			swap a					; << 4
 			rla  					; << 1 (bit3 shifted)
 			jr   .end
 		.chkItems:
-			; The first four selections are for the items, stored in wWpnUnlock1 (alongside WPNSEL_P, which was checked before).
-			; This and .chkNormWpn need WPNSEL_* and WPNB_* to be consistent, due to how the selection number doubles
+			; The first four selections are for the items, stored in wWpnUnlock1 (alongside WPN_P, which was checked before).
+			; This and .chkNormWpn need WPN_* and WPUB_* to be consistent, due to how the selection number doubles
 			; as how many times to shift bits right.
-			cp   WPNSEL_TP			; wWpnSel >= WPNSEL_TP
+			cp   WPN_TP				; wWpnId >= WPN_TP
 			jr   nc, .chkNormWpn	; If so, skip 
 			ld   b, a				; Res = wWpnUnlock1 >> A
 			ld   a, [wWpnUnlock1]
@@ -12499,8 +13010,8 @@ Pause_CanMoveSel:
 		.chkNormWpn:
 			; Normal boss weapon, stored in wWpnUnlock0.
 			; Offset by -1 since one extra shift is needed to shift into the carry.
-			; (.chkItems didn't need to as WPNSEL_P being $00 already provided that extra shift)
-			sub  WPNSEL_TP-1		; Res = wWpnUnlock0 >> A - 3
+			; (.chkItems didn't need to as WPN_P being $00 already provided that extra shift)
+			sub  WPN_TP-1		; Res = wWpnUnlock0 >> A - 3
 			ld   b, a
 			ld   a, [wWpnUnlock0]
 		.loopBit:
@@ -12573,14 +13084,14 @@ StageSel_BossGfxTbl:
 ; =============== StageSel_LvlBitTbl ===============
 ; Maps each stage to its own completion bit in wWpnUnlock0.
 StageSel_LvlBitTbl: 
-	db WPN_HA ; LVL_HARD
-	db WPN_TP ; LVL_TOP
-	db WPN_MG ; LVL_MAGNET
-	db WPN_NE ; LVL_NEEDLE
-	db WPN_CR ; LVL_CRASH
-	db WPN_ME ; LVL_METAL
-	db WPN_WD ; LVL_WOOD
-	db WPN_AR ; LVL_AIR
+	db WPU_HA ; LVL_HARD
+	db WPU_TP ; LVL_TOP
+	db WPU_MG ; LVL_MAGNET
+	db WPU_NE ; LVL_NEEDLE
+	db WPU_CR ; LVL_CRASH
+	db WPU_ME ; LVL_METAL
+	db WPU_WD ; LVL_WOOD
+	db WPU_AR ; LVL_AIR
 	db $00    ; LVL_CASTLE (unselectable)
 	db $00    ; LVL_STATION (unselectable)
 

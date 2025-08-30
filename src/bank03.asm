@@ -3,16 +3,23 @@
 ; Each entry is $10 bytes long.
 ;
 ; These mostly follow the order they are stored in RAM, but not exactly:
-; FORMAT
-; - 0: Box width
-; - 1: Box height
+; FORMAT (iRomActColi*)
+; - 0: Collision box, horizontal radius
+; - 1: Collision box, vertical radius
 ; - 2: Type
 ; - 3: Damage dealt
 ; - 4: Starting health (low nybble)
 ; - 5: Starting health (high nybble)
-;
-;
-;
+; - 6: Damage received by the default weapon
+; - 7: Damage received by Top Spin
+; - 8: Damage received by Air Shooter
+; - 9: Damage received by Leaf Shield
+; - A: Damage received by Metal Blade
+; - B: Damage received by Crash Bomb
+; - C: Damage received by Needle Cannon
+; - D: Damage received by Hard Knuckle
+; - E: Damage received by Magnet Missile 
+; - F: Damage received by Sakugarne
 ;
 ActS_ColiTbl: db $00;X
 L034001: db $00;X

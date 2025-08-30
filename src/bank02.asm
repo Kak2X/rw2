@@ -1587,7 +1587,7 @@ L024A2C:;R
 	ret  nc
 	ldh  a, [hActCur+iActSprMap]
 	ld   bc, $0080
-	call L0018B9
+	call Pl_Unk_SetSpeedByActDir
 	ldh  a, [hActCur+iActY]
 	add  $0C
 	ld   b, a
@@ -2606,7 +2606,7 @@ L0250E8:;I
 	jr   nz, L0250FD
 	ldh  a, [hActCur+iActSprMap]
 	ld   bc, $0080
-	call L0018B9
+	call Pl_Unk_SetSpeedByActDir
 L0250FD:;R
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
@@ -4691,7 +4691,7 @@ L025ECD:;I
 	jr   nc, L025EDE
 	ld   a, $00
 	ld   bc, $0080
-	call L0018B9
+	call Pl_Unk_SetSpeedByActDir
 L025EDE:;R
 	ldh  a, [hTimer]
 	rrca 
@@ -4712,7 +4712,7 @@ L025EF5:;I
 	jr   nc, L025F06
 	ld   a, $00
 	ld   bc, $0080
-	call L0018B9
+	call Pl_Unk_SetSpeedByActDir
 L025F06:;R
 	ldh  a, [hTimer]
 	rrca 
@@ -4824,7 +4824,7 @@ L025FA3:;I
 	ldh  a, [hActCur+iActSpdX]
 	ld   b, a
 	ldh  a, [hActCur+iActSprMap]
-	jp   L0018B9
+	jp   Pl_Unk_SetSpeedByActDir
 L025FCE:;I
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
@@ -6323,7 +6323,7 @@ L026A17:;I
 	or   a
 	jr   nz, L026A35
 	ld   a, $06
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	jp   ActS_DecRtnId
 L026A35:;R
 	ld   a, [wCF6A_Unk_ActTargetSlot]
@@ -6342,7 +6342,7 @@ L026A35:;R
 	ld   [wPlSpdYSub], a
 	ld   a, $80
 	ld   [wPlSpdY], a
-	jp   L003A0B
+	jp   WpnS_UseAmmo
 L026A59:;I
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
@@ -6381,7 +6381,7 @@ L026A91: db $B1;X
 L026A92: db $1E;X
 L026A93:;R
 	ld   a, $06
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	jp   ActS_DecRtnId
 L026A9B:;I
 	ldh  a, [hActCur+iActTimer0C]
@@ -6397,7 +6397,7 @@ L026A9B:;I
 	or   a
 	jr   nz, L026ABB
 	ld   a, $06
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -6456,14 +6456,14 @@ L026B06:;R
 	ld   a, [wWpnSGUseTimer]
 	sub  $10
 	ld   [wWpnSGUseTimer], a
-	call c, L003A0B
+	call c, WpnS_UseAmmo
 	ld   a, [wWpnAmmoCur]
 	or   a
 	ret  nz
 	xor  a
 	ld   [wPlMode], a
 	ld   a, $06
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -6495,7 +6495,7 @@ L026B65:;R
 	jp   ActS_IncRtnId
 L026B68:;R
 	ld   a, $06
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	jp   ActS_DecRtnId
 L026B70:;I
 	ldh  a, [hActCur+iActTimer0C]
@@ -6599,13 +6599,13 @@ L026C21:;R
 	ld   a, [wWpnSGUseTimer]
 	sub  $20
 	ld   [wWpnSGUseTimer], a
-	call c, L003A0B
+	call c, WpnS_UseAmmo
 	ld   a, [wWpnAmmoCur]
 	or   a
 	ret  nz
 L026C31:;R
 	ld   a, $06
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -6634,7 +6634,7 @@ L026C46:;I
 	or   a
 	jr   nz, L026C64
 	ld   a, $06
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	jp   ActS_DecRtnId
 L026C64:;R
 	ld   a, [wCF6A_Unk_ActTargetSlot]
@@ -6675,7 +6675,7 @@ L026CA1:;I
 	ld   a, [wWpnSGUseTimer]
 	sub  $40
 	ld   [wWpnSGUseTimer], a
-	call c, L003A0B
+	call c, WpnS_UseAmmo
 	ld   a, [wWpnAmmoCur]
 	or   a
 	ret  nz
@@ -6684,12 +6684,12 @@ L026CBF:;R
 	ld   [wPlMode], a
 	ld   [wWpnSGRide], a
 	ld   a, $06
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
 L026CD0:;I
-	ld   a, [wWpnHelperWarp]
+	ld   a, [wWpnHelperActive]
 	dec  a
 	rst  $00 ; DynJump
 L026CD5: db $E5
@@ -6714,9 +6714,9 @@ L026CE5:;I
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
-	ld   hl, wWpnHelperWarp
+	ld   hl, wWpnHelperActive
 	inc  [hl]
-	ld   a, [wWpnSel]
+	ld   a, [wWpnId]
 	cp   $0C
 	ret  nz
 	ld   hl, $4D00
@@ -6731,7 +6731,7 @@ L026D05:;I
 	sub  $18
 	cp   b
 	ret  nc
-	ld   hl, wWpnHelperWarp
+	ld   hl, wWpnHelperActive
 	inc  [hl]
 	ret
 L026D17:;I
@@ -6739,17 +6739,17 @@ L026D17:;I
 	cp   $90
 	jr   c, L026D23
 	ld   a, $06
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	ret
 L026D23:;R
-	ld   a, [wWpnSel]
+	ld   a, [wWpnId]
 	cp   $01
 	jr   nz, L026D37
 	call ActS_ApplySpeedDownYColi
 	ret  c
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnHelperWarp
+	ld   hl, wWpnHelperActive
 	inc  [hl]
 	ret
 L026D37:;R
@@ -6764,7 +6764,7 @@ L026D37:;R
 	ldh  [hActCur+iActY], a
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnHelperWarp
+	ld   hl, wWpnHelperActive
 	inc  [hl]
 	ret
 L026D51:;R
@@ -6779,7 +6779,7 @@ L026D51:;R
 	ldh  [hActCur+iActY], a
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnHelperWarp
+	ld   hl, wWpnHelperActive
 	inc  [hl]
 	ret
 L026D6B:;R
@@ -6787,7 +6787,7 @@ L026D6B:;R
 	ret  c
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnHelperWarp
+	ld   hl, wWpnHelperActive
 	inc  [hl]
 	ret
 L026D78:;I
@@ -6798,7 +6798,7 @@ L026D78:;I
 	ld   [wActCurSprMapRelId], a
 	cp   $05
 	ret  nz
-	ld   hl, wWpnHelperWarp
+	ld   hl, wWpnHelperActive
 	inc  [hl]
 	ret
 L026D8B:;I
@@ -6822,14 +6822,14 @@ L026D8B:;I
 	call ActS_FacePl
 	call ActS_FlipH
 	ld   a, $FF
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	ld   a, $0C
 	ldh  [hSFXSet], a
 	ld   a, $B4
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
 L026DCA:;R
-	ld   hl, wWpnHelperWarp
+	ld   hl, wWpnHelperActive
 	inc  [hl]
 	ret
 L026DCF:;I
@@ -6839,7 +6839,7 @@ L026DCF:;I
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $05
 	ld   [wActCurSprMapRelId], a
-	ld   hl, wWpnHelperWarp
+	ld   hl, wWpnHelperActive
 	inc  [hl]
 	ret
 L026DE2:;I
@@ -6859,7 +6859,7 @@ L026DE2:;I
 	call ActS_SetSpeedY
 	ld   a, $0D
 	ldh  [hSFXSet], a
-	ld   hl, wWpnHelperWarp
+	ld   hl, wWpnHelperActive
 	inc  [hl]
 	ret
 L026E09:;I
@@ -6869,7 +6869,7 @@ L026E09:;I
 	ret  nc
 	xor  a
 	ldh  [hActCur+iActId], a
-	ld   [wWpnHelperWarp], a
+	ld   [wWpnHelperActive], a
 	ret
 L026E18:;I
 	ldh  a, [hActCur+iActRtnId]
@@ -7554,7 +7554,7 @@ L0272AC:;I
 	and  $80
 	xor  $80
 	ld   bc, $0080
-	call L0018B9
+	call Pl_Unk_SetSpeedByActDir
 	ld   a, [wPlHurtTimer]
 	or   a
 	jr   nz, L0272D3
@@ -8293,7 +8293,7 @@ L027784:;I
 L0277B0:;I
 	ldh  a, [hActCur+iActSprMap]
 	ld   bc, $00C0
-	call L0018B9
+	call Pl_Unk_SetSpeedByActDir
 	ldh  a, [hTimer]
 	rrca 
 	rrca 

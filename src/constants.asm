@@ -65,50 +65,51 @@ DEF LVL_CASTLE         EQU $08
 DEF LVL_STATION        EQU $09
 
 ; wWpnUnlock0
-DEF WPNB_TP EQU 0
-DEF WPNB_AR EQU 1
-DEF WPNB_WD EQU 2
-DEF WPNB_ME EQU 3
-DEF WPNB_CR EQU 4
-DEF WPNB_NE EQU 5
-DEF WPNB_HA EQU 6
-DEF WPNB_MG EQU 7
+DEF WPUB_TP EQU 0
+DEF WPUB_AR EQU 1
+DEF WPUB_WD EQU 2
+DEF WPUB_ME EQU 3
+DEF WPUB_CR EQU 4
+DEF WPUB_NE EQU 5
+DEF WPUB_HA EQU 6
+DEF WPUB_MG EQU 7
 
-DEF WPN_TP EQU 1 << WPNB_TP
-DEF WPN_AR EQU 1 << WPNB_AR
-DEF WPN_WD EQU 1 << WPNB_WD
-DEF WPN_ME EQU 1 << WPNB_ME
-DEF WPN_CR EQU 1 << WPNB_CR
-DEF WPN_NE EQU 1 << WPNB_NE
-DEF WPN_HA EQU 1 << WPNB_HA
-DEF WPN_MG EQU 1 << WPNB_MG
+DEF WPU_TP EQU 1 << WPUB_TP
+DEF WPU_AR EQU 1 << WPUB_AR
+DEF WPU_WD EQU 1 << WPUB_WD
+DEF WPU_ME EQU 1 << WPUB_ME
+DEF WPU_CR EQU 1 << WPUB_CR
+DEF WPU_NE EQU 1 << WPUB_NE
+DEF WPU_HA EQU 1 << WPUB_HA
+DEF WPU_MG EQU 1 << WPUB_MG
 
 ; wWpnUnlock1
-DEF WPNB_RC EQU 0
-DEF WPNB_RM EQU 1
-DEF WPNB_RJ EQU 2
-DEF WPNB_SG EQU 3
+DEF WPUB_RC EQU 0
+DEF WPUB_RM EQU 1
+DEF WPUB_RJ EQU 2
+DEF WPUB_SG EQU 3
 
-DEF WPN_RC EQU 1 << WPNB_RC
-DEF WPN_RM EQU 1 << WPNB_RM
-DEF WPN_RJ EQU 1 << WPNB_RJ
-DEF WPN_SG EQU 1 << WPNB_SG
+DEF WPU_RC EQU 1 << WPUB_RC
+DEF WPU_RM EQU 1 << WPUB_RM
+DEF WPU_RJ EQU 1 << WPUB_RJ
+DEF WPU_SG EQU 1 << WPUB_SG
 
-; wWpnSel
-DEF WPNSEL_P  EQU $00
-DEF WPNSEL_RC EQU $01
-DEF WPNSEL_RM EQU $02
-DEF WPNSEL_RJ EQU $03
-DEF WPNSEL_TP EQU $04
-DEF WPNSEL_AR EQU $05
-DEF WPNSEL_WD EQU $06
-DEF WPNSEL_ME EQU $07
-DEF WPNSEL_CR EQU $08
-DEF WPNSEL_NE EQU $09
-DEF WPNSEL_HA EQU $0A
-DEF WPNSEL_MG EQU $0B
-DEF WPNSEL_SG EQU $0C
-DEF WPNSEL_EN EQU $0D
+; wWpnId
+DEF WPN_P  EQU $00
+DEF WPN_RC EQU $01
+DEF WPN_RM EQU $02
+DEF WPN_RJ EQU $03
+DEF WPN_TP EQU $04
+DEF WPN_AR EQU $05
+DEF WPN_WD EQU $06
+DEF WPN_ME EQU $07
+DEF WPN_CR EQU $08
+DEF WPN_NE EQU $09
+DEF WPN_HA EQU $0A
+DEF WPN_MG EQU $0B
+DEF WPN_SG EQU $0C
+DEF WPN_EN EQU $0D
+
 
 DEF SECT_DISABLE     EQU $FF ; Magic value to disable the WINDOW layer and LYC trigger
 
@@ -117,6 +118,15 @@ DEF SCREV_SCROLLV    EQU 1 << SCREVB_SCROLLV
 
 DEF SCROLLV_UP       EQU 0
 DEF SCROLLV_DOWN     EQU 1
+
+DEF SLKB_OPEN        EQU 7 ; Scroll unlocked for the column (unpacked)
+
+; Gauge
+DEF BAR_MAX EQU $98 ; 152
+DEF BARID_PL   EQU 0 ; Player health
+DEF BARID_WPN  EQU 1 ; Weapon ammo
+DEF BARID_BOSS EQU 2 ; Boss health
+DEF BARID_LIVES EQU 3 ; Player lives (special)
 
 ; TilemapDef tilemap writing flags
 DEF BGB_REPEAT       EQU 6
@@ -130,6 +140,9 @@ DEF BG_MVDOWN        EQU 1 << BGB_MVDOWN
 DEF SHUTTER_NONE     EQU $00
 DEF SHUTTER_OPEN     EQU $01
 DEF SHUTTER_CLOSE    EQU $02
+
+DEF TILEID_SHUTTER_L EQU $78
+DEF TILEID_SHUTTER_R EQU $79
 
 DEF BLOCK_TILECOUNT_H    EQU $02 ; Number of 8x8 tiles in a block, horizontally
 DEF BLOCK_TILECOUNT_V    EQU $02 ; Number of 8x8 tiles in a block, vertically
@@ -154,17 +167,7 @@ DEF LVL_ROOMCOUNT    EQU $19 ; Max number of rooms in a level
 
 DEF COL_PX_H         EQU COL_TILECOUNT_H * TILE_H ; $10 ; Width of a column, in pixels
 
-DEF TILEID_SHUTTER_L EQU $78
-DEF TILEID_SHUTTER_R EQU $79
-
 ; Gameplay
-DEF BAR_MAX EQU $98 ; 152
-DEF BARID_PL   EQU 0 ; Player health
-DEF BARID_WPN  EQU 1 ; Weapon ammo
-DEF BARID_BOSS EQU 2 ; Boss health
-DEF BARID_LIVES EQU 3 ; Player lives (special)
-
-
 
 DEF BLOCKID_EMPTY_START EQU $00 ; Empty blocks ($00-$21)
 DEF BLOCKID_SOLID_START EQU $22 ; Solid blocks ($22-$3B)
@@ -173,14 +176,22 @@ DEF BLOCKID_HALF_START  EQU $3C ; Small platforms ($3C-$3F)
 DEF BLOCKID_WATER      EQU $10 ; Underwater block
 DEF BLOCKID_WATERSPIKE EQU $18 ; Underwater spike
 DEF BLOCKID_SPIKE      EQU $19 ; Spike
+DEF BLOCKID_LADDERTOP  EQU $21 ; Ladder top block
 
+DEF BLOCKID_CONVEDGE_R EQU $30 ; Right conveyor belt, edge with arrow
+DEF BLOCKID_CONVEDGE_L EQU $31 ; Left conveyor belt, edge with arrow
+DEF BLOCKID_CONVMID_R  EQU $32 ; Right conveyor belt, middle
+DEF BLOCKID_CONVMID_L  EQU $33 ; Left conveyor belt, middle
 
-DEF PLCOLI_V EQU $06 ; Player collision box, vertical radius
+; wLvlEnd
+DEF EXPL_NONE EQU $00 ; Nothing
+DEF EXPL_PL   EQU $01 ; Player explodes (restart level)
+DEF EXPL_BOSS EQU $02 ; Boss explodes (won level)
 
 ; wPlMode
 DEF PL_MODE_GROUND        EQU $00 ; On the ground
 DEF PL_MODE_JUMP          EQU $01 ; Jumping (move up)
-DEF PL_MODE_JUMPABSORB    EQU $02 ; Fast jump before absorbing the weapon
+DEF PL_MODE_JUMPHI        EQU $02 ; Jumping (high)
 DEF PL_MODE_FALL          EQU $03 ; Falling (move down)
 DEF PL_MODE_CLIMB         EQU $04 ; Climbing
 DEF PL_MODE_CLIMBININIT   EQU $05 ; Init for...
@@ -193,7 +204,7 @@ DEF PL_MODE_CLIMBUTRSINIT EQU $0B ; Init for...
 DEF PL_MODE_CLIMBUTRS     EQU $0C ; Upwards screen transition - climbing up
 DEF PL_MODE_FALLTRSINIT   EQU $0D ; Init for...
 DEF PL_MODE_FALLTRS       EQU $0E ; Downwards screen transition - falling
-DEF PL_MODE_NOCTRL        EQU $0F ; Controls disabled (for the boss room) 
+DEF PL_MODE_FROZEN        EQU $0F ; Player doesn't move, controls locked (ie: for the boss room) 
 DEF PL_MODE_SLIDE         EQU $10 ; Sliding
 DEF PL_MODE_RM            EQU $11 ; Inside Rush Marine
 DEF PL_MODE_WARPININIT    EQU $12 ; Init for...
@@ -207,25 +218,68 @@ DEF PL_MODE_TLPINIT       EQU $19 ; Init for...
 DEF PL_MODE_TLP           EQU $1A ; Wily Teleporter - Anim
 DEF PL_MODE_TLPEND        EQU $1B ; Wily Teleporter - Wait for level end
 
-DEF ACT_EXPLPART   EQU $07 ; Large explosion particle
-DEF ACT_BOSS_START EQU $68
-DEF ACT_HARDMAN    EQU $68
-DEF ACT_TOPMAN     EQU $69
-DEF ACT_MAGNETMAN  EQU $6A
-DEF ACT_NEEDLEMAN  EQU $6B
-DEF ACT_CRASHMAN   EQU $6C
-DEF ACT_METALMAN   EQU $6D
-DEF ACT_WOODMAN    EQU $6E
-DEF ACT_AIRMAN     EQU $6F
+; wPlDirH
+; TODO: This might be renamed to a generic DIR_*
+DEF PLDIRB_R EQU 0
+DEF PLDIR_L EQU $00
+DEF PLDIR_R EQU $01
+; Metal Blade (& Wood Shield) directions
+DEF MEDIR_L  EQU PLDIR_L
+DEF MEDIR_R  EQU PLDIR_R
+DEF MEDIR_U  EQU $02
+DEF MEDIR_D  EQU $03
+; Metal Blade only
+DEF MEDIR_UL EQU $04 
+DEF MEDIR_UR EQU $05
+DEF MEDIR_DL EQU $06
+DEF MEDIR_DR EQU $07
 
-DEF ACT_BUBBLE EQU $64 ; Air bubble when the player is underwater
-DEF ACT_E0 EQU $E0 ; Rush Coil ?
-DEF ACT_E1 EQU $E1 ; Rush Marine ?
-DEF ACT_E2 EQU $E2 ; Rush Jet ?
-DEF ACT_WPN_SG EQU $E3 ; Sakugarne
-DEF ACT_E4 EQU $E4
+DEF PLCOLI_V EQU $0C ; Player collision box, vertical radius
+DEF PLCOLI_H EQU $06 ; Player collision box, horizontal radius
 
-; wWpnHelperWarp
+; wPlShootType
+DEF PSA_NONE  EQU $00 ; Not shooting
+DEF PSA_SHOOT EQU $10 ; Shooting
+DEF PSA_THROW EQU $20 ; Throwing (ie: Metal Blade)
+
+DEF ACT_EXPLSM          EQU $00 ; Small explosion
+DEF ACT_EXPLLGPART      EQU $07 ; Large explosion particle
+DEF ACT_SPECBOSS_START  EQU $50
+DEF ACT_WILY1           EQU $50 ; Wily Machine (1st phase)
+DEF ACT_WILY2           EQU $51 ; Wily Machine (2nd phase)
+DEF ACT_WILY3           EQU $52 ; Wily Machine (3rd phase)
+DEF ACT_QUINT           EQU $53 ; Quint
+DEF ACT_SPECBOSS_END    EQU $54
+DEF ACT_WILY3PART       EQU $54 ; Wily Machine (3rd phase) - Animated parts
+DEF ACT_WILY2INTRO      EQU $55 ; Wily Machine (2nd phase) - Intro cutscene
+DEF ACT_QUINT_SG        EQU $56 ; Quint - Sakugarne
+DEF ACT_QUINT_DEBRIS    EQU $57 ; Quint - Sakugarne debris
+DEF ACT_WILY1BOMB       EQU $58 ; Wily Machine (1st phase) - Bouncing Bomb
+DEF ACT_WILY1TOE        EQU $59 ; Wily Machine (1st phase) - Toenail
+DEF ACT_WILY2BOMB       EQU $5A ; Wily Machine (2nd phase) - Bouncing Bomb and projectile
+DEF ACT_WILY2SHOT       EQU $5B ; Wily Machine (2nd phase) - Energy Shot
+DEF ACT_WILY3MISSILE    EQU $5C ; Wily Machine (3rd phase) - Crayola Missile
+DEF ACT_WILY3MET        EQU $5C ; Wily Machine (3rd phase) - Goomba
+DEF ACT_WILYSHIP        EQU $5E ; Wily Machine - Spaceship (between phases)
+DEF ACT_WPN_RC          EQU $60 ; Rush Coil
+DEF ACT_WPN_RM          EQU $61 ; Rush Marine
+DEF ACT_WPN_RJ          EQU $62 ; Rush Jet
+DEF ACT_WPN_SG          EQU $63 ; Sakugarne
+DEF ACT_BUBBLE          EQU $64 ; Air bubble when the player is underwater
+DEF ACT_BOSS_START      EQU $68
+DEF ACT_HARDMAN         EQU $68 ; Hard Man
+DEF ACT_TOPMAN          EQU $69 ; Top Man
+DEF ACT_MAGNETMAN       EQU $6A ; Magnet Man
+DEF ACT_NEEDLEMAN       EQU $6B ; Needle Man
+DEF ACT_CRASHMAN        EQU $6C ; Crash Man
+DEF ACT_METALMAN        EQU $6D ; Metal Man
+DEF ACT_WOODMAN         EQU $6E ; Wood Man
+DEF ACT_AIRMAN          EQU $6F ; Air Man
+DEF ACT_BOSS_END        EQU $70
+
+
+
+; wWpnHelperActive
 DEF AHW_MODE_0 EQU $00
 DEF AHW_MODE_1 EQU $01
 DEF AHW_MODE_2 EQU $02
@@ -235,13 +289,6 @@ DEF AHW_MODE_5 EQU $05
 DEF AHW_WARPOUT_START EQU $06
 DEF AHW_MODE_7 EQU $07
 DEF AHW_MODE_8 EQU $08
-
-
-; wLvlEnd
-DEF EXPL_NONE EQU $00 ; Nothing
-DEF EXPL_PL   EQU $01 ; Player explodes (restart level)
-DEF EXPL_BOSS EQU $02 ; Boss explodes (won level)
-
 
 DEF ACTLB_SPAWNNORM   EQU 4 ; Spawn the actor normally
 DEF ACTLB_SPAWNBEHIND EQU 5 ; Spawn the actor from behind
@@ -260,7 +307,17 @@ DEF ACTDIR_L EQU $00
 DEF ACTDIR_R EQU 1 << ACTDIRB_R
 
 ; iActColiType
-DEF ACTCOLI_0 EQU 0
+DEF ACTCOLI_0 EQU 0 ; Intangible
+DEF ACTCOLI_1 EQU 1
+DEF ACTCOLI_2 EQU 2 ; Enemy - Vulnerable
+DEF ACTCOLI_3 EQU 3 ; Enemy - Invulnerable 
+DEF ACTCOLI_4 EQU 4
+DEF ACTCOLI_5 EQU 5
+DEF ACTCOLI_6 EQU 6
+DEF ACTCOLI_7 EQU 7
+DEF ACTCOLI_8_START EQU 8 ; Partially vulnerable
+
+DEF ACTCOLIB_8_HI EQU 7
 
 ; iArcIdDir index directions
 DEF ADRB_DEC_IDY EQU 0 ; If set, the horizontal path index will decrease
@@ -269,13 +326,57 @@ DEF ADR_INC_IDY EQU $00
 DEF ADR_DEC_IDY EQU 1 << ADRB_DEC_IDY
 DEF ADR_INC_IDX EQU $00
 DEF ADR_DEC_IDX EQU 1 << ADRB_DEC_IDX
+DEF ARC_MAX EQU 88
 
 
 DEF WPNPIERCE_NONE    EQU 0 ; Weapon always disappears on contact
 DEF WPNPIERCE_LASTHIT EQU 1 ; Weapon pierces only if it defeats the enemy
 DEF WPNPIERCE_ALWAYS  EQU 2 ; Weapon always pierces
 
-DEF ARC_MAX EQU 88
+; Might be a marker to distinguish between free slots and $00
+DEF SHOTB_UNK_PROCFLAG EQU 7
+DEF SHOT_UNK_PROCFLAG EQU 1 << SHOTB_UNK_PROCFLAG
+
+DEF SHOT3B_DEFLECT EQU 7 ; Marks the shot has getting deflected
+DEF SHOT3_DEFLECT EQU 1 << SHOT3B_DEFLECT
+
+DEF SHOTWDB_THROW EQU 6 ; Leaf Shield thrown
+DEF SHOTWDB_ROTATE EQU 7 ; Leaf Shield spawn animation done
+DEF SHOTWD_THROW EQU 1 << SHOTWDB_THROW
+DEF SHOTWD_ROTATE EQU 1 << SHOTWDB_ROTATE
+DEF SHOTCRB_EXPLODE EQU 7 ; Crash Bomb explodes
+DEF SHOTCR_EXPLODE EQU 1 << SHOTCRB_EXPLODE
+
+
+DEF SHOTSPR_P        EQU $00 ; Buster Shot
+DEF SHOTSPR_AR0      EQU $01 ; Air Shooter #0
+DEF SHOTSPR_AR1      EQU $02 ; Air Shooter #1
+DEF SHOTSPR_AR2      EQU $03 ; Air Shooter #2 (unused)
+DEF SHOTSPR_WD       EQU $04 ; Leaf Shield
+DEF SHOTSPR_ME0      EQU $05 ; Metal Blade #0
+DEF SHOTSPR_ME1      EQU $06 ; Metal Blade #1
+DEF SHOTSPR_CRMOVE   EQU $07 ; Crash Bomb
+DEF SHOTSPR_CRFLASH0 EQU $08 ; Crash Bomb Flash #0
+DEF SHOTSPR_CRFLASH1 EQU $09 ; Crash Bomb Flash #1
+DEF SHOTSPR_CREXPL0  EQU $0A ; Crash Bomb Explosion #0
+DEF SHOTSPR_CREXPL1  EQU $0B ; Crash Bomb Explosion #1
+DEF SHOTSPR_CREXPL2  EQU $0C ; Crash Bomb Explosion #2
+DEF SHOTSPR_CREXPL3  EQU $0D ; Crash Bomb Explosion #3
+DEF SHOTSPR_CREXPL4  EQU $0E ; Crash Bomb Explosion #4
+DEF SHOTSPR_CREXPL5  EQU $0F ; Crash Bomb Explosion #5
+DEF SHOTSPR_CREXPL6  EQU $10 ; Crash Bomb Explosion #6
+DEF SHOTSPR_CREXPL7  EQU $11 ; Crash Bomb Explosion #7
+DEF SHOTSPR_CREXPL8  EQU $12 ; Crash Bomb Explosion #8
+DEF SHOTSPR_NE       EQU $13 ; Needle Cannon
+DEF SHOTSPR_HA       EQU $14 ; Hard Knuckle
+DEF SHOTSPR_MGH      EQU $15 ; Magnet Missile Forward
+DEF SHOTSPR_MGU      EQU $16 ; Magnet Missile Up
+DEF SHOTSPR_MGD      EQU $17 ; Magnet Missile Down
+DEF SHOTSPR_TP0      EQU $18 ; Top Spin #0
+DEF SHOTSPR_TP1      EQU $19 ; Top Spin #1
+DEF SHOTSPR_TP2      EQU $1A ; Top Spin #2
+DEF SHOTSPR_TP3      EQU $1B ; Top Spin #3
+DEF SHOTSPR_SG       EQU $1C ; Sakugarne (invisible)
 
 ; Password dot locations
 DEF iDotA1 EQU $00
