@@ -7,7 +7,7 @@
 ; - 0: Collision box, horizontal radius
 ; - 1: Collision box, vertical radius
 ; - 2: Type
-; - 3: Damage dealt
+; - 3: Subtype (if type is ACTCOLI_PLATFORM) or Damage dealt (if ACTCOLI_ENEMYPASS, ACTCOLI_ENEMYHIT, ACTCOLI_ENEMYREFLECT)
 ; - 4: Starting health (low nybble)
 ; - 5: Starting health (high nybble)
 ; - 6: Damage received by the default weapon

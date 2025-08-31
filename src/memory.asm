@@ -64,7 +64,7 @@ wScrollVDir:           db ; $CF20 ; Vertical scroll direction
 wPlBlinkChkDelay:      db ; $CF21 ; Delays the next dice roll to check if the player should blink
 wPlShootTimer:         db ; $CF22 ; How long the player sticks the arm out when shooting
 wPlShootType:          db ; $CF23 ; Determines the animation frame used when shooting (ie: normal, throw)
-wPl_Unk_ActCurSlotPtrCopyOfCopy: db ; $CF24 ; ??? Copy of wCF6B_Unk_ActCurSlotPtrCopy
+wActRjStandLastSlotPtr: db ; $CF24 ; wActRjStandSlotPtr value from the previous frame
 ds $01
 wColiGround:     db ; $CF26 ; ??? Delays falling when moving off a platform, by shifting
 wPlSlideDustTimer:     db ; $CF27 ; Timer for the dust particle after starting a slide.
@@ -100,7 +100,7 @@ wHardYShakeOrg:         db ; $CF46 ; Untouched copy of hScrollY taken before Har
 wHardFistTargetX:       db ; $CF47 ; Target X location for Hard Man's fist attack
 wHardFistTargetY:       db ; $CF48 ; Target Y location for Hard Man's fist attack
 wShutterMode:           db ; $CF49 ; Boss shutter mode
-wCF4A_Unk_ActTargetSlot: db ; $CF4A ; ??? Target slot ID for something
+wActPlatColiSlotPtr:    db ; $CF4A ; Marks the top-solid platform actor the player is standing on
 ds 1
 wGameTimeSub:           db ; $CF4C ; Gameplay timer (frames)
 wGameTime:              db ; $CF4D ; Gameplay timer (seconds)
@@ -120,7 +120,7 @@ wTmpTileIdDR:           db ; $CF59
 w_CF5A_TblOffsetByAct:  db ; $CF5A ; ??? Used by one three actors using the same code to distinguish which one it is. Used to index a pointer table.
 w_CF5B_TblOffsetSec:    db ; $CF5B ; ??? Indexes the table the returned by the pointer above.
 w_CF5C_SpawnTimer:      db ; $CF5C ; ??? Used by an actor to times spawning sub-actors
-wCF5D_Unk_ActTargetSlot: db ; $CF5D ; ??? Target slot ID for something
+wActHurtSlotPtr:        db ; $CF5D ; Marks the actor the player got damaged by
 wWpnSGUseTimer:         db ; $CF5E ; Timer for Sakugarne's weapon usage
 wUnk_Unused_CF5F:       db ; $CF5F 
 wLvlEnd:                db ; $CF60 ; Marks how the level ended, either when someone has died (EXPL_*) or an instant stage warp if a stage ID is written to the upper nybble.
@@ -133,8 +133,8 @@ wStageSelCursor:        db ; $CF66 ; Cursor location on the stage select
 wPlSprFlags:            db ; $CF67 ; OBJ flags for the player
 wPlRmSpdYSub:           db ; $CF68 ; Rush Marine Y speed, calculated from wPlRmSpdU & wPlRmSpdD 
 wPlRmSpdY:              db ; $CF69 ; ( ??? for some reason, there's no X equivalent)
-wCF6A_Unk_ActTargetSlot:     db ; $CF6A ; ??? Target slot ID for something
-wCF6B_Unk_ActCurSlotPtrCopy: db ; $CF6B ; ??? Checked slot ID for something
+wActHelperColiSlotPtr:  db ; $CF6A ; Marks the helper item (Rush/Sakugarne) the player has collided with
+wActRjStandSlotPtr:     db ; $CF6B ; Marks the Rush Jet actor slot the player is standing on
 wWpnSGRide:             db ; $CF6C ; Sakugarne ride controls enabled
 wActUnk_CF6D_TimerInit: db ; $CF6D ; ??? An actor gets its timer initialized to this value
 wGameOverSel:           db ; $CF6E ; Selected action on the game over screen
@@ -196,7 +196,7 @@ wWpnColiBoxV:           db ; $CFED ; Weapon collision box - vertical radius
 wWpnActDmg:             db ; $CFEE ; Damage the current weapon dealt to the actor
 wWpnPierceLvl:          db ; $CFEF ; "Piercing level" of the current weapon (WPNPIERCE_*)
 wWpnShotCost:           db ; $CFF0 ; Ammo cost of the currently fired shot
-wWpnHelperActive:       db ; $CFF1 ; Rush/Sakugarne actors are active ??? Teleport animation mode for the Rush/Sakugarne
+wWpnHelperActive:       db ; $CFF1 ; Rush/Sakugarne actors are active
 wWpnAmmoInc:            db ; $CFF2 ; Slowly increments the weapon ammo until it elapses. (weapon energy effect)
 wPlHealthInc:           db ; $CFF3 ; Slowly increments the player's health until it elapses. (life energy effect)
 wPassCursorX:           db ; $CFF4 ; Password cursor - X position
@@ -272,7 +272,7 @@ hBGP:                db ; $FFF5 ; BG palette
 hOBP0:               db ; $FFF6 ; OBJ0 palette
 hOBP1:               db ; $FFF7 ; OBJ1 palette
 ds 1
-hInvulnCheat:        db ; $FFF9 ; [TCRF] Full invulnerability. Shots pass through & pits act like bouncy surfaces.
+hCheatMode:        db ; $FFF9 ; [TCRF] Full invulnerability. Shots pass through & pits act like bouncy surfaces.
 
 SECTION "FFFA", HRAM[$FFFA]
 hWarmBootFlag:       db ; $FFFA ; [TCRF] Value checked during boot, but has no effect due to the lack of soft-reset
@@ -327,7 +327,8 @@ DEF iArcIdY = iAct0F
 DEF iActColiBoxH EQU $00 ; Collision box, horizontal radius
 DEF iActColiBoxV EQU $01 ; Collision box, vertical radius (still half width, but the origin is at the bottom of the sprite)
 DEF iActColiType EQU $02 ; Collision type (ACTCOLI_*)
-DEF iActColiDamage EQU $03 ; Damage dealt
+DEF iActColiDamage EQU $03 ; Damage dealt (ACTCOLI_ENEMYPASS, ACTCOLI_ENEMYHIT, ACTCOLI_ENEMYREFLECT)
+DEF iActColiSubtype EQU $03 ; Subtype (ACTCOLI_PLATFORM)
 DEF iActColiHealth EQU $04 ; Health (if <= $10, the actor is defeated)
 DEF iActColiInvulnTimer EQU $05 ; Invulnerability time
 DEF iActColi6 EQU $06

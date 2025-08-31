@@ -2601,7 +2601,7 @@ L0250E8:;I
 	call ActS_ApplySpeedFwdX
 	ld   a, [wActCurSlotPtr]
 	ld   b, a
-	ld   a, [wCF4A_Unk_ActTargetSlot]
+	ld   a, [wActPlatColiSlotPtr]
 	cp   b
 	jr   nz, L0250FD
 	ldh  a, [hActCur+iActSprMap]
@@ -4198,7 +4198,7 @@ L025B54:;I
 	call L025BC6
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
-	ld   a, [wCF5D_Unk_ActTargetSlot]
+	ld   a, [wActHurtSlotPtr]
 	ld   b, a
 	ld   a, [wActCurSlotPtr]
 	cp   b
@@ -4816,7 +4816,7 @@ L025FA3:;I
 	call ActS_ApplySpeedFwdY
 	ld   a, [wActCurSlotPtr]
 	ld   b, a
-	ld   a, [wCF4A_Unk_ActTargetSlot]
+	ld   a, [wActPlatColiSlotPtr]
 	cp   b
 	ret  nz
 	ldh  a, [hActCur+iActSpdXSub]
@@ -6322,11 +6322,11 @@ L026A17:;I
 	pop  af
 	or   a
 	jr   nz, L026A35
-	ld   a, $06
+	ld   a, AHW_WARPOUT_START
 	ld   [wWpnHelperActive], a
 	jp   ActS_DecRtnId
 L026A35:;R
-	ld   a, [wCF6A_Unk_ActTargetSlot]
+	ld   a, [wActHelperColiSlotPtr]
 	ld   b, a
 	ld   a, [wActCurSlotPtr]
 	cp   b
@@ -6380,7 +6380,7 @@ L026A90: db $CA;X
 L026A91: db $B1;X
 L026A92: db $1E;X
 L026A93:;R
-	ld   a, $06
+	ld   a, AHW_WARPOUT_START
 	ld   [wWpnHelperActive], a
 	jp   ActS_DecRtnId
 L026A9B:;I
@@ -6396,13 +6396,13 @@ L026A9B:;I
 	pop  af
 	or   a
 	jr   nz, L026ABB
-	ld   a, $06
+	ld   a, AHW_WARPOUT_START
 	ld   [wWpnHelperActive], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
 	ret
 L026ABB:;R
-	ld   a, [wCF6A_Unk_ActTargetSlot]
+	ld   a, [wActHelperColiSlotPtr]
 	ld   b, a
 	ld   a, [wActCurSlotPtr]
 	cp   b
@@ -6462,7 +6462,7 @@ L026B06:;R
 	ret  nz
 	xor  a
 	ld   [wPlMode], a
-	ld   a, $06
+	ld   a, AHW_WARPOUT_START
 	ld   [wWpnHelperActive], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
@@ -6494,7 +6494,7 @@ L026B4A:;I
 L026B65:;R
 	jp   ActS_IncRtnId
 L026B68:;R
-	ld   a, $06
+	ld   a, AHW_WARPOUT_START
 	ld   [wWpnHelperActive], a
 	jp   ActS_DecRtnId
 L026B70:;I
@@ -6528,7 +6528,7 @@ L026B8F: db $C9;X
 L026B90:;R
 	ld   a, [wActCurSlotPtr]
 	ld   b, a
-	ld   a, [wCF6A_Unk_ActTargetSlot]
+	ld   a, [wActHelperColiSlotPtr]
 	cp   b
 	ret  nz
 	ld   bc, $0100
@@ -6545,7 +6545,7 @@ L026BA8:;I
 L026BB4:;R
 	ld   a, [wActCurSlotPtr]
 	ld   b, a
-	ld   a, [wCF4A_Unk_ActTargetSlot]
+	ld   a, [wActPlatColiSlotPtr]
 	cp   b
 	ret  nz
 	ldh  a, [hJoyKeys]
@@ -6604,7 +6604,7 @@ L026C21:;R
 	or   a
 	ret  nz
 L026C31:;R
-	ld   a, $06
+	ld   a, AHW_WARPOUT_START
 	ld   [wWpnHelperActive], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a
@@ -6633,11 +6633,11 @@ L026C46:;I
 	pop  af
 	or   a
 	jr   nz, L026C64
-	ld   a, $06
+	ld   a, AHW_WARPOUT_START
 	ld   [wWpnHelperActive], a
 	jp   ActS_DecRtnId
 L026C64:;R
-	ld   a, [wCF6A_Unk_ActTargetSlot]
+	ld   a, [wActHelperColiSlotPtr]
 	ld   b, a
 	ld   a, [wActCurSlotPtr]
 	cp   b
@@ -6683,7 +6683,7 @@ L026CBF:;R
 	xor  a
 	ld   [wPlMode], a
 	ld   [wWpnSGRide], a
-	ld   a, $06
+	ld   a, AHW_WARPOUT_START
 	ld   [wWpnHelperActive], a
 	ld   a, $00
 	ldh  [hActCur+iActRtnId], a

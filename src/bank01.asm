@@ -306,7 +306,7 @@ WpnCtrl_ChkSpawnHelper:
 	; Don't spawn it if one is already active.
 	; (this includes different helpers when teleporting out)
 	ld   a, [wWpnHelperActive]
-	or   a
+	or   a ; AHW_NONE
 	ret  nz
 	
 	;
@@ -334,7 +334,7 @@ WpnCtrl_ChkSpawnHelper:
 	
 	call ActS_Spawn			; Did it spawn?
 	ret  c					; If not, return
-	ld   a, $01				; Otherwise, flag that an helper is onscreen, so no more can spawn
+	ld   a, AHW_MODE_1	; Otherwise, flag that an helper is onscreen, so no more can spawn
 	ld   [wWpnHelperActive], a
 	ret
 	
@@ -1878,18 +1878,18 @@ Wpn_MagnetMissile:
 	; [POI] Note that this isn't the full range of values for this collision type.
 	;       The actual range is $08-$FF, and as a result Magnet Missile won't target partially vulnerable
 	;       actors in ranges $08-$7F. The actors using this collision type don't use that range though.
-	bit  ACTCOLIB_8_HI, a	; Is this a partially vulnerable actor?
+	bit  ACTCOLIB_PARTIAL, a	; Is this a partially vulnerable actor?
 	jr   nz, .calcDistX		; If so, jump (ok)
 	
 	; Target vulnerable enemies
-	cp   ACTCOLI_2		; iActColiType == ACTCOLI_2?
+	cp   ACTCOLI_ENEMYHIT		; iActColiType == ACTCOLI_ENEMYHIT?
 	jr   z, .calcDistX	; If so, jump (ok)
 	
 	; [BUG] Target invulnerable enemies
 	; This is pretty egregious, it's specifically checking if the actor uses the collision type for
 	; invulnerable enemies (ie: Hanging battons or Mets hiding) and... only skips targeting it if that's not the case.
 	; What this should have done instead is jumping unconditionally to .nextAct.
-	cp   ACTCOLI_3		; iActColiType == ACTCOLI_3?
+	cp   ACTCOLI_ENEMYREFLECT		; iActColiType == ACTCOLI_ENEMYREFLECT?
 	jr   nz, .nextAct	; If not, seek to the next slot
 	
 .calcDistX:

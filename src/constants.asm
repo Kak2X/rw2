@@ -122,7 +122,8 @@ DEF SCROLLV_DOWN     EQU 1
 DEF SLKB_OPEN        EQU 7 ; Scroll unlocked for the column (unpacked)
 
 ; Gauge
-DEF BAR_MAX EQU $98 ; 152
+DEF BAR_MAX EQU $98 ; $98 (152)
+DEF BAR_UNIT EQU $08 ; 1 bar is 8 units of health/ammo
 DEF BARID_PL   EQU 0 ; Player health
 DEF BARID_WPN  EQU 1 ; Weapon ammo
 DEF BARID_BOSS EQU 2 ; Boss health
@@ -243,6 +244,12 @@ DEF PSA_SHOOT EQU $10 ; Shooting
 DEF PSA_THROW EQU $20 ; Throwing (ie: Metal Blade)
 
 DEF ACT_EXPLSM          EQU $00 ; Small explosion
+DEF ACT_1UP             EQU $01 ; Extra Life
+DEF ACT_AMMOLG          EQU $02 ; Large Weapon Energy
+DEF ACT_HEALTHLG        EQU $03 ; Large Life Energy
+DEF ACT_HEALTHSM        EQU $04 ; Small Life Energy
+DEF ACT_AMMOSM          EQU $05 ; Small Weapon Energy
+DEF ACT_ETANK           EQU $06 ; E-Tank
 DEF ACT_EXPLLGPART      EQU $07 ; Large explosion particle
 DEF ACT_SPECBOSS_START  EQU $50
 DEF ACT_WILY1           EQU $50 ; Wily Machine (1st phase)
@@ -277,10 +284,8 @@ DEF ACT_WOODMAN         EQU $6E ; Wood Man
 DEF ACT_AIRMAN          EQU $6F ; Air Man
 DEF ACT_BOSS_END        EQU $70
 
-
-
 ; wWpnHelperActive
-DEF AHW_MODE_0 EQU $00
+DEF AHW_NONE   EQU $00 ; Not spawned
 DEF AHW_MODE_1 EQU $01
 DEF AHW_MODE_2 EQU $02
 DEF AHW_MODE_3 EQU $03
@@ -289,6 +294,7 @@ DEF AHW_MODE_5 EQU $05
 DEF AHW_WARPOUT_START EQU $06
 DEF AHW_MODE_7 EQU $07
 DEF AHW_MODE_8 EQU $08
+DEF AHW_ACTIVE EQU $FF ; Active and usable
 
 DEF ACTLB_SPAWNNORM   EQU 4 ; Spawn the actor normally
 DEF ACTLB_SPAWNBEHIND EQU 5 ; Spawn the actor from behind
@@ -307,17 +313,26 @@ DEF ACTDIR_L EQU $00
 DEF ACTDIR_R EQU 1 << ACTDIRB_R
 
 ; iActColiType
-DEF ACTCOLI_0 EQU 0 ; Intangible
-DEF ACTCOLI_1 EQU 1
-DEF ACTCOLI_2 EQU 2 ; Enemy - Vulnerable
-DEF ACTCOLI_3 EQU 3 ; Enemy - Invulnerable 
-DEF ACTCOLI_4 EQU 4
-DEF ACTCOLI_5 EQU 5
-DEF ACTCOLI_6 EQU 6
-DEF ACTCOLI_7 EQU 7
-DEF ACTCOLI_8_START EQU 8 ; Partially vulnerable
+DEF ACTCOLI_PASS         EQU 0 ; Intangible
+DEF ACTCOLI_ENEMYPASS    EQU 1 ; Enemy - Intangible from shots
+DEF ACTCOLI_ENEMYHIT     EQU 2 ; Enemy - Vulnerable from shots
+DEF ACTCOLI_ENEMYREFLECT EQU 3 ; Enemy - Invulnerable from shots
+DEF ACTCOLI_PLATFORM     EQU 4 ; Platform / helper item
+DEF ACTCOLI_MAGNET       EQU 5 ; Magnetic Field
+DEF ACTCOLI_ITEM         EQU 6 ; Item
+DEF ACTCOLI_7            EQU 7 ; ???
+DEF ACTCOLI_8_START      EQU 8 ; Partially vulnerable
 
-DEF ACTCOLIB_8_HI EQU 7
+DEF ACTCOLIB_PARTIAL EQU 7 ; Partially vulnerable
+
+; iActColiSubtype
+DEF ACTCOLISUB_TOPSOLID EQU $00 ; Top-Solid Platform
+DEF ACTCOLISUB_SPINTOP  EQU $01 ; Spinning Top
+DEF ACTCOLISUB_RC       EQU $02 ; Rush Coil
+DEF ACTCOLISUB_RM       EQU $03 ; Rush Marine
+DEF ACTCOLISUB_RJ       EQU $04 ; Rush Jet
+DEF ACTCOLISUB_SG       EQU $05 ; Sakugarne
+
 
 ; iArcIdDir index directions
 DEF ADRB_DEC_IDY EQU 0 ; If set, the horizontal path index will decrease
