@@ -137,6 +137,10 @@ DEF BG_REPEAT        EQU 1 << BGB_REPEAT
 DEF BG_MVRIGHT       EQU $00
 DEF BG_MVDOWN        EQU 1 << BGB_MVDOWN
 
+; wShutterMode
+DEF SHMODE_NONE      EQU $00
+DEF SHMODE_START     EQU $01
+
 ; wShutterEvMode
 DEF SHUTTER_NONE     EQU $00
 DEF SHUTTER_OPEN     EQU $01
@@ -171,28 +175,41 @@ DEF COL_PX_H         EQU COL_TILECOUNT_H * TILE_H ; $10 ; Width of a column, in 
 ; Gameplay
 
 DEF BLOCKID_EMPTY_START EQU $00 ; Empty blocks ($00-$21)
+DEF BLOCKID_TOPSOLID_START EQU $21 ; Solid blocks on top ($22-$3B)
 DEF BLOCKID_SOLID_START EQU $22 ; Solid blocks ($22-$3B)
 DEF BLOCKID_HALF_START  EQU $3C ; Small platforms ($3C-$3F)
 
 DEF BLOCKID_WATER      EQU $10 ; Underwater block
+
+DEF BLOCKID_SPIKE_START EQU $18
 DEF BLOCKID_WATERSPIKE EQU $18 ; Underwater spike
-DEF BLOCKID_SPIKE      EQU $19 ; Spike
+DEF BLOCKID_SPIKE0     EQU $19 ; Spike block
+DEF BLOCKID_SPIKE1     EQU $1A ; ""
+DEF BLOCKID_SPIKE2     EQU $1B ; ""
+DEF BLOCKID_SPIKE3     EQU $1C ; ""
+DEF BLOCKID_SPIKE4     EQU $1D ; ""
+DEF BLOCKID_SPIKE5     EQU $1E ; ""
+DEF BLOCKID_SPIKE6     EQU $1F ; ""
+DEF BLOCKID_SPIKE_END EQU $20
+
+DEF BLOCKID_LADDER     EQU $20 ; Ladder block
 DEF BLOCKID_LADDERTOP  EQU $21 ; Ladder top block
 
 DEF BLOCKID_CONVEDGE_R EQU $30 ; Right conveyor belt, edge with arrow
 DEF BLOCKID_CONVEDGE_L EQU $31 ; Left conveyor belt, edge with arrow
 DEF BLOCKID_CONVMID_R  EQU $32 ; Right conveyor belt, middle
 DEF BLOCKID_CONVMID_L  EQU $33 ; Left conveyor belt, middle
+DEF BLOCKID_SHUTTER    EQU $38 ; Shutter
 
 ; wLvlEnd
-DEF EXPL_NONE EQU $00 ; Nothing
-DEF EXPL_PL   EQU $01 ; Player explodes (restart level)
-DEF EXPL_BOSS EQU $02 ; Boss explodes (won level)
+DEF LVLEND_NONE     EQU $00 ; Nothing
+DEF LVLEND_PLDEAD   EQU $01 ; Player explodes (restart level)
+DEF LVLEND_BOSSDEAD EQU $02 ; Boss explodes (won level)
 
 ; wPlMode
 DEF PL_MODE_GROUND        EQU $00 ; On the ground
 DEF PL_MODE_JUMP          EQU $01 ; Jumping (move up)
-DEF PL_MODE_JUMPHI        EQU $02 ; Jumping (high)
+DEF PL_MODE_FULLJUMP      EQU $02 ; Jumping (can't cut early)
 DEF PL_MODE_FALL          EQU $03 ; Falling (move down)
 DEF PL_MODE_CLIMB         EQU $04 ; Climbing
 DEF PL_MODE_CLIMBININIT   EQU $05 ; Init for...
@@ -216,8 +233,35 @@ DEF PL_MODE_WARPOUTANIM   EQU $16 ; Teleporting Up - Ground animation
 DEF PL_MODE_WARPOUTMOVE   EQU $17 ; Teleporting Up - Moving
 DEF PL_MODE_WARPOUTEND    EQU $18 ; Teleporting Up - Wait for level end
 DEF PL_MODE_TLPINIT       EQU $19 ; Init for...
-DEF PL_MODE_TLP           EQU $1A ; Wily Teleporter - Anim
+DEF PL_MODE_TLPANIM       EQU $1A ; Wily Teleporter - Anim
 DEF PL_MODE_TLPEND        EQU $1B ; Wily Teleporter - Wait for level end
+
+; wPlSprMapId - Generic Set (affected by wPlShootType)
+DEF PLSPR_WALK0      EQU $00
+DEF PLSPR_WALK1      EQU $01
+DEF PLSPR_WALK2      EQU $02
+DEF PLSPR_WALK3      EQU $03
+DEF PLSPR_IDLE       EQU $04
+DEF PLSPR_BLINK      EQU $05
+DEF PLSPR_SIDESTEP   EQU $06
+DEF PLSPR_JUMP       EQU $07
+DEF PLSPR_CLIMBTOP   EQU $08
+DEF PLSPR_CLIMB      EQU $09
+DEF PLSPR_SLIDE      EQU $0A
+
+DEF PLSPR_SG_IDLE    EQU $1C
+DEF PLSPR_SG_JUMP    EQU $1D
+
+; wPlSprMapId - Fixed Set (wPlShootType-independent)
+DEF PLSPR_HURT       EQU $30
+DEF PLSPR_WARP_START EQU $31
+DEF PLSPR_WARP       EQU $31
+DEF PLSPR_WARPLAND0  EQU $32
+DEF PLSPR_WARPLAND1  EQU $33
+DEF PLSPR_WARPLAND2  EQU $34
+DEF PLSPR_WARPLAND3  EQU $35
+DEF PLSPR_WARP_END   EQU $36
+
 
 ; wPlDirH
 ; TODO: This might be renamed to a generic DIR_*
@@ -235,8 +279,15 @@ DEF MEDIR_UR EQU $05
 DEF MEDIR_DL EQU $06
 DEF MEDIR_DR EQU $07
 
-DEF PLCOLI_V EQU $0C ; Player collision box, vertical radius
 DEF PLCOLI_H EQU $06 ; Player collision box, horizontal radius
+DEF PLCOLI_V EQU $0C ; Player collision box, vertical radius
+DEF RMCOLI_H EQU $0E ; Rush Marine collision box, horizontal radius
+DEF RMCOLI_FV EQU $0F ; Rush Marine collision box, vertical HEIGHT
+
+DEF PL_LADDER_BORDER_V EQU PLCOLI_V*2 ; Amount you automatically move when climbing in/out of ladders
+DEF PL_LADDER_IN0 EQU $08
+DEF PL_LADDER_IN1 EQU $10
+ASSERT PL_LADDER_IN0 + PL_LADDER_IN1 == PL_LADDER_BORDER_V, "PL_LADDER_BORDER_V inconsistency"
 
 ; wPlShootType
 DEF PSA_NONE  EQU $00 ; Not shooting
@@ -333,6 +384,7 @@ DEF ACTCOLISUB_RM       EQU $03 ; Rush Marine
 DEF ACTCOLISUB_RJ       EQU $04 ; Rush Jet
 DEF ACTCOLISUB_SG       EQU $05 ; Sakugarne
 
+DEF ACTSLOT_NONE      EQU $FF
 
 ; iArcIdDir index directions
 DEF ADRB_DEC_IDY EQU 0 ; If set, the horizontal path index will decrease

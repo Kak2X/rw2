@@ -51,22 +51,22 @@ wPlWalkAnimTimer:      db ; $CF13 ; Walk animation timer. Player will sidestep u
 wPlAnimTimer:          db ; $CF14 ; Player animation timer
 wPlRelX:               db ; $CF15 ; Player X position, relative to the screen
 wPlRelY:               db ; $CF16 ; Player Y position, relative to the screen
-wPl_Unk_RelY_Copy:     db ; $CF17 ; ??? Copy of the above
+wPlNewRelY:            db ; $CF17 ; Tentative updated player Y position, before it gets confirmed
 wPlSpdXSub:            db ; $CF18 ; Player horizontal speed (subpixels)
 wPlSpdX:               db ; $CF19 ; Player horizontal speed.
-wPlSpdYSub:            db ; $CF1A ; Player vertical speed (subpixels)
-wPlSpdY:               db ; $CF1B ; Player vertical speed
+wPlSpdY:               db ; $CF1A ; Player vertical speed
+wPlSpdYSub:            db ; $CF1B ; Player vertical speed  (subpixels)
 wPlYCeilMask:          db ; $CF1C ; Mask applied to the player's Y position when hitting the ceiling while jumping. Can be $F0 or $F8 depending on the type of ceiling hit.
 wPlMode:               db ; $CF1D ; Player action (PL_MODE_*)
-wPl_CF1E_DelayTimer:   db ; $CF1E ; ???
+wPlClimbInTimer:       db ; $CF1E ; Timer for the transition state when climbing in/out of a ladder
 wPlRelYSub:            db ; $CF1F ; Player Y subpixel position, used for a few actions such as climbing
 wScrollVDir:           db ; $CF20 ; Vertical scroll direction
-wPlBlinkChkDelay:      db ; $CF21 ; Delays the next dice roll to check if the player should blink
+wPlBlinkTimer:         db ; $CF21 ; Delays the next dice roll to check if the player should blink
 wPlShootTimer:         db ; $CF22 ; How long the player sticks the arm out when shooting
 wPlShootType:          db ; $CF23 ; Determines the animation frame used when shooting (ie: normal, throw)
 wActRjStandLastSlotPtr: db ; $CF24 ; wActRjStandSlotPtr value from the previous frame
 ds $01
-wColiGround:     db ; $CF26 ; ??? Delays falling when moving off a platform, by shifting
+wPlColiGround:         db ; $CF26 ; Ground collision flags 
 wPlSlideDustTimer:     db ; $CF27 ; Timer for the dust particle after starting a slide.
 ds $02
 wPlSlideTimer:    db ; $CF2A ; Player slide timer, when it elapses the slide ends
@@ -128,7 +128,7 @@ wBossHealth:            db ; $CF61 ; Boss health (copied from the boss' iActColi
 wTmpColiActId:          db ; $CF62 ; Temporary location to store the actor ID during shot-actor collision checks.
 wExplodeOrgX:           db ; $CF63 ; X Origin of player/boss explosions
 wExplodeOrgY:           db ; $CF64 ; Y Origin of player/boss explosions
-wPlWarpSprMapRelId:     db ; $CF65 ; Relative sprite mapping ID used during the teleport animation
+wPlWarpAnimTimer:       db ; $CF65 ; Animation timer for the teleport landing animation, determines the sprite mapping ID used
 wStageSelCursor:        db ; $CF66 ; Cursor location on the stage select
 wPlSprFlags:            db ; $CF67 ; OBJ flags for the player
 wPlRmSpdYSub:           db ; $CF68 ; Rush Marine Y speed, calculated from wPlRmSpdU & wPlRmSpdD 
@@ -182,7 +182,7 @@ wWpnId:                 db ; $CFDF ; Current weapon
 wWpnAmmoCur:            db ; $CFE0 ; Active weapon ammo
 wBarQueuePos:           db ; $CFE1 ; Index to current wTilemapBarBuf write position
 wTmpCFE2:               db ; $CFE2 ; Temporary location (copy of wWpnAmmoCur, password error marker) 
-wPlIdleDelay:           db ; $CFE3 ; If set, the player returns to the idle state when it elapses. Used by Hard Knuckle.
+wWpnHaFreezeTimer:      db ; $CFE3 ; Used by Hard Knuckle to delay unfreezing the player.
 wWpnNePos:              db ; $CFE4 ; Timer used to alternate the vertical position of Needle Cannon shots
 wWpnWdUseAmmoOnThrow:   db ; $CFE5 ; Makes the Wood Shield use up ammo when fired. Not sure why it's a flag.
 wTmpCFE6:               db ; $CFE6 ; Temporary storage

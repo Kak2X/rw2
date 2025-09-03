@@ -1065,7 +1065,7 @@ L024680:;R
 	call ActS_ApplySpeedFwdXColi
 	jp   nc, ActS_FlipH
 	call ActS_GetGroundColi
-	ld   a, [wColiGround]
+	ld   a, [wPlColiGround]
 	cp   $03
 	ret  nz
 	xor  a
@@ -1267,7 +1267,7 @@ L0247F2:;R
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
 	call ActS_GetGroundColi
-	ld   a, [wColiGround]
+	ld   a, [wPlColiGround]
 	cp   $03
 	ret  nz
 	xor  a
@@ -1595,9 +1595,9 @@ L024A2C:;R
 	cp   b
 	ret  c
 	xor  a
-	ld   [wPlSpdY], a
-	inc  a
 	ld   [wPlSpdYSub], a
+	inc  a
+	ld   [wPlSpdY], a
 	inc  a
 	ld   [wPlMode], a
 	ret
@@ -1642,7 +1642,7 @@ L024A73:;R
 L024A8A:;R
 	call ActS_ApplySpeedFwdXColi
 	call ActS_GetGroundColi
-	ld   a, [wColiGround]
+	ld   a, [wPlColiGround]
 	cp   $03
 	ret  nz
 L024A96: db $AF;X
@@ -1812,7 +1812,7 @@ L024B9E:;I
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
 	call ActS_GetGroundColi
-	ld   a, [wColiGround]
+	ld   a, [wPlColiGround]
 	cp   $03
 	ret  nz
 	xor  a
@@ -2332,7 +2332,7 @@ L024F13:;R
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
 	call ActS_GetGroundColi
-	ld   a, [wColiGround]
+	ld   a, [wPlColiGround]
 	cp   $03
 	ret  nz
 	xor  a
@@ -3638,7 +3638,7 @@ L0257A2:;I
 	call ActS_ApplySpeedFwdXColi
 	jp   nc, ActS_IncRtnId
 	call ActS_GetGroundColi
-	ld   a, [wColiGround]
+	ld   a, [wPlColiGround]
 	cp   $03
 	ret  nz
 	ld   bc, $0100
@@ -4073,7 +4073,7 @@ L025A70:;I
 	call ActS_Anim4
 	call ActS_ApplySpeedFwdX
 	call ActS_GetGroundColi
-	ld   a, [wColiGround]
+	ld   a, [wPlColiGround]
 	cp   $03
 	jp   z, ActS_IncRtnId
 	ldh  a, [hActCur+iActTimer0C]
@@ -6339,9 +6339,9 @@ L026A35:;R
 	ld   a, $02
 	ld   [wPlMode], a
 	ld   a, $04
-	ld   [wPlSpdYSub], a
-	ld   a, $80
 	ld   [wPlSpdY], a
+	ld   a, $80
+	ld   [wPlSpdYSub], a
 	jp   WpnS_UseAmmo
 L026A59:;I
 	ldh  a, [hActCur+iActRtnId]

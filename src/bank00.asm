@@ -2270,7 +2270,10 @@ ScrEv_LvlScrollH:
 	pop  hl
 	
 	inc  h		; Seek down by 1 block
+	;--
+	; [POI] Does not account for the vertical offset wrapping around.
 	inc  d		; Seek down to next vertical offset
+	;--
 	dec  b
 	jr   nz, .loop
 	
@@ -2368,9 +2371,9 @@ ScrEv_DrawLvlBlock:
 	ld   [hl], a
 	ret
 	
-; =============== Game_Unk_StartRoomTrs ===============
+; =============== Game_StartRoomTrs ===============
 ; This subroutine handles the initial setup for vertical screen transitions.
-Game_Unk_StartRoomTrs:
+Game_StartRoomTrs:
 
 	;
 	; Levels in this game are maps 256 blocks (columns) wide and 8 blocks (rows) tall, loaded all at once.
@@ -2482,9 +2485,16 @@ Game_Unk_StartRoomTrs:
 	and  $0F
 	ldh  [hScrEvOffV], a
 	
-	; Reset vertical transition counter, in preparation of calling Game_Unk_DoRoomTrs
+	; Reset vertical transition counter, in preparation of calling Game_DoRoomTrs
 	xor  a
 	ldh  [hTrsRowsProc], a
+	; [BUG] wWpnHaFreezeTimer should be reset too, to prevent it from aborting the transition early.
+	;       Aborting the vertical transitions can't break the level or actor layout given everything
+	;       is loaded at once, but what it *does* do is keep a bad hScrollY value.
+	;       Horizontal scrolling does not account for it, and if the screen is scrolled in such a way
+	;       that the tilemap wraps around vertically, you'll be using out of bounds tilemap row pointers
+	;       which are all $FFFF and corrupt HRAM, leading to broken sound and eventually a freeze caused
+	;       by writing to $FFFF itself.
 	
 	; Immediately start a request to load any new actor graphics, if any
 	call ActS_ReqLoadRoomGFX
@@ -2520,11 +2530,11 @@ Game_CalcCurLvlCol:
 	ld   [wLvlColPl], a
 	ret
 	
-; =============== Game_Unk_DoRoomTrs ===============
+; =============== Game_DoRoomTrs ===============
 ; This subroutine handles the loop code for vertical screen transitions.
 ; OUT
 ; - Z: If set, the transition is finished.
-Game_Unk_DoRoomTrs:
+Game_DoRoomTrs:
 	
 	;
 	; Set up tile ID data for the level scrolling event (ScrEv_LvlScrollV).
@@ -2536,7 +2546,7 @@ Game_Unk_DoRoomTrs:
 	;
 	
 	ldh  a, [hTrsRowsProc]
-	cp   SCREEN_GAME_BLOCKCOUNT_V		; Have we written all 8 strips?
+	cp   SCREEN_GAME_BLOCKCOUNT_V	; Have we written all 8 strips?
 	jr   nc, .scroll				; If so, we're done with tilemap updates, just scroll the viewport
 	ld   a, [wLvlScrollEvMode]
 	or   a							; Are we in the middle of the previously set screen event?
@@ -2545,7 +2555,7 @@ Game_Unk_DoRoomTrs:
 	;
 	; Save to hScrEvVDestPtr_* where to start writing tiles.
 	;
-	; [POI] There's an oversight in here, the code should have checked if we were scrolling up, and if so,
+	; [BUG] There's an oversight in here, the code should have checked if we were scrolling up, and if so,
 	;       make hScrEvVDestPtr_Low point to the bottom row.
 	;       Instead, since the top row is always drawn first, garbage is visible for two frames when scrolling up.
 	;
@@ -2656,11 +2666,11 @@ Game_Unk_DoRoomTrs:
 	
 ; =============== ScrEv_LvlScrollV ===============
 ; Updates the tilemap for vertical scrolling during gameplay.
-; Works alongside Game_Unk_DoRoomTrs, which feeds its data.
+; Works alongside Game_DoRoomTrs, which feeds its data.
 ScrEv_LvlScrollV:
 
 	; This event lasts three frames.
-	; Until it is finished, Game_Unk_DoRoomTrs isn't allowed to send any more data.
+	; Until it is finished, Game_DoRoomTrs isn't allowed to send any more data.
 	ld   a, [wLvlScrollEvMode]
 	cp   SCREV_SCROLLV+0
 	jr   z, .copyRow0
@@ -2730,7 +2740,7 @@ ScrEv_LvlScrollV:
 	; the high byte of the pointer is all that's needed to seek to the block above or below.
 	; Same for the vertical offset, since it's straight up an index to a table of tilemap ptrs.
 	;
-	; Doing this isn't immediately necessary for the next frame, but it must be done for Game_Unk_DoRoomTrs
+	; Doing this isn't immediately necessary for the next frame, but it must be done for Game_DoRoomTrs
 	; by the time the event finishes.
 	;
 	
@@ -2782,43 +2792,19 @@ ScrEv_LvlScrollV:
 	jr   nz, .loop2
 	;--
 
-	; Transfer done, let Game_Unk_DoRoomTrs send more data, if any
+	; Transfer done, let Game_DoRoomTrs send more data, if any
 	xor  a
 	ld   [wLvlScrollEvMode], a
 	ret
 	
-Lvl_RoomColOffsetTbl: db $00
-L000B79: db $00
-L000B7A: db $19
-L000B7B: db $00
-L000B7C: db $32
-L000B7D: db $00
-L000B7E: db $4B
-L000B7F: db $00
-L000B80: db $64
-L000B81: db $00
-L000B82: db $7D
-L000B83: db $00
-L000B84: db $96
-L000B85: db $00
-L000B86: db $AF
-L000B87: db $00
-L000B88: db $C8
-L000B89: db $00
-L000B8A: db $E1
-L000B8B: db $00
-L000B8C: db $FA;X
-L000B8D: db $00;X
-L000B8E: db $13;X
-L000B8F: db $01;X
-L000B90: db $2C;X
-L000B91: db $01;X
-L000B92: db $45;X
-L000B93: db $01;X
-L000B94: db $5E;X
-L000B95: db $01;X
-L000B96: db $77;X
-L000B97: db $01;X
+; =============== Lvl_RoomColOffsetTbl ===============
+Lvl_RoomColOffsetTbl: 
+	DEF I = 0
+	; [POI] Only entries $00-$09 are used, as that's the amount of levels.
+	REPT $10
+		dw LVL_ROOMCOUNT * I
+		DEF I = I + 1
+	ENDR
 
 ; =============== Lvl_RoomColTbl ===============
 ; Maps each Room ID to an initial wLvlColL value.
@@ -3269,7 +3255,7 @@ Shutter_MovePlR:
 	ld   [wShutterRowsLeft], a
 	ld   hl, wShutterMode		; Next mode
 	inc  [hl]
-	ld   a, $04					; Set standing frame
+	ld   a, PLSPR_IDLE			; Set standing frame
 	ld   [wPlSprMapId], a
 	jp   Pl_DoCtrl_NoMove
 	
@@ -3476,7 +3462,7 @@ Pl_DoCtrl:
 	rst  $00 ; DynJump
 	dw PlMode_Ground         ; PL_MODE_GROUND
 	dw PlMode_Jump           ; PL_MODE_JUMP
-	dw PlMode_JumpHigh       ; PL_MODE_JUMPHI
+	dw PlMode_FullJump       ; PL_MODE_FULLJUMP
 	dw PlMode_Fall           ; PL_MODE_FALL
 	dw PlMode_Climb          ; PL_MODE_CLIMB
 	dw PlMode_ClimbInInit    ; PL_MODE_CLIMBININIT
@@ -3489,7 +3475,7 @@ Pl_DoCtrl:
 	dw PlMode_ClimbUTrs      ; PL_MODE_CLIMBUTRS
 	dw PlMode_FallTrsInit    ; PL_MODE_FALLTRSINIT
 	dw PlMode_FallTrs        ; PL_MODE_FALLTRS
-	dw PlMode_NoCtrl         ; PL_MODE_FROZEN
+	dw PlMode_Frozen         ; PL_MODE_FROZEN
 	dw PlMode_Slide          ; PL_MODE_SLIDE
 	dw PlMode_RushMarine     ; PL_MODE_RM
 	dw PlMode_WarpInInit     ; PL_MODE_WARPININIT
@@ -3500,7 +3486,7 @@ Pl_DoCtrl:
 	dw PlMode_WarpOutMove    ; PL_MODE_WARPOUTMOVE
 	dw PlMode_WarpOutEnd     ; PL_MODE_WARPOUTEND
 	dw PlMode_TeleporterInit ; PL_MODE_TLPINIT
-	dw PlMode_Teleporter     ; PL_MODE_TLP
+	dw PlMode_Teleporter     ; PL_MODE_TLPANIM
 	dw PlMode_TeleporterEnd  ; PL_MODE_TLPEND
 	
 ; =============== PlMode_Ground ===============
@@ -3517,6 +3503,7 @@ PlMode_Ground:
 	jr   z, .noSg
 	
 .sg:
+	;
 	; A -> Jump
 	;
 	; The pogo stick has a "delayed" jump mechanic caused by how, like actual pogo sticks,
@@ -3530,18 +3517,18 @@ PlMode_Ground:
 	jr   nz, .sgJump		; If so, jump
 .sgIdle:
 	ld   bc, $0200			; Otherwise, use small 2px/frame jump
-	ld   a, $1C				; Set idle frame
+	ld   a, PLSPR_SG_IDLE	; Set idle frame
 	jr   .sgSet
 .sgJump:
 	ld   bc, $0400			; Use high 4px/frame jump 
-	ld   a, $1D				; Set jump frame
+	ld   a, PLSPR_SG_JUMP	; Set jump frame
 .sgSet:
 	ld   [wPlSprMapId], a	; Save the new frame
 	ld   a, c				; Save the jump speed
-	ld   [wPlSpdY], a
-	ld   a, b
 	ld   [wPlSpdYSub], a
-	ld   a, PL_MODE_JUMPHI	; New mode
+	ld   a, b
+	ld   [wPlSpdY], a
+	ld   a, PL_MODE_FULLJUMP	; New mode
 	ld   [wPlMode], a
 	jp   Pl_DrawSprMap		; Draw the Sakugarne
 	
@@ -3554,524 +3541,842 @@ PlMode_Ground:
 	jr   z, .notHurt		; If not, jump
 .hurt:
 	;--
-	; [POI] Nonsense logic impossible to trigger with the used level designs.
-	;       If getting hurt while *inside* a ladder top block, attempt to start falling.
-	;       This does nothing except skip the remainder of the code.
-	;
-	;       There's a similar nonsensical check when falling, which does have a (buggy)
-	;       effect, but again, the used level designs don't let it happen.
-	call Pl_IsInLadderTop		; Standing on a laddder?
-	jp   z, Pl_Unk_StartFall	; If so, jump
+	; If inside a top-solid block while hurt, try to fall down.
+	; Normally this isn't necessary, as top-solid platforms while standing on the ground
+	; should *always* count as solid... however getting hit sets the player state to grounded, even in the air.
+	; Just in case we got hit in the air while jumping near the top of a ladder, fall down.
+	call Pl_IsInTopSolidBlock	; Inside a top-solid block?
+	jp   z, .startFall			; If so, jump
 	;--
 	; No Pl_DoWpnCtrl call, preventing shots from being fired
 	call Pl_DoConveyor
 	call Pl_DoHurtSpeed ; Replaces Pl_DoMoveSpeed
 	call Pl_BgColiApplySpeedX
-	jp   L00100E
+	jp   .chkGround ; Skip very fat ahead
 .notHurt:
 	call Pl_DoWpnCtrl ; BANK $01
 	call Pl_DoConveyor
 	call Pl_DoMoveSpeed
 	call Pl_BgColiApplySpeedX
 	
+.chkSpike:
+	;
+	; Kill the player if it overlaps with a spike block.
+	;
+	; Note that, outside of the special case in vertical transitions that instakills the player
+	; even with mercy invincibility on, this is the only place that checks for spikes.
+	; This means that spikes only work properly on the ground -- if the player is in the air,
+	; sliding, climbing, etc... they can safely pass through.
+	;
+	
+	; Ignore spikes if the player has mercy invincibility
 	ld   a, [wPlInvulnTimer]
 	or   a
-	jr   nz, L000EFC
+	jr   nz, .chkShutter
+	
+	; For the collision check, get the block 8 pixels above the player's origin.
+	;
+	; A consequence of only the center point being checked rather than the two
+	; corners is that spikes with exposed sides won't quite work properly.
+	; With one exception, no spike blocks have an empty block horizontally adjacent.
+	
+	; Y Sensor: Player's Y origin - 8 (low half)
 	ld   a, [wPlRelY]
 	sub  $08
 	ld   [wTargetRelY], a
+	; X Sensor: Player's X origin (middle)
 	ld   a, [wPlRelX]
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	cp   $18
-	jr   c, L000EFC
-	cp   $20
-	jp   c, L0017A5
-L000EFC:;R
+	call Lvl_GetBlockId		; Get block at that location
+	
+	; Spike blocks are in range $18-$1F.
+	cp   BLOCKID_SPIKE_START	; A < $18?
+	jr   c, .chkShutter			; If so, skip
+	cp   BLOCKID_SPIKE_END		; A < $20?
+	jp   c, PlColi_Spike		; If so, jump (die)
+	
+.chkShutter:
+	;
+	; RIGHT -> Activate the shutter if we touched a door block while walking.
+	;
+	
+	; Only perform the check if we moved to the right this frame.
+	; Pl_BgColiMoveR will have saved the block ID detected on the right to wPlColiBlockR.
 	ld   a, [wPlColiBlockR]
-	cp   $38
-	jr   nz, L000F2E
-	call Pause_StartHelperWarp
-	jr   c, L000F2E
+	cp   BLOCKID_SHUTTER		; Are we walking towards a shutter block?
+	jr   nz, .chkLadderU			; If not, skip
+	
+	; [POI] Attempt to teleport Rush/Sakugarne out.
+	;       There is a problem with this, in that all actors are despawned when touching a door,
+	;       and the way the game tries to wait for them just doesn't work.
+	;       The only way to see this is to move towards the door for one frame only.
+	call Pause_StartHelperWarp	; Try to teleport Rush/Sakugarne out, *if they aren't teleporting out already*
+	jr   c, .chkLadderU				; Did we teleport anything out? If so, skip (don't activate the shutter yet)
+	
+	; Only activate the shutter if not standing on solid ground.
+	; The shutter animation assumes the player to be on the ground, which is why it's used to
+	; determine where to draw the shutter tiles on screen.
+	; Touching the door while riding Rush Jet will break that assumption.
+	
+	; X Sensor: Player's X origin (middle)
 	ld   a, [wPlRelX]
 	ld   [wTargetRelX], a
+	; Y Sensor: Player's Y origin + 1 (ground)
 	ld   a, [wPlRelY]
 	inc  a
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	jr   c, L000F2E
-	call ActS_DespawnAll
-	xor  a
+	
+	call Lvl_GetBlockId		; C Flag = Is the block empty?
+	jr   c, .chkLadderU	; If so, skip
+	
+	; Checks passed, start the effect
+	call ActS_DespawnAll	; Despawn all actors to prevent them from interfering
+	
+	xor  a					; Not necessary
 	ld   [wPlColiBlockR], a
-	ld   a, $01
+	ld   a, SHMODE_START	; Start the shutter sequence
 	ld   [wShutterMode], a
-	ld   a, $04
+	ld   a, PLSPR_IDLE		; Force standing sprite
 	ld   [wPlSprMapId], a
 	jp   Pl_DrawSprMap
-L000F2E:;R
+	
+	
+.chkLadderU:
+
+	;
+	; UP -> Grab onto a ladder
+	;
+	; While no ladders are directly placed on the ground (which would still be supported),
+	; it's possible to trigger this through Rush Jet or when walking off a platform directly into a ladder.
+	;
+	
 	ldh  a, [hJoyKeys]
-	bit  6, a
-	jr   z, L000F5B
+	bit  KEYB_UP, a			; Holding UP?
+	jr   z, .chkLadderD		; If not, skip
+	
+	; The sensor for grabbing a ladder is always 15 pixels above the player's origin.
+	; This is the same position used to detect if we're still on the ladder in PlMode_Climb.
 	ld   a, [wPlRelY]
-	cp   $28
-	jr   c, L000F5B
-	sub  $0F
+	; This check is not necessary, as the offscreen area above counts as unclimbable empty space,
+	; which we aren't allowed to move into anyway (can't move above Y pos $18, which leaves enough space for the 15px sensor).
+	; However, that's also the reason why ladders have poor collision detection near the top of the screen
+	cp   OBJ_OFFSET_Y+$18	; Are we 24px within the top of the screen?
+	jr   c, .chkLadderD		; If so, skip
+	
+	; Y Sensor: Player's Y origin - 15 pixels
+	; This barely missed ladders 1 block above the ground.
+	sub  BLOCK_V-1
 	ld   [wTargetRelY], a
+	; X Sensor: Player's X origin (middle)
 	ld   a, [wPlRelX]
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   $20
-	jr   nz, L000F5B
-L000F4D: db $CD;X
-L000F4E: db $D2;X
-L000F4F: db $17;X
-L000F50: db $3E;X
-L000F51: db $04;X
-L000F52: db $EA;X
-L000F53: db $1D;X
-L000F54: db $CF;X
-L000F55: db $CD;X
-L000F56: db $45;X
-L000F57: db $1A;X
-L000F58: db $C3;X
-L000F59: db $E9;X
-L000F5A: db $1A;X
-L000F5B:;R
+	cp   BLOCKID_LADDER		; Is there a ladder block?
+	jr   nz, .chkLadderD	; If not, skip
+							; Otherwise, we passed the checks
+							
+	call Pl_StopTpAttack	; Can't use Top Spin while climbing
+	
+	ld   a, PL_MODE_CLIMB	; Switch to climb
+	ld   [wPlMode], a
+	
+	call Pl_AlignToLadder	; No misaligned grabs
+	jp   Pl_DrawSprMap
+	
+.chkLadderD:
+	;
+	; DOWN -> Grab onto a ladder, if one is on the ground.
+	;
 	ldh  a, [hJoyKeys]
-	bit  7, a
-	jr   z, L000F80
+	bit  KEYB_DOWN, a			; Pressed DOWN?
+	jr   z, .chkSlide				; If not, skip
+	
+	; X Sensor: Player's X origin (middle)
 	ld   a, [wPlRelX]
 	ld   [wTargetRelX], a
+	; Y Sensor: Player's Y origin + 1 pixel (ground)
 	ld   a, [wPlRelY]
 	inc  a
 	ld   [wTargetRelY], a
 	call Lvl_GetBlockId
-	cp   $21
-	jr   nz, L000F80
-	ld   a, $05
+	cp   BLOCKID_LADDERTOP		; Is there a ladder top block?
+	jr   nz, .chkSlide			; If not, skip
+								; Otherwise, we passed the checks
+							
+	ld   a, PL_MODE_CLIMBININIT	; Start climbing down from the top of a laddder
 	ld   [wPlMode], a
-	call L001A45
+	call Pl_AlignToLadder		; No misaligned grabs
 	jp   Pl_DrawSprMap
-L000F80:;R
+	
+.chkSlide:
+	;
+	; DOWN+A -> Slide
+	;
 	ldh  a, [hJoyNewKeys]
-	bit  0, a
-	jr   z, L000FD4
+	bit  KEYB_A, a			; *Pressed* A?
+	jr   z, .chkJump		; If not, skip
 	ldh  a, [hJoyKeys]
-	bit  7, a
-	jr   z, L000FD4
+	bit  KEYB_DOWN, a		; Holding DOWN?	
+	jr   z, .chkJump		; If not, skip
 	ld   a, [wActRjStandSlotPtr]
-	cp   $FF
-	jr   nz, L000FD4
+	cp   ACTSLOT_NONE		; Standing on Rush Jet? (!= ACTSLOT_NONE)
+	jr   nz, .chkJump		; If so, skip
+	
+	; Prevent sliding if there's a solid block forward
 	ld   a, [wPlDirH]
-	or   a
-	jr   nz, L000FA6
-	ld   a, [wPlRelX]
-	ld   [wPlSlideDustX], a
-	sub  $10
+	or   a					; Facing right?
+	jr   nz, .chkSlideR		; If so, jump
+.chkSlideL:
+	ld   a, [wPlRelX]		; X Sensor: 1 block to the left
+	ld   [wPlSlideDustX], a	; # DustX = PlX
+	sub  BLOCK_H
 	ld   [wTargetRelX], a
-	jr   L000FB1
-L000FA6:;R
-	ld   a, [wPlRelX]
-	ld   [wPlSlideDustX], a
-	add  $10
+	jr   .chkSlideSolid
+.chkSlideR:
+	ld   a, [wPlRelX]		; X Sensor: 1 block to the right
+	ld   [wPlSlideDustX], a	; # DustX = PlX
+	add  BLOCK_H
 	ld   [wTargetRelX], a
-L000FB1:;R
-	ld   a, [wPlRelY]
-	ld   [wPlSlideDustY], a
-	sub  $0F
+.chkSlideSolid:
+	; Y Sensor: *almost* 1 block above, but not quite.
+	ld   a, [wPlRelY]		
+	ld   [wPlSlideDustY], a	; # DustY = PlY
+	sub  BLOCK_V-1			
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	jp   nc, L000FD4
-	ld   a, $10
+	
+	call Lvl_GetBlockId		; Is there a solid block?
+	jp   nc, .chkJump		; If so, skip
+	
+	ld   a, PL_MODE_SLIDE	; Start sliding
 	ld   [wPlMode], a
-	ld   a, $1E
+	ld   a, $1E				; Slide for half a second
 	ld   [wPlSlideTimer], a
-	ld   a, $30
+	ld   a, $30				; Show dust for 48 frames
 	ld   [wPlSlideDustTimer], a
 	jp   Pl_DrawSprMap
-L000FD4:;JR
+	
+.chkJump:
+
+	;
+	; A -> Jump
+	;
 	ldh  a, [hJoyNewKeys]
-	bit  0, a
-	jr   z, L00100E
-	ld   a, [wPlRelY]
-	sub  $18
+	bit  KEYB_A, a
+	jr   z, .chkGround
+	
+	;
+	; If there's a solid block above the player, don't jump.
+	;
+	
+	; Top-left corner
+	ld   a, [wPlRelY]		; Y Sensor: Top border
+	sub  PLCOLI_V*2
 	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
-	sub  $06
+	ld   a, [wPlRelX]		; X Sensor: Left border
+	sub  PLCOLI_H
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	jr   nc, L00100E
-	ld   a, [wPlRelX]
-	add  $06
+	call Lvl_GetBlockId		; C Flag = Is block empty?
+	jr   nc, .chkGround		; If not, skip
+	
+	; Top-right corner
+	ld   a, [wPlRelX]		; X Sensor: Right border
+	add  PLCOLI_H
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	jr   nc, L00100E
-	ld   a, $80
-	ld   [wPlSpdY], a
-	ld   a, $03
+	call Lvl_GetBlockId		; C Flag = Is block empty?
+	jr   nc, .chkGround		; If not, skip
+	
+	ld   a, $80				; Set 3.5px/frame upwards speed
 	ld   [wPlSpdYSub], a
-	ld   a, $01
+	ld   a, $03
+	ld   [wPlSpdY], a
+	ld   a, PL_MODE_JUMP	; Start jump
 	ld   [wPlMode], a
 	jp   Pl_DrawSprMap
-L00100E:;JR
-	call L001836
-	ld   a, [wColiGround]
-	and  $03
-	cp   $03
-	jr   nz, L00102C
-Pl_Unk_StartFall:;X
-	ld   a, $00
-	ld   [wPlSpdY], a
-	ld   a, $01
+	
+.chkGround:
+	;
+	; If there is no solid ground, start falling down.
+	;
+	call Pl_IsOnGround		; Make wPlColiGround
+	ld   a, [wPlColiGround]	
+	and  %11				; Keep only bits for the current frame
+	cp   %11				; Are we fully on empty blocks?
+	jr   nz, .chkWalk		; If not, skip
+.startFall:
+	ld   a, $00				; Start falling at 1px/frame
 	ld   [wPlSpdYSub], a
+	ld   a, $01
+	ld   [wPlSpdY], a
 	ld   a, PL_MODE_FALL
 	ld   [wPlMode], a
 	jp   Pl_DrawSprMap
-L00102C:;R
+	
+.chkWalk:
+	;
+	; LEFT/RIGHT -> Animate the player's walk cycle
+	;
+	; We have moved the player before through Pl_BgColiApplySpeedX,
+	; but that doesn't handle the walking animation.
+	;
+	
+	; The player does not animate on Rush Jet
 	ld   a, [wActRjStandSlotPtr]
-	cp   $FF
-	jr   nz, L00103A
+	cp   ACTSLOT_NONE		; wActRjStandSlotPtr != ACTSLOT_NONE?
+	jr   nz, .idleAnim		; If so, skip
 	ldh  a, [hJoyKeys]
-	and  $30
-	jp   nz, Pl_AnimWalk
-L00103A:;R
+	and  KEY_LEFT|KEY_RIGHT	; Pressed left or right?
+	jp   nz, Pl_AnimWalk	; If so, walk
+	
+.idleAnim:
+	;
+	; Finally, if no other actions are performed, handle the idle blinking animation.
+	;
+	; Rockman blinks for 12 frames, and then waits for a random amount of time before,
+	; blinking again. This wait is 12 frames at the absolute minimum.
+	;
+	
 	xor  a
 	ld   [wPlWalkAnimTimer], a
-	ld   a, [wPlBlinkChkDelay]
-	or   a
-	jr   nz, L001050
-	call Rand
-	cp   $03
-	jr   nc, L001060
-	ld   a, $19
-	ld   [wPlBlinkChkDelay], a
-L001050:;R
-	dec  a
-	ld   [wPlBlinkChkDelay], a
-	cp   $0C
-	jr   c, L001060
-	ld   a, $05
+	
+	; If we're in the middle of the blink animation, handle that first.
+	ld   a, [wPlBlinkTimer]
+	or   a						; wPlBlinkTimer != 0?
+	jr   nz, .decIdleTimer		; If so, skip
+	
+	; 3 in 256 chance of blinking.
+	; If the check fails, it gets repeated the very next frame, and so on...
+	call Rand					; A = Rand()
+	cp   $03					; A >= $03?
+	jr   nc, .setEyeOpen		; If so, skip
+	
+	; If the check passes, set the timer to $18 (+1, to account for the immediate dec).
+	ld   a, ($0C*2)+1			; Delay = $19
+	ld   [wPlBlinkTimer], a
+.decIdleTimer:
+	; The blinking sprite kicks in for the first 12 frames, until it ticks down to $0C.
+	; The normal sprite is displayed afterwards, to ensure a minimum delay of 12 frames between blinks.
+	dec  a						; Delay--
+	ld   [wPlBlinkTimer], a
+	cp   $0C					; Delay < $0C?
+	jr   c, .setEyeOpen			; If so, don't blink
+.setEyeClose:
+	ld   a, PLSPR_BLINK
 	ld   [wPlSprMapId], a
 	jp   Pl_DrawSprMap
-L001060:;R
-	ld   a, $04
+.setEyeOpen:
+	ld   a, PLSPR_IDLE
 	ld   [wPlSprMapId], a
 	jp   Pl_DrawSprMap
-PlMode_Jump:;I
+	
+; =============== PlMode_Jump ===============
+; Player is doing a normal jump.
+PlMode_Jump:
 	call Pl_DoWpnCtrl ; BANK $01
+	; Handle horizontal movement
 	call Pl_DoMoveSpeed
 	call Pl_BgColiApplySpeedX
-	ld   a, $07
+	
+	ld   a, PLSPR_JUMP
 	ld   [wPlSprMapId], a
+	
+	; If we stop holding A, cut the jump early.
 	ldh  a, [hJoyKeys]
-	bit  0, a
-	jr   nz, L001093
-	jp   L00115D
-PlMode_JumpHigh:;I
+	bit  KEYB_A, a							; Holding A?
+	jr   nz, PlMode_FullJump.chkLadderU		; If so, jump
+	jp   PlMode_FullJump.startFall
+	
+; =============== PlMode_FullJump ===============
+; Player is doing a full jump.
+; Like PlMode_Jump, except it prevents the player from cutting the jump early.
+; This makes it useful for things like the Sakugarne or the end of stage jumps.
+PlMode_FullJump:
 	call Pl_DoWpnCtrl ; BANK $01
+	; Handle horizontal movement
 	call Pl_DoMoveSpeed
 	call Pl_BgColiApplySpeedX
+	
+	; Don't let the player grab ladders while riding the Sakugarne 
 	ld   a, [wWpnSGRide]
-	or   a
-	jr   nz, L0010C0
-	ld   a, $07
+	or   a					; wWpnSGRide != 0?
+	jr   nz, .tryMove		; If so, jump
+	
+	ld   a, PLSPR_JUMP
 	ld   [wPlSprMapId], a
-L001093:;R
+	
+.chkLadderU:
+	;
+	; UP -> Grab onto a ladder
+	;
+	; Identical to the respective code in PlMode_Ground.
+	;
+	
 	ldh  a, [hJoyKeys]
-	bit  6, a
-	jr   z, L0010C0
+	bit  KEYB_UP, a			; Holding UP?
+	jr   z, .tryMove		; If not, skip
+	
 	ld   a, [wPlRelY]
-	cp   $28
-	jr   c, L0010C0
-	sub  $0F
+	cp   OBJ_OFFSET_Y+$18	; Are we 24px within the top of the screen?
+	jr   c, .tryMove		; If so, skip
+	
+	; Y Sensor: Player's Y origin - 15 pixels
+	sub  BLOCK_V-1
 	ld   [wTargetRelY], a
+	; X Sensor: Player's X origin (middle)
 	ld   a, [wPlRelX]
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   $20
-	jr   nz, L0010C0
-	call L0017D2
-	ld   a, $04
+	cp   BLOCKID_LADDER		; Is there a ladder block?
+	jr   nz, .tryMove	; If not, skip
+							; Otherwise, we passed the checks
+							
+	call Pl_StopTpAttack	; Can't use Top Spin while climbing
+	
+	ld   a, PL_MODE_CLIMB	; Switch to climb
 	ld   [wPlMode], a
-	call L001A45
+	
+	call Pl_AlignToLadder	; No misaligned grabs
 	jp   Pl_DrawSprMap
-L0010C0:;R
+
+	
+.tryMove:
+	;
+	; Move upwards until we hit a solid block or gravity reduces the vertical speed to 0.
+	;
+	
+	; The ceiling check happens $18 pixels above the player's origin.
+	; If the current position would make that check underflow, cut the jump early.
+	; The player could easily walk on the ceiling or trigger the downwards screen transition otherwise.
 	ld   a, [wPlRelY]
-	cp   $18
-	jp   c, L00115D
-	ld   a, [wPlSpdYSub]
+	cp   PLCOLI_V*2			; PlY < $18? 
+	jp   c, .startFall			; If so, cut the jump
+	
+	; Get the updated position we're tentatively moving to, if the coming checks pass
+	ld   a, [wPlSpdY]		; Get pixel speed
 	ld   b, a
-	ld   a, [wPlRelY]
-	sub  b
-	ld   [wPl_Unk_RelY_Copy], a
-	sub  $18
+	ld   a, [wPlRelY]		; Get current Y
+	sub  b					; Move up by the speed
+	ld   [wPlNewRelY], a
+	
+	;
+	; Cut the jump if there's a solid block above.
+	; Three sensors are used for this check.
+	;
+	
+	; Top
+	sub  PLCOLI_V*2			; Y Sensor: wPlNewRelY - $18 (top border) 
 	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
+	ld   a, [wPlRelX]		; X Sensor: wPlRelX (center)
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId		; Is there a solid block there?
+	jr   nc, .alignToCeil	; If so, jump
+	
+	; For some reason, ceiling alignment only happens with the sensor above.
+	; This causes the sides of a block adjacent to an empty one to have a lower ceiling.
+	
+	; Top-left
+	ld   a, [wPlRelX]		; X Sensor: wPlRelX - $06 (left)
+	sub  PLCOLI_H
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId		; Is there a solid block there?
+	jr   nc, .startFall		; If so, jump
+	
+	; Top-right
+	ld   a, [wPlRelX]		; X Sensor: wPlRelX + $06 (right)
+	add  PLCOLI_H
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	jr   nc, L00114E
-	ld   a, [wPlRelX]
-	sub  $06
-	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	jr   nc, L00115D
-	ld   a, [wPlRelX]
-	add  $06
-	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	jr   nc, L00115D
-	ld   a, [wPl_Unk_RelY_Copy]
+	jr   nc, .startFall
+	
+	; Checks passed, confirm the new Y position
+	ld   a, [wPlNewRelY]
 	ld   [wPlRelY], a
+	
+	;
+	; Apply gravity, by decrementing the player's speed.
+	;
+.grav:
 	ld   a, [wLvlWater]
-	or   a
-	jr   z, L001120
-	ld   a, [wPlRelX]
+	or   a					; Water support enabled?
+	jr   z, .gravNorm		; If not, skip
+	ld   a, [wPlRelX]		; X Sensor: PlX (middle)
 	ld   [wTargetRelX], a
-	ld   a, [wPlRelY]
+	ld   a, [wPlRelY]		; Y Sensor: PlY (bottom)
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	cp   $10
-	jr   z, L001137
-	cp   $18
-	jr   z, L001137
-L001120:;R
+	call Lvl_GetBlockId		; A = Block ID
+	; If it's one of the two water blocks, apply lower gravity
+	cp   BLOCKID_WATER
+	jr   z, .gravLow
+	cp   BLOCKID_WATERSPIKE
+	jr   z, .gravLow
+.gravNorm:
+	; Apply normal gravity at 0.125px/frame
 	ld   bc, $0020
-	ld   a, [wPlSpdY]
-	sub  c
-	ld   [wPlSpdY], a
 	ld   a, [wPlSpdYSub]
-	sbc  b
+	sub  c
 	ld   [wPlSpdYSub], a
+	ld   a, [wPlSpdY]
+	sbc  b
+	ld   [wPlSpdY], a
+	; If our pixel speed ticked down to 0, start falling down.
+	; Note this does not wait for the subpixels to become 0.
 	or   a
-	jr   z, L00115D
+	jr   z, .startFall
 	jp   Pl_DrawSprMap
-L001137:;R
+.gravLow:
+	; Apply lower gravity at ~0.03px/frame
 	ld   bc, $0008
-	ld   a, [wPlSpdY]
-	sub  c
-	ld   [wPlSpdY], a
 	ld   a, [wPlSpdYSub]
+	sub  c
+	ld   [wPlSpdYSub], a
+	ld   a, [wPlSpdY]
 	sbc  b
-	ld   [wPlSpdYSub], a
-	or   a
-	jr   z, L00115D
-	jp   Pl_DrawSprMap
-L00114E:;R
-	ld   a, [wPlYCeilMask]
-	ld   b, a
-	ld   a, [wPlRelY]
-	sub  $17
-	and  b
-	add  $17
-	ld   [wPlRelY], a
-L00115D:;JR
-	ld   a, $00
 	ld   [wPlSpdY], a
-	ld   a, $01
+	; If our pixel speed ticked down to 0, start falling down.
+	or   a
+	jr   z, .startFall
+	jp   Pl_DrawSprMap
+	
+.alignToCeil:
+	; Align player to the vertical block boundary, pushing him up.
+	ld   a, [wPlYCeilMask]	; B = Block alignment ($F0 for solid or $F8 for small platforms)
+	ld   b, a
+	ld   a, [wPlRelY]		; A = Y position
+	sub  (PLCOLI_V*2)-1		; Move to top border
+	and  b					; Align to the block boundary
+	add  (PLCOLI_V*2)-1		; Move back to origin
+	ld   [wPlRelY], a		; Save the changes
+	
+.startFall:
+	; Start falling down from 1px/frame.
+	; This initial speed gives less air time during the peak of the jump,
+	; especially if the jump gets cut early.
+	ld   a, $00
 	ld   [wPlSpdYSub], a
-	ld   a, $03
+	ld   a, $01
+	ld   [wPlSpdY], a
+	ld   a, PL_MODE_FALL
 	ld   [wPlMode], a
 	jp   Pl_DrawSprMap
-PlMode_Fall:;I
+	
+; =============== PlMode_Fall ===============
+; Player is in the air and moving down.
+PlMode_Fall:
+	;
+	; In the hurt pose, make the player move backwards and prevent him from shooting,
+	; similar to the respective codein PlMode_Ground.
+	;
 	ld   a, [wPlHurtTimer]
 	or   a
-	jr   z, L00117D
+	jr   z, .noHurt
+.hurt:
 	call Pl_DoHurtSpeed
 	call Pl_BgColiApplySpeedX
-	jr   L001186
-L00117D:;R
+	; [POI] This doesn't quite skip ahead far enough, allowing the player to "cancel" the hurt state by grabbing a ladder.
+	;       (specifically, they don't handle it, but the hurt timer is still ticking down)
+	jr   .setSpr
+.noHurt:
 	call Pl_DoWpnCtrl ; BANK $01
 	call Pl_DoMoveSpeed
 	call Pl_BgColiApplySpeedX
-L001186:;R
+.setSpr:
+	; Do not let the player grab ladders while riding the Sakugarne
 	ld   a, [wWpnSGRide]
 	or   a
-	jr   nz, L0011BE
-	ld   a, $07
+	jr   nz, .tryMove
+	ld   a, PLSPR_JUMP		; Set jumping sprite in case we didn't go through PlMode_Jump
 	ld   [wPlSprMapId], a
+	
+.chkLadderU:
+	;
+	; UP -> Grab onto a ladder
+	;
+	; Identical to the respective code in PlMode_Ground.
+	;
+	
 	ldh  a, [hJoyKeys]
-	bit  6, a
-	jr   z, L0011BE
+	bit  KEYB_UP, a			; Holding UP?
+	jr   z, .tryMove		; If not, skip
+	
 	ld   a, [wPlRelY]
-	cp   $28
-	jr   c, L0011BE
-	sub  $0F
+	cp   OBJ_OFFSET_Y+$18	; Are we 24px within the top of the screen?
+	jr   c, .tryMove		; If so, skip
+	
+	; Y Sensor: Player's Y origin - 15 pixels
+	sub  BLOCK_V-1
 	ld   [wTargetRelY], a
+	; X Sensor: Player's X origin (middle)
 	ld   a, [wPlRelX]
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   $20
-	jr   nz, L0011BE
-	call L0017D2
-	ld   a, $04
+	cp   BLOCKID_LADDER		; Is there a ladder block?
+	jr   nz, .tryMove		; If not, skip
+							; Otherwise, we passed the checks
+							
+	call Pl_StopTpAttack	; Can't use Top Spin while climbing
+	
+	ld   a, PL_MODE_CLIMB	; Switch to climb
 	ld   [wPlMode], a
-	call L001A45
+	
+	call Pl_AlignToLadder	; No misaligned grabs
 	jp   Pl_DrawSprMap
-L0011BE:;R
+	
+.tryMove:
+	;
+	; Move downwards until we hit a solid block or actor platform.
+	;
+
+	; If we landed on a top-solid actor platform, we're done
 	ld   a, [wActPlatColiSlotPtr]
-	cp   $FF
-	jp   nz, L00128F
-	ld   a, [wPlSpdYSub]
+	cp   ACTSLOT_NONE				; wActPlatColiSlotPtr != ACTSLOT_NONE?
+	jp   nz, .switchToGround		; If so, jump
+	
+	; Get the updated position we're tentatively moving to, if the coming checks pass
+	ld   a, [wPlSpdY]		; Get pixel speed
 	ld   b, a
-	ld   a, [wPlRelY]
-	add  b
-	ld   [wPl_Unk_RelY_Copy], a
-	call Pl_IsInLadderTop
-	jp   z, L0011FD
-	ld   a, [wPl_Unk_RelY_Copy]
+	ld   a, [wPlRelY]		; Get current Y
+	add  b					; Move down by the speed
+	ld   [wPlNewRelY], a
+	
+	;
+	; Stop falling if there's a solid block below.
+	; Unlike the upwards movement code, only the two corner sensors are used for this check...
+	;
+	
+	; If we're currently inside a top solid block, count it as an empty block.
+	; This is to get ahead of the incoming solidity checks that count top-solid blocks as solid,
+	; which would cause the player to be immediately aligned to the bottom of the block, but it 
+	; doesn't quite work due to Pl_IsInTopSolidBlock requiring the player to be fully inside blocks.
+	call Pl_IsInTopSolidBlock	; Currently inside such a block?
+	jp   z, .chkPit				; If so, jump
+	
+	; Bottom-left
+	ld   a, [wPlNewRelY]		; Y Sensor: wPlNewRelY (bottom)
 	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
-	sub  $06
+	ld   a, [wPlRelX]			; X Sensor: wPlRelX - $06 (left)
+	sub  PLCOLI_H
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   $21
-	jp   nc, L001287
-	ld   a, [wPlRelX]
-	add  $06
+	cp   BLOCKID_TOPSOLID_START	; Is this block solid on top?
+	jp   nc, .alignToFloor		; If so, jump
+	
+	; Bottom-right
+	ld   a, [wPlRelX]			; X Sensor: wPlRelX + $06 (right)
+	add  PLCOLI_H
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   $21
-	jp   nc, L001287
-L0011FD:;J
-	ld   a, [wPl_Unk_RelY_Copy]
+	cp   BLOCKID_TOPSOLID_START	; Is this block solid on top?
+	jp   nc, .alignToFloor		; If so, jump
+	
+	
+.chkPit:
+	; Checks passed, confirm the new Y position
+	ld   a, [wPlNewRelY]
 	ld   [wPlRelY], a
-	cp   $98
-	jr   c, L001226
-	sub  $10
+
+	;
+	; Moving to the bottom of the screen will either instakill the player or start a vertical transition,
+	; depending on whether a spike block is present or not.
+	;
+	; Spike blocks on the bottom row of the level are the only way to define pits, as vertical transitions
+	; can happen anywhere at any point -- it's up to the level designers to box the player in, typically
+	; by using invisible spike blocks.
+	;
+	; There is a consequence to spikes and pits being one and the same -- the player dies immediately
+	; upon touching them, even with mercy invincibility. This is an "inconsistency" with spikes that
+	; are placed on a solid block, which respect it, but when they are placed at the bottom row
+	; there can't be any solid block below.
+	;
+
+	; Must be offscreen, halfway through the "block" covered by the status bar
+	cp   SCREEN_GAME_V+OBJ_OFFSET_Y+$08	; PlY < $98?
+	jr   c, .grav						; If so, skip
+	
+	sub  BLOCK_H			; Y Sensor: 1 block above, to the last column
 	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
+	ld   a, [wPlRelX]		; X Sensor: PlX
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   $18
-	jr   c, L00121E
-	cp   $20
-	jp   c, L0017A5
-L00121E:;R
-	ld   a, $0D
+	; Spike blocks are in range $18-$1F.
+	cp   BLOCKID_SPIKE_START	; A < $18?
+	jr   c, .startTrs			; If so, skip
+	cp   BLOCKID_SPIKE_END		; A < $20?
+	jp   c, PlColi_Spike		; If so, jump (die)
+.startTrs:
+	ld   a, PL_MODE_FALLTRSINIT	; Start downwards transition
 	ld   [wPlMode], a
 	jp   Pl_DrawSprMap
-L001226:;R
+	
+	;
+	; Apply gravity, by incrementing the player's speed.
+	; This uses the same gravity values as the respective code in PlMode_Jump.
+	;
+.grav:
 	ld   a, [wLvlWater]
-	or   a
-	jr   z, L001243
-	ld   a, [wPlRelX]
+	or   a					; Water support enabled?
+	jr   z, .gravNorm		; If not, skip
+	ld   a, [wPlRelX]		; X Sensor: PlX (middle)
 	ld   [wTargetRelX], a
-	ld   a, [wPlRelY]
+	ld   a, [wPlRelY]		; Y Sensor: PlY (bottom)
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	cp   $10
-	jr   z, L001265
-	cp   $18
-	jr   z, L001265
-L001243:;R
+	call Lvl_GetBlockId		; A = Block ID
+	; If it's one of the two water blocks, apply lower gravity
+	cp   BLOCKID_WATER
+	jr   z, .gravLow
+	cp   BLOCKID_WATERSPIKE
+	jr   z, .gravLow
+.gravNorm:
+	; Apply normal gravity at 0.125px/frame
 	ld   bc, $0020
-	ld   a, [wPlSpdY]
-	add  c
-	ld   [wPlSpdY], a
 	ld   a, [wPlSpdYSub]
-	adc  b
+	add  c
 	ld   [wPlSpdYSub], a
-	cp   $04
-	jp   c, Pl_DrawSprMap
-	xor  a
+	ld   a, [wPlSpdY]
+	adc  b
 	ld   [wPlSpdY], a
+	; Cap speed to 4px/frame
+	cp   $04				; Speed < 4?
+	jp   c, Pl_DrawSprMap	; If so, skip
+	xor  a					; Speed = 4
+	ld   [wPlSpdYSub], a
 	ld   a, $04
-	ld   [wPlSpdYSub], a
+	ld   [wPlSpdY], a
 	jp   Pl_DrawSprMap
-L001265:;R
+.gravLow:
+	; Apply lower gravity at ~0.03px/frame
 	ld   bc, $0008
-	ld   a, [wPlSpdY]
-	add  c
-	ld   [wPlSpdY], a
 	ld   a, [wPlSpdYSub]
+	add  c
+	ld   [wPlSpdYSub], a
+	ld   a, [wPlSpdY]
 	adc  b
-	ld   [wPlSpdYSub], a
-	cp   $01
-	jp   c, Pl_DrawSprMap
-	xor  a
 	ld   [wPlSpdY], a
-	ld   a, $01
+	; Cap speed to 1px/frame
+	cp   $01				; Speed < 1?
+	jp   c, Pl_DrawSprMap	; If so, skip
+	xor  a					; Speed = 1
 	ld   [wPlSpdYSub], a
+	ld   a, $01
+	ld   [wPlSpdY], a
 	jp   Pl_DrawSprMap
-L001287:;J
+	
+.alignToFloor:
+	; We attempted to move into a solid block.
+	; This means we're currently on an empty block that's right above a solid one,
+	; so snap the player to the bottom of said empty block.
 	ld   a, [wPlRelY]
 	or   $0F
 	ld   [wPlRelY], a
-L00128F:;J
-	call L0017D2
-	xor  a
+	
+.switchToGround:
+	call Pl_StopTpAttack		; Top Spin stops on the ground
+	xor  a ; PL_MODE_GROUND		; Stand on ground
 	ld   [wPlMode], a
-	ld   a, [wWpnSGRide]
+	
+	ld   a, [wWpnSGRide]		; Play landing sound if not riding the Sakugarne
 	or   a
 	jp   nz, Pl_DrawSprMap
-	ld   a, $01
+	ld   a, SFX_LAND
 	ldh  [hSFXSet], a
 	jp   Pl_DrawSprMap
-PlMode_Climb:;I
+	
+; =============== PlMode_Climb ===============
+; Player is climbing a ladder (both idle and actual climbing).
+PlMode_Climb:
 	call Pl_DoWpnCtrl ; BANK $01
-	ld   a, $09
+	
+	; Always use the same frame while climbing
+	ld   a, PLSPR_CLIMB
 	ld   [wPlSprMapId], a
-	ld   a, [wPlRelX]
+	
+.chkFall:
+	;
+	; If the player is no longer inside a ladder block, fall off the ladder.
+	; Moving down a ladder doesn't check for empty block collision directly,
+	; it is done here all the time instead.
+	;
+	ld   a, [wPlRelX]		; X Sensor: PlX (center)
 	ld   [wTargetRelX], a
-	ld   a, [wPlRelY]
-	sub  $0F
+	ld   a, [wPlRelY]		; Y Sensor: PlY - $0F (middle-top)
+	sub  BLOCK_H-1
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	cp   $20
-	jr   nc, L0012C9
-	ld   a, $03
-	ld   [wPlMode], a
+	call Lvl_GetBlockId		
+	cp   BLOCKID_LADDER		; On a ladder or ladder top tile? (or all solids...)
+	jr   nc, .chkFallMan	; If so, jump
+	ld   a, PL_MODE_FALL	; Otherwise, we're on an empty block
+	ld   [wPlMode], a		; so fall off the ladder (without setting a speed)
 	jp   Pl_AnimClimb
-L0012C9:;R
+	
+.chkFallMan:
+	;
+	; A -> Fall off the ladder manually
+	;
 	ldh  a, [hJoyNewKeys]
-	bit  0, a
-	jp   z, L0012E2
-	ld   a, $00
-	ld   [wPlSpdY], a
-	ld   a, $01
+	bit  KEYB_A, a
+	jp   z, .chkTurn
+	
+	ld   a, $00				; 1px/frame fall
 	ld   [wPlSpdYSub], a
-	ld   a, $03
+	ld   a, $01
+	ld   [wPlSpdY], a
+	ld   a, PL_MODE_FALL
 	ld   [wPlMode], a
 	jp   Pl_DrawSprMap
-L0012E2:;J
+	
+.chkTurn:
+	;
+	; LEFT/RIGHT -> Change direction
+	;
+	
+	; No change allowed while shooting
 	ld   a, [wPlShootTimer]
 	or   a
 	jp   nz, Pl_DrawSprMap
+	
 	ldh  a, [hJoyKeys]
-	bit  5, a
-	jr   z, L0012F6
-	xor  a
+	bit  KEYB_LEFT, a	; Holding LEFT?
+	jr   z, .chkTurnR	; If not, skip
+	xor  a ; PLDIR_L
 	ld   [wPlDirH], a
 	jp   Pl_DrawSprMap
-L0012F6:;R
-	bit  4, a
-	jr   z, L001302
-	ld   a, $01
+.chkTurnR:
+	bit  KEYB_RIGHT, a	; Holding RIGHT?
+	jr   z, .chkU		; If not, skip
+	ld   a, PLDIR_R
 	ld   [wPlDirH], a
 	jp   Pl_DrawSprMap
-L001302:;R
+	
+.chkU:
+	;
+	; UP -> Climb up the ladder
+	;
 	ldh  a, [hJoyKeys]
-	bit  6, a
-	jr   z, L001347
-	ld   a, [wPlRelY]
-	sub  $18
+	bit  KEYB_UP, a		; Holding UP?
+	jr   z, .chkD		; If not, skip
+	
+	; If there's no ladder block above, start climbing it out.
+	; That $18px is the same amount you automatically move to during the climb in animation.
+	ld   a, [wPlRelY]				; Y Sensor: PlY - $18 (top)
+	sub  PL_LADDER_BORDER_V
 	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
+	ld   a, [wPlRelX]				; X Sensor: PlX (center)
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   $20
-	jr   nc, L001325
-	ld   a, $07
-	ld   [wPlMode], a
+	cp   BLOCKID_LADDER				; On a ladder or ladder top tile? (or all solids...)
+	jr   nc, .chkTrsU				; If so, continue climbing up
+	ld   a, PL_MODE_CLIMBOUTINIT	; Otherwise, the ladder ended on the top
+	ld   [wPlMode], a				; so start climbing to the top
 	jp   Pl_AnimClimb
-L001325:;R
+	
+.chkTrsU:
+	; If climbing up near the top of the screen, start a vertical transition
 	ld   a, [wPlRelY]
-	cp   $29
-	jr   nc, L001334
-	ld   a, $0B
+	cp   OBJ_OFFSET_Y+$19	; PlY >= $29?
+	jr   nc, .moveU			; If so, skip
+	ld   a, PL_MODE_CLIMBUTRSINIT
 	ld   [wPlMode], a
 	jp   Pl_AnimClimb
-L001334:;R
+.moveU:
+	; Otherwise, move up as normal, at 0.75px/frame
 	ld   a, [wPlRelYSub]
 	sub  $C0
 	ld   [wPlRelYSub], a
@@ -4079,32 +4384,41 @@ L001334:;R
 	sbc  $00
 	ld   [wPlRelY], a
 	jp   Pl_AnimClimb
-L001347:;R
+	
+.chkD:
+	;
+	; DOWN -> Climb down the ladder
+	;
 	ldh  a, [hJoyKeys]
-	bit  7, a
-	jp   z, Pl_DrawSprMap
-	ld   a, [wPlRelX]
+	bit  KEYB_DOWN, a		; Holding DOWN?
+	jp   z, Pl_DrawSprMap	; If not, return
+	
+	; If there's a solid block below, start climbing it out.
+	ld   a, [wPlRelX]		; X Sensor: PlX (center)
 	ld   [wTargetRelX], a
-	ld   a, [wPlRelY]
+	ld   a, [wPlRelY]		; Y Sensor: PlY + 1 (ground)
 	inc  a
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	jr   c, L001367
-L001360: db $AF;X
-L001361: db $EA;X
-L001362: db $1D;X
-L001363: db $CF;X
-L001364: db $C3;X
-L001365: db $D6;X
-L001366: db $1A;X
-L001367:;R
-	ld   a, [wPlRelY]
-	cp   $98
-	jp   c, L001377
-	ld   a, $09
+	call Lvl_GetBlockId		; Get block ID
+	jr   c, .chkTrsD		; Is the block solid? If not, jump
+	;--
+	; [POI] None of the levels have ladders that connect to the ground.
+	;       This part is unreachable.
+	xor  a ; PL_MODE_GROUND
 	ld   [wPlMode], a
 	jp   Pl_AnimClimb
-L001377:;J
+	;--
+.chkTrsD:
+	; If climbing down near the bottom of the screen, start a vertical transition
+	ld   a, [wPlRelY]
+	cp   SCREEN_GAME_V+OBJ_OFFSET_Y+$08	; PlY > $98?
+	jp   c, .moveD						; If so, jump
+	ld   a, PL_MODE_CLIMBDTRSINIT
+	ld   [wPlMode], a
+	jp   Pl_AnimClimb
+	
+.moveD:
+	; Otherwise, move down as normal, at 0.75px/frame
 	ld   a, [wPlRelYSub]
 	add  $C0
 	ld   [wPlRelYSub], a
@@ -4112,574 +4426,853 @@ L001377:;J
 	adc  $00
 	ld   [wPlRelY], a
 	jp   Pl_AnimClimb
-PlMode_ClimbInInit:;I
-	ld   a, $08
+	
+; =============== PlMode_ClimbInInit ===============
+; Initializes the climb in effect.
+; This is a transition to climbing, triggered by pressing DOWN when
+; standing on the top of a ladder.
+PlMode_ClimbInInit:
+	ld   a, PLSPR_CLIMBTOP	; Set climb transition sprite
 	ld   [wPlSprMapId], a
-	ld   a, [wPlRelY]
-	add  $08
+	
+	; By the time the climb in effect is done, we should have automatically moved down by $18 pixels.
+	; That's the height of the player's collision box.
+	ld   a, [wPlRelY]		; Immediately move 8px down
+	add  PL_LADDER_IN0
 	ld   [wPlRelY], a
-	ld   a, $06
-	ld   [wPl_CF1E_DelayTimer], a
-	ld   hl, wPlMode
+	ld   a, $06				; Stay in the next mode for 6 frames
+	ld   [wPlClimbInTimer], a
+	ld   hl, wPlMode		; Switch to PL_MODE_CLIMBIN
 	inc  [hl]
 	jp   Pl_DrawSprMap
-PlMode_ClimbIn:;I
-	ld   hl, wPl_CF1E_DelayTimer
+; =============== PlMode_ClimbIn ===============
+; Climb in effect.
+; A simple delay that displays the transition sprite for 6 frames,
+; before switching to the actual climbing mode.
+PlMode_ClimbIn:
+	; Don't do anything until the delay elapses
+	ld   hl, wPlClimbInTimer
 	dec  [hl]
 	jp   nz, Pl_DrawSprMap
-	ld   a, [wPlRelY]
-	add  $10
+	
+	ld   a, [wPlRelY]		; Move down the remaining $10px
+	add  PL_LADDER_IN1
 	ld   [wPlRelY], a
-	ld   a, $04
+	
+	ld   a, PL_MODE_CLIMB	; Enable climbing controls
 	ld   [wPlMode], a
 	jp   Pl_DrawSprMap
-PlMode_ClimbOutInit:;I
-	ld   a, $08
+	
+; =============== PlMode_ClimbOutInit ===============
+; Initializes the climb out effect.
+; This is a transition when climbing to the top of a ladder, triggered by 
+; pressing UP near the top.	
+PlMode_ClimbOutInit:
+	ld   a, PLSPR_CLIMBTOP	; Set climb transition sprite
 	ld   [wPlSprMapId], a
-	ld   a, [wPlRelY]
-	sub  $10
+	
+	ld   a, [wPlRelY]		; Immediately move $10px up
+	sub  PL_LADDER_IN1
 	ld   [wPlRelY], a
-	ld   a, $06
-	ld   [wPl_CF1E_DelayTimer], a
-	ld   hl, wPlMode
+	
+	ld   a, $06				; Stay in the next mode for 6 frames
+	ld   [wPlClimbInTimer], a
+	ld   hl, wPlMode		; Switch to PL_MODE_CLIMBOUT
 	inc  [hl]
 	jp   Pl_DrawSprMap
-PlMode_ClimbOut:;I
-	ld   hl, wPl_CF1E_DelayTimer
+; =============== PlMode_ClimbOut ===============
+; Climb out effect.
+PlMode_ClimbOut:
+	; Don't do anything until the delay elapses
+	ld   hl, wPlClimbInTimer
 	dec  [hl]
 	jp   nz, Pl_DrawSprMap
-	ld   a, [wPlRelY]
-	sub  $08
+	
+	ld   a, [wPlRelY]		; Move down the remaining $08px
+	sub  PL_LADDER_IN0
 	ld   [wPlRelY], a
-	xor  a
+	
+	xor  a					; Switch to PL_MODE_GROUND
 	ld   [wPlMode], a
 	jp   Pl_DrawSprMap
-PlMode_ClimbDTrsInit:;I
+	
+; =============== PlMode_ClimbDTrsInit ===============
+; Initializes a downwards transition while climbing a ladder.
+PlMode_ClimbDTrsInit:
+	; Delete all on-screen actors so we don't need to handle them
 	call ActS_DespawnAll
-	ld   a, $09
+	
+	ld   a, PLSPR_CLIMB		; Set climbing frame
 	ld   [wPlSprMapId], a
-	ld   a, $01
+	ld   a, SCROLLV_DOWN	; Start downwards transition
 	ld   [wScrollVDir], a
-	call Game_Unk_StartRoomTrs
-	ld   hl, wPlMode
+	call Game_StartRoomTrs
+	ld   hl, wPlMode		; Switch to PL_MODE_CLIMBDTRS
 	inc  [hl]
 	jp   Pl_AnimClimb
-PlMode_ClimbDTrs:;I
+	
+; =============== PlMode_ClimbDTrs ===============
+; Handles the vertical transition loop.
+PlMode_ClimbDTrs:
+	; Move the player down at 0.25px/frame...
 	ld   a, [wPlRelYSub]
 	add  $40
 	ld   [wPlRelYSub], a
 	ld   a, [wPlRelY]
 	adc  $00
-	sub  $02
+	; ...while also scrolling him up 2px/frame, to account for the viewport
+	; being scrolled down that much by the transition code at Game_DoRoomTrs
+	sub  $02				
 	ld   [wPlRelY], a
-	call Game_Unk_DoRoomTrs
-	jp   nz, Pl_AnimClimb
-	ld   a, $04
+	
+	; The viewport needs to scroll down $80px, which will take $40 frames at 2px/frame.
+	; With the player moving at 0.25px/frame, by the end of the transition the player
+	; will have visually moved one block to the bottom ($00.40 * $40 = $10).
+	call Game_DoRoomTrs		; Process the transition
+	jp   nz, Pl_AnimClimb	; Has it finished? If not, jump
+	ld   a, PL_MODE_CLIMB	; Otherwise, go back
 	ld   [wPlMode], a
 	call Pl_AnimClimb
-	jp   ActS_SpawnRoom
-PlMode_ClimbUTrsInit:;I
+	jp   ActS_SpawnRoom		; Spawn onscreen actors
+	
+; =============== PlMode_ClimbUTrsInit ===============
+; Initializes an upwards transition while climbing a ladder.
+; See also: PlMode_ClimbDTrsInit
+PlMode_ClimbUTrsInit:
 	call ActS_DespawnAll
-	ld   a, $09
+	ld   a, PLSPR_CLIMB
 	ld   [wPlSprMapId], a
-	xor  a
+	xor  a ; SCROLLV_UP		; Start upwards transition
 	ld   [wScrollVDir], a
-	call Game_Unk_StartRoomTrs
-	ld   hl, wPlMode
+	call Game_StartRoomTrs
+	ld   hl, wPlMode		; Switch to PL_MODE_CLIMBUTRS
 	inc  [hl]
 	jp   Pl_AnimClimb
-PlMode_ClimbUTrs:;I
+	
+; =============== PlMode_ClimbUTrs ===============
+; Handles the vertical transition loop.	
+PlMode_ClimbUTrs:
+
+	; Move the player up at 0.25px/frame
 	ld   a, [wPlRelYSub]
 	sub  $40
 	ld   [wPlRelYSub], a
 	ld   a, [wPlRelY]
 	sbc  $00
-	add  $02
+	add  $02				; Also scroll him down 2px/frame
 	ld   [wPlRelY], a
-	call Game_Unk_DoRoomTrs
-	jp   nz, Pl_AnimClimb
-	ld   a, $04
+	
+	call Game_DoRoomTrs		; Process the transition
+	jp   nz, Pl_AnimClimb	; Has it finished? If not, jump
+	ld   a, PL_MODE_CLIMB	; Otherwise, go back
 	ld   [wPlMode], a
 	call Pl_AnimClimb
-	jp   ActS_SpawnRoom
-PlMode_FallTrsInit:;I
+	jp   ActS_SpawnRoom		; Spawn onscreen actors
+	
+; =============== PlMode_FallTrsInit ===============
+; Initializes a downwards transition while falling.
+; See also: PlMode_ClimbDTrsInit
+PlMode_FallTrsInit:
 	call ActS_DespawnAll
-	ld   a, $07
+	
+	ld   a, PLSPR_JUMP
 	ld   [wPlSprMapId], a
-	ld   a, $01
+	
+	ld   a, SCROLLV_DOWN
 	ld   [wScrollVDir], a
-	call Game_Unk_StartRoomTrs
+	
+	call Game_StartRoomTrs
 	ld   hl, wPlMode
-	inc  [hl]
+	inc  [hl] ; PL_MODE_FALLTRS
 	jp   Pl_DrawSprMap
-PlMode_FallTrs:;I
-	ld   a, [wPlSpdY]
+	
+; =============== PlMode_FallTrs ===============
+; Handles the vertical transition loop.		
+PlMode_FallTrs:
+	; Move the player down at 0.25px/frame...
+	ld   a, [wPlSpdYSub]
 	add  $40
-	ld   [wPlSpdY], a
+	ld   [wPlSpdYSub], a
 	ld   a, [wPlRelY]
 	adc  $00
-	sub  $02
+	sub  $02			; Also scroll him up 2px/frame
 	ld   [wPlRelY], a
-	call Game_Unk_DoRoomTrs
-	jp   nz, Pl_DrawSprMap
-	ld   a, $03
+	
+	call Game_DoRoomTrs		; Process the transition
+	jp   nz, Pl_DrawSprMap	; Has it finished? If not, jump
+	ld   a, PL_MODE_FALL	; Otherwise, go back
 	ld   [wPlMode], a
 	call Pl_DrawSprMap
-	jp   ActS_SpawnRoom
-PlMode_NoCtrl:;I
+	jp   ActS_SpawnRoom		; Spawn onscreen actors
+	
+; =============== PlMode_Frozen ===============
+; Only draws the current player's frame without doing anything.
+; Used to freeze the player in their previous pose, such as after firing Hard Knuckle
+; or during boss intros, and it's up to external code to unfreeze him.
+PlMode_Frozen:
 	jp   Pl_DrawSprMap
-PlMode_Slide:;I
-	ld   a, $0A
+	
+; =============== PlMode_Slide ===============
+; Player is sliding on the ground.
+PlMode_Slide:
+	; [POI] The hurt state should have been checked here to avoid movement.
+	
+	ld   a, PLSPR_SLIDE
 	ld   [wPlSprMapId], a
+	
+	; We're on ground so conveyor belts apply
 	call Pl_DoConveyor
-	ldh  a, [hJoyKeys]
+	
+	; 
+	; LEFT/RIGHT -> Move to the respective direction
+	;
+	; Movement happens through Pl_DoSlideSpeed, which reuses much of the same code as Pl_DoMoveSpeed.
+	; Sliding moves the player forward automatically, but that subroutine checks for the currently
+	; held keys before moving, so if we're not holding an horizontal direction, fake keypresses.
+	;
+	ldh  a, [hJoyKeys]			; B = hJoyKeys
 	ld   b, a
-	and  $30
-	jr   nz, L0014B7
-	ld   a, [wPlDirH]
-	or   a
-	jr   nz, L0014B2
-	set  5, b
-	jr   L0014B4
-L0014B2:;R
-	set  4, b
-L0014B4:;R
+	and  KEY_LEFT|KEY_RIGHT		; Holding L or R?
+	jr   nz, .move				; If so, we're already holding something
+	ld   a, [wPlDirH]			; Otherwise, force our keys to be the direction we're facing
+	or   a						; Facing right?
+	jr   nz, .dirR				; If so, jump
+.dirL:
+	set  KEYB_LEFT, b
+	jr   .setKey
+.dirR:
+	set  KEYB_RIGHT, b
+.setKey:
 	ld   a, b
 	ldh  [hJoyKeys], a
-L0014B7:;R
+.move:
 	call Pl_DoSlideSpeed
 	call Pl_BgColiApplySpeedX
+	
 	call Pl_DrawSprMap
-	call L001836
-	ld   a, [wColiGround]
-	and  $03
-	cp   $03
-	jr   nz, L0014E2
-	ld   a, $00
-	ld   [wPlSpdY], a
-	ld   a, $01
+	
+	;
+	; If there is no ground below the player, make him fall.
+	; Annoyingly, there's no special version of Pl_IsOnGround used for sliding,
+	; so it's not possible to slide through 1 block gaps.
+	;
+	call Pl_IsOnGround		; Make wPlColiGround
+	ld   a, [wPlColiGround]
+	and  %11				; Filter this frame's bits
+	cp   %11				; Are both blocks below empty?
+	jr   nz, .decTimer		; If not, skip
+	
+	ld   a, $00				; Otherwise, start falling at 1px/frame
 	ld   [wPlSpdYSub], a
-	ld   a, $03
+	ld   a, $01
+	ld   [wPlSpdY], a
+	ld   a, PL_MODE_FALL
 	ld   [wPlMode], a
+	; There'd be 1-frame window letting the player slide back into the gap.
+	; Fix that by moving the player 1 pixel below, enough to prevent any slides
+	; due to the code detecting a solid block in the way.
 	ld   hl, wPlRelY
 	inc  [hl]
 	jp   Pl_DrawSprMap
-L0014E2:;R
+	
+.decTimer:
+	; wPlSlideTimer-- if not already elapsed.
+	; As long as this doesn't elapse, the slide won't end.
 	ld   a, [wPlSlideTimer]
 	or   a
-	jr   z, L0014EC
+	jr   z, .chkSolid
 	dec  a
 	ld   [wPlSlideTimer], a
-L0014EC:;R
-	ld   a, [wPlRelY]
-	sub  $10
+.chkSolid:
+
+	; 
+	; Prevent the slide from ending if there's a low ceiling in the way.
+	; This can cause the slide timer to stall at 0 until we move out of the low ceiling.
+	;
+	
+	; Top-left
+	ld   a, [wPlRelY]		; Y Sensor: 1 block above
+	sub  BLOCK_V
 	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
-	sub  $06
+	ld   a, [wPlRelX]		; X Sensor: Left border
+	sub  PLCOLI_H
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	ret  nc
-	ld   a, [wPlRelX]
-	add  $06
+	call Lvl_GetBlockId		; Solid block detected?
+	ret  nc					; If so, return
+	; Top-right
+	ld   a, [wPlRelX]		; X Sensor: Right border
+	add  PLCOLI_H
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	ret  nc
+	call Lvl_GetBlockId		; Solid block detected?
+	ret  nc					; If so, return
+	
+	; [POI] There is a massive omission here, it's not possible to jump out of slides.
+	;       There's just no code to for it, and the check could have been easily added
+	;       here, as we're sure there's no ceiling in the way.
+	;
+	;       A secondary omission is not ending the slide if a solid block is in front.
+	;
+	
+	;
+	; End the slide if its timer has elapsed.
+	;
 	ld   a, [wPlSlideTimer]
 	or   a
 	ret  nz
-	xor  a
+	xor  a ; PL_MODE_GROUND
 	ld   [wPlMode], a
 	ret
-PlMode_RushMarine:;I
+	
+; =============== PlMode_RushMarine ===============
+; Rush Marine ride mode.
+; This mode is special, as it works in conjunction with the Rush Marine actor.
+; This player mode handles the controls, while the actor handles the sprites being drawn. ???
+PlMode_RushMarine:
+	; Rush Marine can fire normal shots.
+	; Unfortunately there's no animation for it, but there's no space left for it in VRAM.
 	call Pl_DoWpnCtrl ; BANK $01
-	ld   hl, wPlRmSpdL
+	
+	;
+	; Rush Marine has its own momentum system, handling speed by itself.
+	;
+	; Holding a direction will progressively make the player go faster,
+	; and turning around is not instant, the player's speed gradually moves the other way.
+	;
+	; This is accomplished by having four sets of speed values for each direction,
+	; each increasing by $00.08px/frame when holding that direction, and decreasing
+	; by $00.04px/frame when releasing it.
+	; The speed values are all in subpixels, and as such are capped to nearly 1px/frame.
+	; Finally, all speed values get applied, allowing them to cancel each other out.
+	;
+
+DEF RMSPD_INC EQU $08
+DEF RMSPD_DEC EQU $04
+	
+.chkL:
+	ld   hl, wPlRmSpdL			; HL = Left speed 
 	ldh  a, [hJoyKeys]
-	bit  5, a
-	jr   z, L001530
+	bit  KEYB_LEFT, a			; Holding left?
+	jr   z, .decSpdL			; If not, slow down
+.incSpdL:
+	; The direction the player is facing is immediately updated, regardless of its speed.
 	xor  a
 	ld   [wPlDirH], a
+	ld   a, [hl]				; wPlRmSpdL += $08
+	add  RMSPD_INC
+	ld   [hl], a
+	jr   nc, .chkColiL			; Overflowed? If not, skip
+	ld   [hl], $FF				; Cap back to nearly 1px/frame
+	jr   .chkColiL
+.decSpdL:
 	ld   a, [hl]
-	add  $08
+	or   a						; Do we have any left speed?
+	jr   z, .chkR				; If not, skip
+	sub  RMSPD_DEC					; wPlRmSpdL -= $04
 	ld   [hl], a
-	jr   nc, L00153D
-	ld   [hl], $FF
-	jr   L00153D
-L001530:;R
-	ld   a, [hl]
-	or   a
-	jr   z, L001567
-	sub  $04
+	jr   nc, .chkColiL			; Did we underflow? If not, skip
+	xor  a						; Cap back to 0
 	ld   [hl], a
-	jr   nc, L00153D
-	xor  a
-	ld   [hl], a
-	jr   L001567
-L00153D:;R
-	ld   a, [wPlRelX]
-	sub  $0F
-	call L001641
-	jr   z, L00155E
-	ld   a, [wPlRmSpdL]
+	jr   .chkR
+	
+.chkColiL:
+	;
+	; Rush Marine bounces at half speed in the opposite direction when hitting a non-water block.
+	; This doubles as the solid collision check.
+	; It's also specific to horizontal movement.
+	;
+	ld   a, [wPlRelX]			; X Sensor: PlX - $0F (1px to the left of the left border)
+	sub  RMCOLI_H+1
+	call PlRm_IsWaterBlockH		; Is there a water block to the left?
+	jr   z, .setSpdL			; If so, jump
+								; Otherwise...
+								
+	; Bounce away at half speed, overwriting the right speed.
+	ld   a, [wPlRmSpdL]			; wPlRmSpdR = wPlRmSpdL / 2
 	srl  a
 	ld   [wPlRmSpdR], a
-	or   a
-	jr   z, L001567
-	ld   bc, $0100
-	call Pl_IncSpeed
-	xor  a
+	
+	; If we were moving too slow, neither moving left nor the bounce would have an effect.
+	or   a						; wPlRmSpdR == 0?
+	jr   z, .chkR				; If so, skip
+								; Otherwise...
+	ld   bc, $0100				; ...move 1px away from the wall
+	call Pl_IncSpeedX
+	xor  a						; ...prevent the previous, higher speed from interfering with the bounce
 	ld   [wPlRmSpdL], a
-	jr   L001567
-L00155E:;R
-	ld   a, [wPlRmSpdL]
+	jr   .chkR					; No movement to the left
+.setSpdL:
+	ld   a, [wPlRmSpdL]			; Decrease the player's speed by those subpixels
 	ld   c, a
 	ld   b, $00
-	call Pl_DecSpeed
-L001567:;R
-	ld   hl, wPlRmSpdR
+	call Pl_DecSpeedX
+	
+	;
+	; The same exact thing is done with all other directions, minus the bouncing effect for vertical movement.
+	;
+.chkR:
+	ld   hl, wPlRmSpdR			; HL = Right speed 
 	ldh  a, [hJoyKeys]
-	bit  4, a
-	jr   z, L00157F
-	ld   a, $01
+	bit  KEYB_RIGHT, a			; Holding right?
+	jr   z, .decSpdR			; If not, slow down
+.incSpdR:
+	ld   a, PLDIR_R
 	ld   [wPlDirH], a
+	ld   a, [hl]				; wPlRmSpdR += $08
+	add  RMSPD_INC
+	ld   [hl], a
+	jr   nc, .chkColiR			; Overflowed? If not, skip
+	ld   [hl], $FF				; Cap back to nearly 1px/frame
+	jr   .chkColiR
+.decSpdR:
 	ld   a, [hl]
-	add  $08
+	or   a						; Do we have any right speed?
+	jr   z, .chkU				; If not, skip
+	sub  RMSPD_DEC					; wPlRmSpdR -= $04
 	ld   [hl], a
-	jr   nc, L00158C
-	ld   [hl], $FF
-	jr   L00158C
-L00157F:;R
-	ld   a, [hl]
-	or   a
-	jr   z, L0015B6
-	sub  $04
+	jr   nc, .chkColiR			; Did we underflow? If not, skip
+	xor  a						; Cap back to 0
 	ld   [hl], a
-	jr   nc, L00158C
-	xor  a
-	ld   [hl], a
-	jr   L0015B6
-L00158C:;R
-	ld   a, [wPlRelX]
-	add  $0F
-	call L001641
-	jr   z, L0015AD
-	ld   a, [wPlRmSpdR]
+	jr   .chkU
+.chkColiR:
+	ld   a, [wPlRelX]			; X Sensor: PlX + $0F (1px to the right of the right border)
+	add  RMCOLI_H+1
+	call PlRm_IsWaterBlockH		; Is there a water block to the right?
+	jr   z, .setSpdR			; If so, jump
+	
+	ld   a, [wPlRmSpdR]			; wPlRmSpdL = wPlRmSpdR / 2
 	srl  a
 	ld   [wPlRmSpdL], a
-	or   a
-	jr   z, L0015B6
-	ld   bc, $0100
-	call Pl_DecSpeed
-	xor  a
+	or   a						; wPlRmSpdL == 0?
+	jr   z, .chkU				; If so, skip
+	
+	ld   bc, $0100				; Move 1px away from the wall
+	call Pl_DecSpeedX
+	xor  a						; Don't interfere with the bounce
 	ld   [wPlRmSpdR], a
-	jr   L0015B6
-L0015AD:;R
-	ld   a, [wPlRmSpdR]
+	jr   .chkU
+.setSpdR:
+	ld   a, [wPlRmSpdR]			; Increase the player's speed by those subpixels
 	ld   c, a
 	ld   b, $00
-	call Pl_IncSpeed
-L0015B6:;R
-	ld   hl, wPlRmSpdU
+	call Pl_IncSpeedX
+	
+.chkU:
+	ld   hl, wPlRmSpdU			; HL = Up speed 
 	ldh  a, [hJoyKeys]
-	bit  6, a
-	jr   z, L0015C9
-	ld   a, [hl]
-	add  $08
+	bit  KEYB_UP, a				; Holding up?
+	jr   z, .decSpdU			; If not, slow down
+.incSpdU:
+	; No vertical direction to set
+	ld   a, [hl]				; wPlRmSpdU += $08
+	add  RMSPD_INC
 	ld   [hl], a
-	jr   nc, L0015D6
-	ld   [hl], $FF
-	jr   L0015D6
-L0015C9:;R
+	jr   nc, .chkColiU			; Overflowed? If not, skip
+	ld   [hl], $FF				; Cap back to nearly 1px/frame
+	jr   .chkColiU
+.decSpdU:
 	ld   a, [hl]
-	or   a
-	jr   z, L0015F9
-	sub  $04
+	or   a						; Do we have any up speed?
+	jr   z, .chkD				; If not, skip
+	sub  RMSPD_DEC					; wPlRmSpdU -= $04
 	ld   [hl], a
-	jr   nc, L0015D6
-L0015D2: db $AF;X
-L0015D3: db $77;X
-L0015D4: db $18;X
-L0015D5: db $23;X
-L0015D6:;R
-	ld   a, [wPlRelY]
-	sub  $10
-	call L001665
-	jr   z, L0015E6
-	xor  a
-	ld   [wPlRmSpdU], a
-	jr   L0015F9
-L0015E6:;R
-	ld   a, [wPlRmSpdU]
+	jr   nc, .chkColiU			; Did we underflow? If not, skip
+	xor  a						; Cap back to 0
+	ld   [hl], a
+	jr   .chkD
+.chkColiU:
+	ld   a, [wPlRelY]			; Y Sensor: PlY - $10 (1 block above top border)
+	sub  RMCOLI_FV+1					
+	call PlRm_IsWaterBlockV		; Is there a water block above?
+	jr   z, .setSpdU			; If so, jump
+	xor  a						; Otherwise, just immediately stop moving.
+	ld   [wPlRmSpdU], a			; No bounce effect here
+	jr   .chkD
+.setSpdU:
+	; Decrement Rush Marine's speed by those subpixels.
+	; Instead of directly affecting the player's speed, this is stored into a separate variable,
+	; ??? which could have been avoided had entering Rush Marine reset the player's speed.
+	; The logic is otherwise the same as Pl_DecSpeedX.
+	ld   a, [wPlRmSpdU]			; B = Upwards speed
 	ld   b, a
-	ld   a, [wPlRmSpdYSub]
+	ld   a, [wPlRmSpdYSub]		; wPlRmSpdY* -= B
 	sub  b
 	ld   [wPlRmSpdYSub], a
 	ld   a, [wPlRmSpdY]
 	sbc  $00
 	ld   [wPlRmSpdY], a
-L0015F9:;R
-	ld   hl, wPlRmSpdD
+	
+.chkD:
+	ld   hl, wPlRmSpdD			; HL = Down speed 
 	ldh  a, [hJoyKeys]
-	bit  7, a
-	jr   z, L00160C
+	bit  KEYB_DOWN, a			; Holding down?
+	jr   z, .decSpdD			; If not, slow down
+.incSpdD:
+	ld   a, [hl]				; wPlRmSpdD += $08
+	add  RMSPD_INC
+	ld   [hl], a
+	jr   nc, .chkColiD			; Overflowed? If not, skip
+	ld   [hl], $FF				; Cap back to nearly 1px/frame
+	jr   .chkColiD
+.decSpdD:
 	ld   a, [hl]
-	add  $08
+	or   a						; Do we have any up speed?
+	jr   z, .move				; If not, skip
+	sub  RMSPD_DEC				; wPlRmSpdD -= $04
 	ld   [hl], a
-	jr   nc, L001619
-	ld   [hl], $FF
-	jr   L001619
-L00160C:;R
-	ld   a, [hl]
-	or   a
-	jr   z, L00163B
-	sub  $04
+	jr   nc, .chkColiD			; Did we underflow? If not, skip
+	xor  a						; Cap back to 0
 	ld   [hl], a
-	jr   nc, L001619
-	xor  a
-	ld   [hl], a
-	jr   L00163B
-L001619:;R
-	ld   a, [wPlRelY]
+	jr   .move
+.chkColiD:
+	ld   a, [wPlRelY]			; Y Sensor: PlY + 1 (ground)
 	inc  a
-	call L001665
-	jr   z, L001628
-	xor  a
-	ld   [wPlRmSpdD], a
-	jr   L00163B
-L001628:;R
-	ld   a, [wPlRmSpdD]
+	call PlRm_IsWaterBlockV		; Is there a water block below?
+	jr   z, .setSpdD			; If so, jump
+	xor  a						; Otherwise, just immediately stop moving.
+	ld   [wPlRmSpdD], a			; No bounce effect here
+	jr   .move
+.setSpdD:
+	; Increment Rush Marine's speed by those subpixels.
+	ld   a, [wPlRmSpdD]			; B = Downwards speed
 	ld   b, a
-	ld   a, [wPlRmSpdYSub]
+	ld   a, [wPlRmSpdYSub]		; wPlRmSpdY* += B
 	add  b
 	ld   [wPlRmSpdYSub], a
 	ld   a, [wPlRmSpdY]
 	adc  $00
 	ld   [wPlRmSpdY], a
-L00163B:;R
+.move:
+	; Finally, move the player by the speed we've calculated
 	call Pl_ApplySpeedX
-	jp   L001A89
-L001641:;C
-	ld   [wTargetRelX], a
-	ld   a, [wPlRelY]
+	jp   Pl_ApplyRmSpeedY
+	
+; =============== PlRm_IsWaterBlockH ===============
+; Horizontal collision check for Rush Marine.
+; Checks if there's a water block at the specified horizontal position,
+; as Rush Marine can only move through them.
+; IN
+; - A: Horizontal position
+; OUT
+; - Z Flag: If set, there's a water block (can move)
+PlRm_IsWaterBlockH:
+	;
+	; Treat Rush Marine as being 16 pixels tall for this check.
+	; This is actually smaller than the player's hitbox.
+	;
+	ld   [wTargetRelX], a	; X Sensor: Custom
+	ld   a, [wPlRelY]		; Y Sensor: PlY (bottom)
 	ld   [wTargetRelY], a
 	call Lvl_GetBlockId
-	cp   $10
-	jr   z, L001654
-	cp   $18
-	ret  nz
-L001654:;R
-	ld   a, [wPlRelY]
-	sub  $0F
+	cp   BLOCKID_WATER		; Is there a water block?
+	jr   z, .chkHi			; If so, jump
+	cp   BLOCKID_WATERSPIKE	; ""
+	ret  nz					; If not, return
+.chkHi:
+	ld   a, [wPlRelY]		; Y Sensor: PlY - $0F (top)
+	sub  RMCOLI_FV
 	ld   [wTargetRelY], a
 	call Lvl_GetBlockId
-	cp   $10
+	cp   BLOCKID_WATER
 	ret  z
-	cp   $18
+	cp   BLOCKID_WATERSPIKE	; Z Flag = Is water block
 	ret
-L001665:;C
-	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
+	
+; =============== PlRm_IsWaterBlockV ===============
+; Vertical collision check for Rush Marine.
+; Checks if there's a water block at the specified vertical position.
+; IN
+; - A: Vertical position
+; OUT
+; - Z Flag: If set, there's a water block (can move)
+PlRm_IsWaterBlockV:
+	;
+	; Treat Rush Marine as being 24 pixels long for this check.
+	; This is much larger than the player's normal hitbox.
+	;
+	ld   [wTargetRelY], a	; Y Sensor: Custom
+	ld   a, [wPlRelX]		; X Sensor: PlX (center)
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   $10
-	jr   z, L001678
-	cp   $18
+	cp   BLOCKID_WATER
+	jr   z, .chkL
+	cp   BLOCKID_WATERSPIKE
 	ret  nz
-L001678:;R
-	ld   a, [wPlRelX]
-	sub  $0E
+.chkL:
+	ld   a, [wPlRelX]		; X Sensor: PlX - $0E (left)
+	sub  RMCOLI_H
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   $10
-	jr   z, L00168A
-	cp   $18
+	cp   BLOCKID_WATER
+	jr   z, .chkR
+	cp   BLOCKID_WATERSPIKE
 	ret  nz
-L00168A:;R
-	ld   a, [wPlRelX]
-	add  $0E
+.chkR:
+	ld   a, [wPlRelX]		; X Sensor: PlX + $0E (right)
+	add  RMCOLI_H
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   $10
+	cp   BLOCKID_WATER
 	ret  z
-	cp   $18
+	cp   BLOCKID_WATERSPIKE
 	ret
-PlMode_WarpInInit:;I
-	ld   a, $00
-	ld   [wPlSpdY], a
+	
+; =============== PlMode_WarpInInit ===============
+; Initializes the teleport from the top of the screen.
+; The player spawns in this mode.
+PlMode_WarpInInit:
+	ld   a, $00				; Initial speed is 1px/frame
+	ld   [wPlSpdYSub], a
 	ld   a, $01
-	ld   [wPlSpdYSub], a
-	ld   a, $31
-	ld   [wPlSprMapId], a
-	ld   hl, wPlMode
-	inc  [hl]
-	ret
-PlMode_WarpInMove:;I
-	ld   a, [wPlRelY]
-	ld   b, a
-	ld   a, [wPlSpdYSub]
-	add  b
-	ld   [wPl_Unk_RelY_Copy], a
-	cp   $48
-	jr   c, L0016CF
-	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
-	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	jr   nc, L0016F4
-	ld   a, [wPl_Unk_RelY_Copy]
-L0016CF:;R
-	ld   [wPlRelY], a
-	ld   bc, $0020
-	ld   a, [wPlSpdY]
-	add  c
 	ld   [wPlSpdY], a
+	ld   a, PLSPR_WARP
+	ld   [wPlSprMapId], a
+	ld   hl, wPlMode		; Start moving next frame
+	inc  [hl]				; PL_MODE_WARPINMOVE
+	ret
+; =============== PlMode_WarpInMove ===============
+; Teleports the player down until a solid block is reached.
+PlMode_WarpInMove:
+
+	; Get the updated position we're tentatively moving to, if the coming checks pass
+	ld   a, [wPlRelY]		; wPlNewRelY = wPlRelY + wPlSpdY
+	ld   b, a
+	ld   a, [wPlSpdY]
+	add  b
+	ld   [wPlNewRelY], a
+	
+	; Always go through the first three blocks even if they are solid.
+	; This allows us to teleport even when a ceiling is in the way.
+	cp   OBJ_OFFSET_Y+(BLOCK_H*3)+$08 	; wPlNewRelY < $48?
+	jr   c, .moveD						; If so, skip
+	
+	; Below that, as soon as we touch a solid block, start the landing sequence.
+	ld   [wTargetRelY], a		; Y Sensor: New PlY (new bottom)
+	ld   a, [wPlRelX]			; X Sensor: PlX (center)
+	ld   [wTargetRelX], a
+	call Lvl_GetBlockId			; Found a solid block?
+	jr   nc, .nextMode			; If so, jump
+	ld   a, [wPlNewRelY]		; Otherwise, confirm the new position
+.moveD:
+	ld   [wPlRelY], a
+	
+	; Apply downwards gravity at 0.125px/frame
+	ld   bc, $0020
 	ld   a, [wPlSpdYSub]
-	adc  b
+	add  c
 	ld   [wPlSpdYSub], a
+	ld   a, [wPlSpdY]
+	adc  b
+	ld   [wPlSpdY], a
+	
+	; Cap gravity to 4px/frame
 	cp   $04
 	jp   c, Pl_DrawSprMap
 	xor  a
-	ld   [wPlSpdY], a
-	ld   a, $04
 	ld   [wPlSpdYSub], a
+	ld   a, $04
+	ld   [wPlSpdY], a
 	jp   Pl_DrawSprMap
-L0016F4:;R
+	
+.nextMode:
+	; Align to block boundary
 	ld   a, [wPlRelY]
 	or   $0F
 	ld   [wPlRelY], a
+	; Start landing sequence
 	ld   hl, wPlMode
-	inc  [hl]
-	xor  a
-	ld   [wPlWarpSprMapRelId], a
+	inc  [hl] ; PL_MODE_WARPINLAND
+	; Start animation from first frame
+	xor  a ; PLSPR_WARP
+	ld   [wPlWarpAnimTimer], a
 	jp   Pl_DrawSprMap
-PlMode_WarpInLand:;I
-	ld   a, [wPlWarpSprMapRelId]
+	
+; =============== PlMode_WarpInLand ===============
+; Landing animation after the player teleports down.
+PlMode_WarpInLand:
+	;
+	; This animation uses PLSPR_WARP and the four PLSPR_WARPLAND* frames at $31-$35.
+	; Advance the animation every 2 frames, and when it ends give the player control.
+	;
+	; This is the resulting calculation:
+	; wPlSprMapId = PLSPR_WARP + (wPlWarpAnimTimer / 2)
+	;
+	
+	; *Pre-increment* the animation timer.
+	ld   a, [wPlWarpAnimTimer]
 	inc  a
-	ld   [wPlWarpSprMapRelId], a
-	srl  a
-	cp   $05
-	jr   z, L00171E
-	ld   b, a
-	ld   a, $31
-	add  b
-	ld   [wPlSprMapId], a
+	ld   [wPlWarpAnimTimer], a
+	
+	srl  a									; A /= 2 to slow down x2
+	cp   PLSPR_WARP_END-PLSPR_WARP_START	; Went past the last valid frame? (A == $05)
+	jr   z, .end							; If so, we're done
+	
+	ld   b, a					; Otherwise, calculate the sprite ID
+	ld   a, PLSPR_WARP_START	; Get base
+	add  b						; Add relative
+	ld   [wPlSprMapId], a		; Save back
 	jp   Pl_DrawSprMap
-L00171E:;R
-	ld   a, $0C
+.end:
+	ld   a, SFX_TELEPORTIN		; Play landing sound
 	ldh  [hSFXSet], a
-	xor  a
+	xor  a ; PL_MODE_GROUND
 	ld   [wPlMode], a
 	ret
-PlMode_WarpOutInit:;I
+	
+; =============== PlMode_WarpOutInit ===============
+; Initializes the teleport out animation, used when a level is completed.
+; These are like PlMode_WarpIn*, except in reverse.
+PlMode_WarpOutInit:
+	; The initial frame in this animation is PLSPR_WARPLAND2, not PLSPR_WARPLAND3.
+	; PLSPR_WARPLAND3 is skipped due to the timer at $0A ($0A/2 = 5) getting immediately decremented ($09/2 = 4)
 	ld   a, $0A
-	ld   [wPlWarpSprMapRelId], a
-	ld   a, $34
+	ld   [wPlWarpAnimTimer], a
+	ld   a, PLSPR_WARPLAND2
 	ld   [wPlSprMapId], a
+	; Start anim next frame
 	ld   hl, wPlMode
-	inc  [hl]
+	inc  [hl] ; PL_MODE_WARPOUTANIM
 	jp   Pl_DrawSprMap
-PlMode_WarpOutAnim:;I
-	ld   a, [wPlWarpSprMapRelId]
+	
+; =============== PlMode_WarpOutAnim ===============
+; Animates the player warping out, a reverse version of PlMode_WarpInAnim.
+PlMode_WarpOutAnim:
+	;
+	; *Pre-decrement* the animation timer.
+	; wPlSprMapId = PLSPR_WARP_START + (wPlWarpAnimTimer / 2) - 1
+	;
+	; The combination of pre-decrementing and decrementing to begin with the timer leads to two quirks:
+	; - PLSPR_WARPLAND3 is skipped as explained before
+	; - When (animation timer / 2) ticks down to 0, the reverse landing animation ends and we start moving up.
+	;   Since 1 will be the last value, the base frame needs to counterbalance it with a -1.
+	;
+	ld   a, [wPlWarpAnimTimer]
 	dec  a
-	ld   [wPlWarpSprMapRelId], a
-	srl  a
-	jr   z, L00174D
-	ld   b, a
-	ld   a, $30
-	add  b
-	ld   [wPlSprMapId], a
+	ld   [wPlWarpAnimTimer], a
+	
+	srl  a						; Slow animation down x2.
+	jr   z, .end				; Timer counted down to 0? (PLSPR_WARP_START) If so, start moving up
+	ld   b, a					; Otherwise, calculate the sprite ID
+	ld   a, PLSPR_WARP_START-1	; Get base
+	add  b						; Add relative
+	ld   [wPlSprMapId], a		; Save back
 	jp   Pl_DrawSprMap
-L00174D:;R
-	ld   a, $0D
+.end:
+	ld   a, SFX_TELEPORTOUT		; Play teleport sound
 	ldh  [hSFXSet], a
 	ld   hl, wPlMode
-	inc  [hl]
+	inc  [hl] ; PL_MODE_WARPOUTMOVE
 	jp   Pl_DrawSprMap
-PlMode_WarpOutMove:;I
+	
+; =============== PlMode_WarpOutMove ===============
+; Teleports the player up until he reaches the top of the screen.
+PlMode_WarpOutMove:
+	; Move up at a fixed 4px/frame
 	ld   a, [wPlRelY]
 	sub  $04
 	ld   [wPlRelY], a
-	and  $F0
-	jp   nz, Pl_DrawSprMap
-	ld   hl, wPlMode
+	; When we reach the range $00-$0F (offscreen above), stop moving
+	and  $F0				; (PlY & $F0) != 0?
+	jp   nz, Pl_DrawSprMap	; If so, continue moving
+	ld   hl, wPlMode		; Otherwise, advance to waiting
 	inc  [hl]
 	jp   Pl_DrawSprMap
-PlMode_WarpOutEnd:;I
+	
+; =============== PlMode_WarpOutEnd ===============
+; Teleporting animation finished, nothing else to do.
+; The level end handler will perform the appropriate action after waiting for a while.
+PlMode_WarpOutEnd:
 	ret
-PlMode_TeleporterInit:;I
+	
+; =============== PlMode_TeleporterInit ===============
+; Initializes the Wily Teleporter animation.
+; Identical to PlMode_WarpOutInit.
+PlMode_TeleporterInit:
 	ld   a, $0A
-	ld   [wPlWarpSprMapRelId], a
-	ld   a, $34
+	ld   [wPlWarpAnimTimer], a
+	ld   a, PLSPR_WARPLAND2
 	ld   [wPlSprMapId], a
 	ld   hl, wPlMode
-	inc  [hl]
+	inc  [hl] ; PL_MODE_TLPANIM
 	jp   Pl_DrawSprMap
-PlMode_Teleporter:;I
-	ld   a, [wPlWarpSprMapRelId]
+	
+; =============== PlMode_Teleporter ===============
+; Animates the player warping out.
+; Identical to PlMode_WarpOutAnim.
+PlMode_Teleporter:
+	ld   a, [wPlWarpAnimTimer]
 	dec  a
-	ld   [wPlWarpSprMapRelId], a
+	ld   [wPlWarpAnimTimer], a
 	srl  a
-	jr   z, L001793
+	jr   z, .end
 	ld   b, a
-	ld   a, $30
+	ld   a, PLSPR_WARP_START-1
 	add  b
 	ld   [wPlSprMapId], a
 	jp   Pl_DrawSprMap
-L001793:;R
-	ld   a, $0D
+.end:
+	ld   a, SFX_TELEPORTOUT
 	ldh  [hSFXSet], a
 	ld   hl, wPlMode
-	inc  [hl]
+	inc  [hl] ; PL_MODE_TLPEND
 	jp   Pl_DrawSprMap
-PlMode_TeleporterEnd:;I
+	
+; =============== PlMode_TeleporterEnd ===============
+; Triggers the warp to the level previouly specified to wLvlWarpDest when entering the teleporter.
+PlMode_TeleporterEnd:
 	ld   a, [wLvlWarpDest]
 	ld   [wLvlEnd], a
 	ret
-L0017A5:;J
+	
+; =============== PlColi_Spike ===============
+; Handles collision with a spike block.
+PlColi_Spike:
+	;
+	; [TCRF] When cheating, spikes become bouncy pits.
+	;
 	ldh  a, [hCheatMode]
 	or   a
-	jr   z, L0017BC
-L0017AA: db $3E;X
-L0017AB: db $02;X
-L0017AC: db $EA;X
-L0017AD: db $1D;X
-L0017AE: db $CF;X
-L0017AF: db $3E;X
-L0017B0: db $05;X
-L0017B1: db $EA;X
-L0017B2: db $1A;X
-L0017B3: db $CF;X
-L0017B4: db $3E;X
-L0017B5: db $00;X
-L0017B6: db $EA;X
-L0017B7: db $1B;X
-L0017B8: db $CF;X
-L0017B9: db $C3;X
-L0017BA: db $E9;X
-L0017BB: db $1A;X
-L0017BC:;R
-	ld   a, [wPlRelX]
-	ld   [wExplodeOrgX], a
-	ld   a, [wPlRelY]
-	sub  $0C
-	ld   [wExplodeOrgY], a
-	ld   a, $01
-	ld   [wLvlEnd], a
+	jr   z, .explode
+.bounce:
+	ld   a, PL_MODE_FULLJUMP	; Jump up at 5px/frame
+	ld   [wPlMode], a
+	ld   a, $05
+	ld   [wPlSpdY], a
+	ld   a, $00
+	ld   [wPlSpdYSub], a
 	jp   Pl_DrawSprMap
-L0017D2:;C
+	
+.explode:
+	; Otherwise, trigger an explosion from the center of the player.
+	; [BUG] Actor collision is still processed for this frame, which can lead to oddities
+	;       such as entering Rush Marine the same frame of touching a spike.
+	
+	ld   a, [wPlRelX]		; X Target = PlX (center)
+	ld   [wExplodeOrgX], a
+	ld   a, [wPlRelY]		; Y Target = PlY (bottom)
+	sub  PLCOLI_V			; -= radius (center)
+	ld   [wExplodeOrgY], a
+	ld   a, LVLEND_PLDEAD	; Trigger death
+	ld   [wLvlEnd], a
+
+	jp   Pl_DrawSprMap
+	
+; =============== Pl_StopTpAttack ===============
+; Makes the player stop spinning.
+Pl_StopTpAttack:
 	ld   a, [wWpnId]
-	cp   $04
-	ret  nz
+	cp   WPN_TP				; Are we using Top Spin?
+	ret  nz					; If not, return
 	xor  a
-	ld   [wWpnTpActive], a
-	ld   [wShot0], a
+	ld   [wWpnTpActive], a	; Stop Top Spin's attack (will enable the player's sprite)
+	ld   [wShot0], a		; Despawn the weapon shot, which is what deals damage
 	ret
 	
 ; =============== Pl_DoConveyor ===============
 ; Handles automatic movement if standing on a conveyor belt.
 Pl_DoConveyor:
-	; ??? Ignore if standing on an actor
+	; Ignore if standing on an actor platform
 	ld   a, [wActPlatColiSlotPtr]
-	cp   $FF
+	cp   ACTSLOT_NONE
 	ret  nz
 	
 	;
@@ -4703,13 +5296,13 @@ Pl_DoConveyor:
 	ld   bc, $0080			; BC = 0.5px/frame
 	cp   BLOCKID_CONVEDGE_R	; BlockID < First conveyor block?
 	jr   c, .chkR			; If so, skip to checking the right sensor
-	jp   z, Pl_IncSpeed		; BlockID == Right arrow? If so, move right
+	jp   z, Pl_IncSpeedX		; BlockID == Right arrow? If so, move right
 	cp   BLOCKID_CONVEDGE_L	; BlockID == Left arrow?
-	jp   z, Pl_DecSpeed		; If so, move left
+	jp   z, Pl_DecSpeedX		; If so, move left
 	cp   BLOCKID_CONVMID_R	; BlockID == Right conveyor?
-	jp   z, Pl_IncSpeed		; If so, move right
+	jp   z, Pl_IncSpeedX		; If so, move right
 	cp   BLOCKID_CONVMID_L	; BlockID == Left conveyor?
-	jp   z, Pl_DecSpeed		; If so, move left
+	jp   z, Pl_DecSpeedX		; If so, move left
 .chkR:
 	; Check the right sensor, with identical logic otherwise
 	ld   a, [wPlRelX]		; XPos = PlX + 6 (right)
@@ -4719,53 +5312,76 @@ Pl_DoConveyor:
 	ld   bc, $0080
 	cp   BLOCKID_CONVEDGE_R
 	jr   c, .ret
-	jp   z, Pl_IncSpeed
+	jp   z, Pl_IncSpeedX
 	cp   BLOCKID_CONVEDGE_L
-	jp   z, Pl_DecSpeed
+	jp   z, Pl_DecSpeedX
 	cp   BLOCKID_CONVMID_R
-	jp   z, Pl_IncSpeed
+	jp   z, Pl_IncSpeedX
 	cp   BLOCKID_CONVMID_L
-	jp   z, Pl_DecSpeed
+	jp   z, Pl_DecSpeedX
 .ret:
 	ret
 	
-L001836:;C
+; =============== Pl_IsOnGround ===============
+; Checks if the player is on solid ground.
+; OUT
+; - wPlColiGround: Collision flags
+;                ------LR
+;                L - If set, the left block is not solid
+;                R - If set, the right block is not solid
+;                If any of them is set, the player is on solid ground.
+Pl_IsOnGround:
+
+	; If the player is standing on an actor platform, that counts as solid ground
 	ld   a, [wActPlatColiSlotPtr]
-	cp   $FF
-	jr   z, L001842
-	xor  a
-	ld   [wColiGround], a
+	cp   ACTSLOT_NONE			; wActPlatColiSlotPtr == ACTSLOT_NONE?
+	jr   z, .calcFlags			; If so, jump
+	xor  a						; Set both blocks as solid
+	ld   [wPlColiGround], a
 	ret
-L001842:;R
-	ld   a, [wPlRelY]
+.calcFlags:
+	ld   a, [wPlRelY]			; YPos = PlY + 1 (ground)
 	inc  a
 	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
+	
+	; Check bottom-left block
+	ld   a, [wPlRelX]			; XPos = PlX - 6 (left border)
 	sub  PLCOLI_H
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	cp   $21
-	ld   hl, wColiGround
-	rl   [hl]
-	ld   a, [wPlRelX]
+	call Lvl_GetBlockId			; A = Block ID
+	cp   BLOCKID_TOPSOLID_START	; C Flag = Is empty? (A < BLOCKID_TOPSOLID_START)
+	ld   hl, wPlColiGround
+	rl   [hl]					; << in result
+	
+	; Check bottom-right block
+	ld   a, [wPlRelX]			; XPos = PlX + 6 (right border)
 	add  PLCOLI_H
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	cp   $21
-	ld   hl, wColiGround
-	rl   [hl]
+	call Lvl_GetBlockId			; A = Block ID
+	cp   BLOCKID_TOPSOLID_START	; C Flag = Is empty? (A < BLOCKID_TOPSOLID_START)
+	ld   hl, wPlColiGround
+	rl   [hl]					; << in result
 	ret
 	
-; =============== Pl_IsInLadderTop ===============
-; Checks if the player is fully inside on a ladder top block.
+; =============== Pl_IsInTopSolidBlock ===============
+; Checks if the player is inside a top-solid block.
+; The ladder top block is the only one like this.
 ; OUT
-; - Z Flag: If set, the player is standing on one
-Pl_IsInLadderTop:
+; - Z Flag: If set, the player is inside one
+Pl_IsInTopSolidBlock:
 
-	; To count as fully inside on a top ladder, the player should not be horizontally between two blocks.
-	; Since ladders are never adjacent to each other, this can be determined
-	; by checking if both the left and right ground sensors point to a ladder top block.
-	; This gives us 16-(6*2) = 4px of leeway to pass the checks.
+	; [BUG] This subroutine is exclusively used by code handling bottom/ground collision
+	;       to let the player fall through the non-top part of top-solid platforms
+	;       by performing the check before the standard collision one is done, where
+	;       top-solid blocks are treated as fully solid.
+	;
+	;       To count as being inside a top-solid block, the game checks if *both*
+	;       the left and right sensors point to one, giving 4px of leeway to pass the checks.
+	;       This logic is not adequate enough to cover all cases.
+	;       While this is enough if one of the sensors points to a solid block, it is not
+	;       when the other is empty, leading to solid ground being detected where there isn't
+	;       any, making the player visibly warp to the bottom of the block.
+
 	
 	; Check if the block to the left of the player, at origin level, is a ladder top block.
 	; If it isn't, return early
@@ -4804,14 +5420,14 @@ Pl_DoMoveSpeed:
 .dirL:
 	xor  a				; Set facing left
 	ld   [wPlDirH], a
-	jr   Pl_DecSpeed	; Speed -= BC
+	jr   Pl_DecSpeedX	; Speed -= BC
 .chkR:
 	bit  KEYB_RIGHT, a	; Holding right?
 	ret  z				; If not, return (staying idle)
 .dirR:
 	ld   a, $01			; Set facing right
 	ld   [wPlDirH], a
-	jr   Pl_IncSpeed	; Speed += BC
+	jr   Pl_IncSpeedX	; Speed += BC
 	
 ; =============== Pl_DoHurtSpeed ===============
 ; Updates the player's speed in the hurt pose.
@@ -4822,8 +5438,8 @@ Pl_DoHurtSpeed:
 	; Subtracting is relative to the direction the player's facing
 	ld   a, [wPlDirH]
 	or   a					; Facing left?
-	jr   z, Pl_IncSpeed		; If so, move right 
-	jr   Pl_DecSpeed		; Otherwise, move left
+	jr   z, Pl_IncSpeedX		; If so, move right 
+	jr   Pl_DecSpeedX		; Otherwise, move left
 	
 ; =============== Pl_Unk_SetSpeedByActDir ===============
 ; Updates the player's speed, towards the same direction the actor is facing.
@@ -4833,14 +5449,14 @@ Pl_DoHurtSpeed:
 ; - BC: Offset
 Pl_Unk_SetSpeedByActDir:
 	bit  ACTDIRB_R, a		; Is the actor facing right?
-	jr   nz, Pl_IncSpeed	; If so, move the player right
+	jr   nz, Pl_IncSpeedX	; If so, move the player right
 	; Fall-through
 	
-; =============== Pl_DecSpeed ===============
-; Decreases the player's speed by the specified amount.
+; =============== Pl_DecSpeedX ===============
+; Decreases the player's horizontal speed by the specified amount.
 ; IN
 ; - BC: Offset
-Pl_DecSpeed:
+Pl_DecSpeedX:
 	ld   a, [wPlSpdXSub]
 	sub  c
 	ld   [wPlSpdXSub], a
@@ -4849,11 +5465,11 @@ Pl_DecSpeed:
 	ld   [wPlSpdX], a
 	ret
 	
-; =============== Pl_IncSpeed ===============
-; Increases the player's speed by the specified amount.
+; =============== Pl_IncSpeedX ===============
+; Increases the player's horizontal speed by the specified amount.
 ; IN
 ; - BC: Offset
-Pl_IncSpeed:
+Pl_IncSpeedX:
 	ld   a, [wPlSpdXSub]
 	add  c
 	ld   [wPlSpdXSub], a
@@ -4945,7 +5561,7 @@ Pl_BgColiMoveL:
 	ld   a, [wPlRelY]		; YPos = PlY
 	ld   [wTargetRelY], a
 	call Lvl_GetBlockId		; A = Block ID
-	ld   [wPlColiBlockL], a	; Set it as left block (??? is this used)
+	ld   [wPlColiBlockL], a	; Set it as left block (doesn't happen to be used)
 	ret  nc					; Is the block empty? If not, return
 	
 	; LOW BLOCK, middle
@@ -5096,7 +5712,7 @@ Pl_BgColiMoveR:
 	ld   a, [wPlRelY]		; YPos = PlY
 	ld   [wTargetRelY], a
 	call Lvl_GetBlockId		; A = Block ID
-	ld   [wPlColiBlockR], a	; Set it as right block (??? is this used)
+	ld   [wPlColiBlockR], a	; Set it as right block (used, unlike wPlColiBlockL)
 	ret  nc					; Is the block empty? If not, return
 	
 	; LOW BLOCK, middle
@@ -5207,74 +5823,145 @@ Pl_MoveR:
 	ret  z							; If not, return
 	jp   LvlScroll_DrawEdgeR		; Otherwise, do the redraw
 	
-L001A45:;C
-	ld   a, [wPlRelX]
+; =============== Pl_AlignToLadder ===============
+; Adjusts the player's horizontal position to be centered to the ladder.
+;
+; This subroutine assumes for the screen to be perfectly aligned to a block boundary (ie: locked, ...),
+; if it isn't it will break the screen's scrolling due to moving the player's position instead of the viewport's.
+Pl_AlignToLadder:
+	
+	;
+	; If the player perfectly aligned to the center of the ladder, there's nothing to do.
+	;
+	; Note that the checks are made against wPlRelX, which is shifted by 8 (OBJ_OFFSET_X)
+	; and as such it shifts the center point and effectively swaps the left and right ranges.
+	; Even though wPlRelRealX could have been used instead to make the checks more intuitive,
+	; using wPlRelX is faster as it gives the movement amount for free once modulo'd (see .moveL/.moveR)
+	;
+	;               CENTER POINT | LEFT SIDE | RIGHT SIDE
+	; wPlRelRealX |          $07 |   $00-$06 |    $08-$0F
+	; wPlRelX     |          $0F |   $08-$0E |    $00-$07
+	; DIFF        |              |        +8 |         -8
+	;
+	
+	ld   a, [wPlRelX]		; Get player origin (center of the player)
+	ld   b, a				; (Not necessary)
+	and  BLOCK_H-1			; Get position within the block (ModX)
+	cp   OBJ_OFFSET_X+$07	; Is it at the center of the block? (ModX == $0F? / ModRealX == $07?)
+	ret  z					; If so, return
+	
+	; Determine if the player is on the left or right of the center point
+	cp   $08				; Is the player on the left side? (ModX in range $08-$0F)
+	jr   nc, .moveR			; If so, move right
+	
+.moveL:
+
+	;
+	; The player is on the right side of the block, and should be moved to the center point.
+	; With wPlRelRealX, the center point is $07, and the player should be moved left by <ModRealX>-$07 px.
+	;
+	; However, since we're using wPlRelX, whose values are subtracted by 8 when pointing to the right side...
+	; <ModRealX> - $07 => <ModX> + $08 - $07 => <ModX> + 1
+	;
+	; That's easier to calculate, it's just off by one to what we already have in the A register.
+	;
+	inc  a					; MoveAmount = ModX + 1
 	ld   b, a
-	and  $0F
-	cp   $0F
-	ret  z
-	cp   $08
-	jr   nc, L001A6C
-	inc  a
-	ld   b, a
-	ld   a, [wPlRelX]
+	
+	; Move both the player position and its unoffsetted copy left
+	ld   a, [wPlRelX]		; wPlRelX -= B
 	sub  b
 	ld   [wPlRelX], a
-	ld   a, [wPlRelRealX]
-	ld   c, a
+	ld   a, [wPlRelRealX]	; wPlRelRealX -= B
+	ld   c, a				; Save the untouched wPlRelRealX
 	sub  b
 	ld   [wPlRelRealX], a
-	xor  c
-	bit  4, a
-	ret  z
-L001A67: db $21;X
-L001A68: db $10;X
-L001A69: db $CF;X
-L001A6A: db $35;X
-L001A6B: db $C9;X
-L001A6C:;R
-	ld   b, a
+	
+	; [TCRF] If the movement made the player cross a block boundary, decrement the column number.
+	;        This will never happen, as to hold on a ladder the player's origin must be in a ladder block to begin with.
+	xor  c					; Check for changes compared to the unmodified value
+	bit  4, a				; Did we cross the $10-byte block boundary? (bit4 changed from last time)
+	ret  z					; If not, return
+	;--
+	; Unreachable
+	ld   hl, wLvlColPl		; Otherwise, decrement the column number
+	dec  [hl]
+	ret
+	;--
+	
+.moveR:
+	;
+	; The player is on the left side of the block, and should be moved right to the center point.
+	; Same thing as before, except happening the other way around as the values are added by $08 so:
+	; 
+	; $07 - <ModRealX> => $07 - (<ModX> - $08) => $0F - <ModX>
+	;
+	ld   b, a				; MoveAmount = $0F - ModX
 	ld   a, $0F
 	sub  b
 	ld   b, a
-	ld   a, [wPlRelX]
+	
+	; Move both the player position and its unoffsetted copy right
+	ld   a, [wPlRelX]		; wPlRelX -= B
 	add  b
 	ld   [wPlRelX], a
-	ld   a, [wPlRelRealX]
+	ld   a, [wPlRelRealX]	; wPlRelRealX -= B
 	ld   c, a
 	add  b
 	ld   [wPlRelRealX], a
-	xor  c
-	bit  4, a
-	ret  z
-L001A84: db $21;X
-L001A85: db $10;X
-L001A86: db $CF;X
-L001A87: db $34;X
-L001A88: db $C9;X
-L001A89:;J
-	ld   a, [wPlRmSpdY]
-	or   a
-	ret  z
-	bit  7, a
-	jp   z, L001AA4
-	xor  $FF
+	
+	; [TCRF] If the movement made the player cross a block boundary, increment the column number.
+	xor  c					; Check for changes compared to the unmodified value
+	bit  4, a				; Did we cross the $10-byte block boundary? (bit4 changed from last time)
+	ret  z					; If not, return
+	;--
+	; Unreachable
+	ld   hl, wLvlColPl
+	inc  [hl]
+	ret
+	;--
+	
+; =============== Pl_ApplyRmSpeedY ===============
+; Applies the vertical movement speed for the current frame when riding Rush Marine.
+;
+; Worth noting there's no Pl_ApplySpeedY as the movement mechanics almost always only allow moving
+; to one vertical direction at a time (ie: when jumping you only move up, when falling only down, ...)
+; and can't be influenced by factors that influence horizontal movement such as conveyor belts or Air Man.
+;
+; Rush Marine is the exception, since it has vertical momentum... but why not use wPlSpdY directly.
+Pl_ApplyRmSpeedY:
+	ld   a, [wPlRmSpdY]	; A = V Speed
+	or   a				; Speed already 0?
+	ret  z				; If so, nothing to do
+	
+	bit  7, a			; Speed > 0? (MSB clear)  
+	jp   z, .loopD		; If so, jump (move down)
+	xor  $FF			; Otherwise, Speed = -Speed
 	inc  a
 	ld   [wPlRmSpdY], a
-L001A99:;X
-	ld   hl, wPlRelY
+	
+	; These loops are a lazy copy/paste that could have been avoided by directly subtracting/adding wPlRmSpdY to wPlRelY.
+	; The loop was there in Pl_ApplySpeedX because each frame needed to perform actions like checking for collision
+	; or potentially scrolling the screen, but this merely alters wPlRelY.
+.loopU:
+	;--
+	ld   hl, wPlRelY	; Move up 1px
 	dec  [hl]
-	ld   hl, wPlRmSpdY
-	dec  [hl]
-	jr   nz, L001A99
+	;--
+	ld   hl, wPlRmSpdY	; Speed--
+	dec  [hl]			; Elapsed the speed?
+	jr   nz, .loopU		; If not, move again
 	ret
-L001AA4:;J
-	ld   hl, wPlRelY
+.loopD:
+	;--
+	ld   hl, wPlRelY	; Move down 1px
 	inc  [hl]
-	ld   hl, wPlRmSpdY
-	dec  [hl]
-	jr   nz, L001AA4
+	;--
+	ld   hl, wPlRmSpdY	; Speed--
+	dec  [hl]			; Elapsed the speed?
+	jr   nz, .loopD		; If not, move again
 	ret
+	
 ; =============== Pl_AnimWalk ===============
 ; Animates the player's walk cycle, and redraws its sprite.
 Pl_AnimWalk:
@@ -5296,15 +5983,15 @@ Pl_AnimWalk:
 	inc  a						; Otherwise, wPlWalkAnimTimer++
 	ld   [wPlWalkAnimTimer], a
 
-	ld   a, $06					; Set sidestep frame
+	ld   a, PLSPR_SIDESTEP		; Set sidestep frame
 	ld   [wPlSprMapId], a
 	jr   Pl_DrawSprMap			; Draw it
 	
 .walkAnim:
 
 	;
-	; This animation is done by cycling through four sprites, advancing after 64 frames.
-	; These four sprites are aligned to a 4-byte boundary ???
+	; This animation is done by cycling through the four PLSPR_WALK* sprites, advancing after 64 frames.
+	; These four sprites are in slots $00-$03.
 	; 
 	
 	; Advance animation timer
@@ -5381,7 +6068,7 @@ Pl_DrawSprMap:
 	jr   nz, .notHurt		; If so, jump
 	
 	; Force hurt frame
-	ld   a, $30
+	ld   a, PLSPR_HURT
 	jr   .drawPl
 	
 .notHurt:
@@ -5705,8 +6392,8 @@ ActS_SpawnRoom:
 	; As a room is made of 10 columns (width of a screen), this will spawn any actors
 	; defined on the 10 columns after the current one.
 	;
-	; In case the screen is locked to the right, one extra column is loaded.
-	; (??? why, presumably for spawners?)
+	; In case the screen is locked to the right, one extra column is loaded for
+	; the same reason it is done when drawing a full screen (the seam's position).
 	;
 
 	; A = Current room locks
@@ -6054,7 +6741,8 @@ ActS_Spawn:
 		push hl ; Save base slot ptr
 			
 			; Actor ID
-			; ??? Enforce visibility flag, also preventing the slot from being marked as free
+			; This merges it with a flag whose entire purpose is to prevent the slot from being seen as free.
+			; Note that the flag is not used determine if a slot is empty, only those with iActId $00 are treated as such.
 			ld   a, [wActSpawnId]	
 			or   ACT_UNK_PROCFLAG
 			ldi  [hl], a ; iActId
@@ -6774,7 +7462,7 @@ ActS_AngleToPlCustom:
 	; PREPARATIONS
 	;
 	
-	DEF tSprMapFlags = wColiGround
+	DEF tSprMapFlags = wPlColiGround
 	DEF tActPlYDiff = wTmpCF52
 	DEF tActPlXDiff = wTmpCF53
 	
@@ -7154,7 +7842,7 @@ ActS_GetBlockIdFwdGround:
 ; Gets ground solidity flags for the current actor.
 ; Used exclusively to detect if the actor has moved off solid ground.
 ; OUT
-; - wColiGround: Bitmask containing the ground solidity info.
+; - wPlColiGround: Bitmask containing the ground solidity info.
 ;                Each bit, if set, marks that there's no solid ground at that position.
 ;                ------LR
 ;                L -> Bottom-left corner
@@ -7165,7 +7853,7 @@ ActS_GetGroundColi:
 
 	; Reset return value
 	xor  a
-	ld   [wColiGround], a
+	ld   [wPlColiGround], a
 	
 	DEF tActColiH = wTmpCF52
 	
@@ -7177,7 +7865,7 @@ ActS_GetGroundColi:
 	ld   [tActColiH], a
 	
 	;
-	; Do the collision checks and store their result into wColiGround.
+	; Do the collision checks and store their result into wPlColiGround.
 	;
 	; This needs to detect if there's currently any solid block on the ground in either direction.
 	; To do that, two sensors are needed, one on each side, both on the ground.
@@ -7198,7 +7886,7 @@ ActS_GetGroundColi:
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId			; Solid block there? (if not, C flag set)
 	
-	ld   hl, wColiGround		; Shift to bit0
+	ld   hl, wPlColiGround		; Shift to bit0
 	rl   [hl]
 	
 	; RIGHT SIDE
@@ -7209,7 +7897,7 @@ ActS_GetGroundColi:
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId			; Solid block there? (if not, C flag set)
 	
-	ld   hl, wColiGround		; Shift to bit0, and the L one to bit1
+	ld   hl, wPlColiGround		; Shift to bit0, and the L one to bit1
 	rl   [hl]
 	ret
 	
@@ -8631,7 +9319,7 @@ Module_Game:
 	or   a					; Anything written to wLvlEnd?
 	jr   z, Module_Game		; If not, loop
 	push af
-		call L0017D2
+		call Pl_StopTpAttack
 		call WpnS_SaveCurAmmo
 		xor  a
 		ld   [wPlSprFlags], a
@@ -8910,9 +9598,9 @@ L002A03:;R
 	ld   a, $02
 	ld   [wPlMode], a
 	ld   a, $03
-	ld   [wPlSpdYSub], a
-	ld   a, $80
 	ld   [wPlSpdY], a
+	ld   a, $80
+	ld   [wPlSpdYSub], a
 	xor  a
 	ldh  [hJoyKeys], a
 	ldh  [hJoyNewKeys], a
@@ -11185,12 +11873,12 @@ Wpn_OnActColi:
 	ld   a, e				; A = Struct index
 	cp   iRomActColiDmgSg - iRomActColiDmgP	; Pointing to the Sakugarne?
 	jr   nz, .decHealth		; If not, skip
-	; Otherwise, do small jump at $00.02px/frame
+	; Otherwise, do a jump at 2px/frame
 	ld   a, $00
-	ld   [wPlSpdY], a
-	ld   a, $02
 	ld   [wPlSpdYSub], a
-	ld   a, PL_MODE_JUMPHI
+	ld   a, $02
+	ld   [wPlSpdY], a
+	ld   a, PL_MODE_FULLJUMP
 	ld   [wPlMode], a
 	;--
 .decHealth:
@@ -11342,7 +12030,7 @@ Wpn_OnActColi:
 	; In case of a double KO, do not trigger the boss' explosion animation as it'd give the victory to the player.
 	; However, still hide the health bar as the boss was converted to an explosion actor already.
 	ld   a, [wLvlEnd]
-	cp   EXPL_PL			; Player has exploded already?
+	cp   LVLEND_PLDEAD			; Player has exploded already?
 	jr   z, .bossClrBar			; If so, skip
 	
 	; The explosions should originate from the center of the boss.
@@ -11361,7 +12049,7 @@ Wpn_OnActColi:
 	ld   [wExplodeOrgY], a
 	
 	; And trigger it
-	ld   a, EXPL_BOSS
+	ld   a, LVLEND_BOSSDEAD
 	ld   [wLvlEnd], a
 	
 .bossClrBar:
@@ -11409,12 +12097,12 @@ Wpn_OnActColi:
 	ld   a, [wWpnSGRide]
 	or   a					; Riding the Sakugarne?
 	jr   z, .deflectNorm	; If not, jump
-	; Do small jump at $00.02px/frame
+	; Do jump at 2px/frame
 	ld   a, $00
-	ld   [wPlSpdY], a
-	ld   a, $02
 	ld   [wPlSpdYSub], a
-	ld   a, PL_MODE_JUMPHI
+	ld   a, $02
+	ld   [wPlSpdY], a
+	ld   a, PL_MODE_FULLJUMP
 	ld   [wPlMode], a
 	; Play deflect sound
 	ld   a, SFX_DEFLECT
@@ -11452,7 +12140,7 @@ Pl_DoActColi:
 	; There are generally used to signal to another actor that a specific type of collision has happened.
 	; Actor code may check for these by comparing their actor slot pointer to what's specified in the markers,
 	; and if it matches the actor knows the player has collided with it in some way.
-	ld   a, $FF
+	ld   a, ACTSLOT_NONE
 	ld   [wActHurtSlotPtr], a
 	ld   [wActPlatColiSlotPtr], a
 	ld   [wActRjStandSlotPtr], a
@@ -11676,7 +12364,7 @@ Pl_OnActColi:
 	ld   [wExplodeOrgY], a
 	
 	; And trigger it
-	ld   a, EXPL_PL
+	ld   a, LVLEND_PLDEAD
 	ld   [wLvlEnd], a
 	ret
 	
@@ -11699,7 +12387,7 @@ Pl_OnActColi:
 
 	; Standing on Rush Jet disables collision with top-solid platforms
 	ld   a, [wActRjStandLastSlotPtr]
-	cp   $FF
+	cp   ACTSLOT_NONE
 	ret  nz
 	
 	; Try to snap to the top of the platform
@@ -11715,7 +12403,7 @@ Pl_OnActColi:
 	
 	; Standing on Rush Jet disables collision with spinning tops
 	ld   a, [wActRjStandLastSlotPtr]
-	cp   $FF
+	cp   ACTSLOT_NONE
 	ret  nz
 	
 	; Try to snap to the top of the platform
@@ -11846,20 +12534,20 @@ Pl_OnActColi:
 	ld   [wTargetRelY], a
 	
 	; Check left sensor
-	ld   a, [wPlRelX]		; X Target = Left (wPlRelX - PLCOLI_H)
+	ld   a, [wPlRelX]			; X Target = Left (wPlRelX - PLCOLI_H)
 	sub  PLCOLI_H
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   BLOCKID_LADDERTOP	; Is this a solid block or the top of a ladder? (A >= $21)
-	ret  nc					; If so, return
+	cp   BLOCKID_TOPSOLID_START	; Is this a solid block on top? (A >= $21)
+	ret  nc						; If so, return
 	
 	; Check right sensor
-	ld   a, [wPlRelX]		; X Target = Right (wPlRelX + PLCOLI_H)
+	ld   a, [wPlRelX]			; X Target = Right (wPlRelX + PLCOLI_H)
 	add  PLCOLI_H
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
-	cp   BLOCKID_LADDERTOP	; Is this a solid block or the top of a ladder? (A >= $21)
-	ret  nc					; If so, return
+	cp   BLOCKID_TOPSOLID_START	; Is this a solid block on top? (A >= $21)
+	ret  nc						; If so, return
 	
 	;
 	; All checks passed, snap the player to the top of the actor.
@@ -13438,16 +14126,20 @@ L003C66: db $01
 L003C67: db $0A
 L003C68: db $0A
 L003C69: db $16
-Lvl_WaterFlagTbl: db $00
-L003C6B: db $01
-L003C6C: db $00
-L003C6D: db $00
-L003C6E: db $00
-L003C6F: db $00
-L003C70: db $01
-L003C71: db $00
-L003C72: db $00
-L003C73: db $01
+
+; =============== Lvl_WaterFlagTbl ===============
+; Marks which levels have water.
+Lvl_WaterFlagTbl:
+	db $00 ; LVL_HARD
+	db $01 ; LVL_TOP
+	db $00 ; LVL_MAGNET
+	db $00 ; LVL_NEEDLE
+	db $00 ; LVL_CRASH
+	db $00 ; LVL_METAL
+	db $01 ; LVL_WOOD
+	db $00 ; LVL_AIR
+	db $00 ; LVL_CASTLE
+	db $01 ; LVL_STATION
 
 ; =============== ScrEv_BGStripTbl ===============
 ; Pointers to 2-row tall tilemap strips.

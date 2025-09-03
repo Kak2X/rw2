@@ -352,7 +352,7 @@ WpnCtrl_TopSpin:
 	jp   z, WpnCtrlS_End			; If not, return
 	
 	; Only allowed when the player is in the air ($01-$03)
-	; (PL_MODE_JUMP, PL_MODE_JUMPHI, PL_MODE_FALL)
+	; (PL_MODE_JUMP, PL_MODE_FULLJUMP, PL_MODE_FALL)
 	ld   a, [wPlMode]
 	or   a ; PL_MODE_GROUND	; wPlMode == $00?
 	jp   z, WpnCtrlS_End		; If so, return
@@ -881,7 +881,7 @@ WpnCtrl_HardKnuckle:
 	ld   a, PL_MODE_FROZEN
 	ld   [wPlMode], a		; Freeze player
 	ld   a, $10
-	ld   [wPlIdleDelay], a	; Return to PL_MODE_GROUND after $10 frames
+	ld   [wWpnHaFreezeTimer], a	; Return to PL_MODE_GROUND after $10 frames
 	;--
 	
 	; Shoot the fist forward
@@ -928,12 +928,12 @@ WpnS_Do:
 	; Return to the idle state when the freeze timer elapses.
 	; This is exclusively used by Hard Knucle to freeze the player after shooting (see WpnCtrl_HardKnuckle),
 	; and it's up to us to re-enable the player controls here.
-	; It's also notoriously buggy, but... the location of the bug is elsewhere (see ???)
-	ld   a, [wPlIdleDelay]
+	; It's also notoriously buggy, but... the location of the bug is elsewhere (see Game_StartRoomTrs & ScrEv_LvlScrollH)
+	ld   a, [wWpnHaFreezeTimer]
 	or   a					; Is the timer already elapsed?
 	jr   z, .chkSlots		; If so, skip
 	dec  a					; Otherwise, timer--
-	ld   [wPlIdleDelay], a
+	ld   [wWpnHaFreezeTimer], a
 	jr   nz, .chkSlots		; Did it elapse *now*? (A = 0)
 	ld   [wPlMode], a		; If so, unlock the player's controls (A = PL_MODE_GROUND)
 	
