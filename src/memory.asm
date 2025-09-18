@@ -17,6 +17,23 @@ wShot1:                ds $10 ; $CC70 ; Weapon shot #2
 wShot2:                ds $10 ; $CC80 ; Weapon shot #3
 wShot3:                ds $10 ; $CC90 ; Weapon shot #4 (typically used for special purposes)	
 
+SECTION "CCD0", WRAM0[$CCD0]
+wActBlockyMode:        db ; $CCD0 ; Signals shared phases to the child actors
+wActBlockyRiseDone:    db ; $CCD1 ; Blocks that have risen to their proper position
+wActBlockyHeadY:       db ; $CCD2 ; Blocky's head Y position, used to generate iActY for all of the individual blocks
+
+
+SECTION "CCE0", WRAM0[$CCE0]
+wLeafShieldOrgSpdX:   db ; $CCE0 ; Leaf Shield - Throw signal
+
+SECTION "CCEE", WRAM0[$CCEE]
+wWilyShipY:            db ; $CCEE ; Wily Ship - Y Position
+wWilyShipX:            db ; $CCEF ; Wily Ship - X Position
+
+SECTION "CCFD", WRAM0[$CCFD]
+wWilyPhaseDone:        db ; $CCFD ; Wily Machine phase completed
+
+
 SECTION "CD00", WRAM0[$CD00]
 wAct:                  ds $100 ; $CD00 ; Currently loaded actors
 wActColi:              ds $100 ; $CE00 ; Respective collision data for currently loaded actors
@@ -66,7 +83,7 @@ wPlShootTimer:         db ; $CF22 ; How long the player sticks the arm out when 
 wPlShootType:          db ; $CF23 ; Determines the animation frame used when shooting (ie: normal, throw)
 wActRjStandLastSlotPtr: db ; $CF24 ; wActRjStandSlotPtr value from the previous frame
 ds $01
-wPlColiGround:         db ; $CF26 ; Ground collision flags 
+wColiGround:           db ; $CF26 ; Ground collision flags 
 wPlSlideDustTimer:     db ; $CF27 ; Timer for the dust particle after starting a slide.
 ds $02
 wPlSlideTimer:    db ; $CF2A ; Player slide timer, when it elapses the slide ends
@@ -81,10 +98,10 @@ wActScrollX:            db ; $CF31 ; Scroll offset for all actors, to account fo
 ds 3
 wPlSlideDustX:          db ; $CF35 ; Dust particle sprite - X position
 wPlSlideDustY:          db ; $CF36 ; Dust particle sprite - Y position
-wActStartEndSlotPtr:    db ; $CF37 ; First *AND* last actor slot processed. Stored in the same address since the first slot is at $CD00 and the end at $CE00 (same low byte)
-wActCurSprMapRelId:     db ; $CF38 ; Sprite mapping ID offset, relative to the one packed in iActSprMap
+wActStartSlotPtr:       db ; $CF37 ; First actor slot processed, also used to detect when all slots have been handled.
+wActCurSprMapBaseId:    db ; $CF38 ; Base sprite mapping ID offset, works with the packed one in iActSprMap
 wStartTimer:            db ; $CF39 ; Copy of hTimer taken at the start of the gameplay loop. Used at the end of the loop to check for lag frames.
-wShutterNum:            db ; $CF3A ; Number of shutters went through. Disables horizontal scrolling, used for boss rooms
+wBossMode:              db ; $CF3A ; Boss mode, mostly used as routine ID for the boss intro (BSMODE_*)
 wPlColiBlockL:          db ; $CF3B ; Player collision, block ID on the left
 wPlColiBlockR:          db ; $CF3C ; Player collision, block ID on the right
 wShutterBGPtr_Low:      db ; $CF3D ; Target tilemap pointer when animating the shutter.
@@ -104,11 +121,11 @@ wActPlatColiSlotPtr:    db ; $CF4A ; Marks the top-solid platform actor the play
 ds 1
 wGameTimeSub:           db ; $CF4C ; Gameplay timer (frames)
 wGameTime:              db ; $CF4D ; Gameplay timer (seconds)
-; Rectangle draw subroutine, used to draw large bosses
-w_Unk_RectCpDestPtrLow:  db ; $CF4E ; Rect copy - Tilemap destination pointer
-w_Unk_RectCpDestPtrHigh: db ; $CF4F ;
-w_Unk_RectCpColsLeft:   db ; $CF50 ; Rect copy - Columns left (inner loop) ??? Inner write loop
-w_Unk_RectCpRowsLeft:   db ; $CF51 ; Rect copy - Rows left (outer loop) ??? Outer write loop
+; Rectangle draw subroutine, used to draw BG-based actors
+wRectCpDestPtrLow:      db ; $CF4E ; Rect copy - Tilemap destination pointer
+wRectCpDestPtrHigh:     db ; $CF4F ;
+wRectCpHeight:          db ; $CF50 ; Rect copy - Height (inner loop)
+wRectCpWidth:           db ; $CF51 ; Rect copy - Width (outer loop)
 wTmpCF52:               db ; $CF52 ; Temporary location for position-related calculations (also final OBJ flags for the current actor's sprite, calculated)
 wTmpCF53:               db ; $CF53 ; Temporary location for position-related calculations
 wTmpColiBoxH:           db ; $CF54 ; Temporary location to store iActColiBoxH
@@ -117,11 +134,11 @@ wTmpTileIdUL:           db ; $CF56 ; Temporary location to store the four tile I
 wTmpTileIdDL:           db ; $CF57
 wTmpTileIdUR:           db ; $CF58
 wTmpTileIdDR:           db ; $CF59
-w_CF5A_TblOffsetByAct:  db ; $CF5A ; ??? Used by one three actors using the same code to distinguish which one it is. Used to index a pointer table.
-w_CF5B_TblOffsetSec:    db ; $CF5B ; ??? Indexes the table the returned by the pointer above.
-w_CF5C_SpawnTimer:      db ; $CF5C ; ??? Used by an actor to times spawning sub-actors
+wActLiftPathId:         db ; $CF5A ; Path taken by the lift.
+wActLiftPathSeg:        db ; $CF5B ; Current path segment. (Secondary index to the path table)
+wNeedleSpawnTimer:      db ; $CF5C ; Handles Needle Man's shot timing. Could have been part of the actor struct.
 wActHurtSlotPtr:        db ; $CF5D ; Marks the actor the player got damaged by
-wWpnSGUseTimer:         db ; $CF5E ; Timer for Sakugarne's weapon usage
+wWpnHelperUseTimer:     db ; $CF5E ; Timer for automatic weapon ammo drain, used by weapons that consume ammo over time
 wUnk_Unused_CF5F:       db ; $CF5F 
 wLvlEnd:                db ; $CF60 ; Marks how the level ended, either when someone has died (EXPL_*) or an instant stage warp if a stage ID is written to the upper nybble.
 wBossHealth:            db ; $CF61 ; Boss health (copied from the boss' iActColiHealth, to later update wBossHealthBar)
@@ -136,7 +153,7 @@ wPlRmSpdY:              db ; $CF69 ; ( ??? for some reason, there's no X equival
 wActHelperColiSlotPtr:  db ; $CF6A ; Marks the helper item (Rush/Sakugarne) the player has collided with
 wActRjStandSlotPtr:     db ; $CF6B ; Marks the Rush Jet actor slot the player is standing on
 wWpnSGRide:             db ; $CF6C ; Sakugarne ride controls enabled
-wActUnk_CF6D_TimerInit: db ; $CF6D ; ??? An actor gets its timer initialized to this value
+wActNePrLastCycleTarget: db ; $CF6D ; Cycle for the last spawned Needle Press
 wGameOverSel:           db ; $CF6E ; Selected action on the game over screen
 wLvlWater:              db ; $CF6F ; The level has water
 wStatusBarRedraw:       db ; $CF70 ; Marks which parts of the status bar should be redrawn
@@ -196,7 +213,7 @@ wWpnColiBoxV:           db ; $CFED ; Weapon collision box - vertical radius
 wWpnActDmg:             db ; $CFEE ; Damage the current weapon dealt to the actor
 wWpnPierceLvl:          db ; $CFEF ; "Piercing level" of the current weapon (WPNPIERCE_*)
 wWpnShotCost:           db ; $CFF0 ; Ammo cost of the currently fired shot
-wWpnHelperActive:       db ; $CFF1 ; Rush/Sakugarne actors are active
+wWpnHelperWarpRtn:      db ; $CFF1 ; Teleport routine for Rush/Sakugarne actors, also uses a special value $FF to mark if they are active
 wWpnAmmoInc:            db ; $CFF2 ; Slowly increments the weapon ammo until it elapses. (weapon energy effect)
 wPlHealthInc:           db ; $CFF3 ; Slowly increments the player's health until it elapses. (life energy effect)
 wPassCursorX:           db ; $CFF4 ; Password cursor - X position
@@ -294,7 +311,7 @@ DEF iTilemapDefPayload  EQU $03
 ; wAct
 DEF iActId            EQU $00 ; Actor ID. Must be a multiple of two. If zero, the slot is free.
 DEF iActRtnId         EQU $01 ; Routine ID, actor-specific
-DEF iActSprMap        EQU $02 ; Sprite mapping ID + direction flags + animation timer
+DEF iActSprMap        EQU $02 ; Relative sprite mapping ID + direction flags + animation timer
 DEF iActLayoutPtr     EQU $03 ; Actor layout pointer
 DEF iActXSub          EQU $04 ; X subpixel position
 DEF iActX             EQU $05 ; X position
@@ -310,18 +327,134 @@ DEF iAct0E            EQU $0E ; Actor-specific
 DEF iAct0F            EQU $0F ; Actor-specific
 DEF iActEnd EQU $10
 
-; Actor-specific fields
+; Common actor-specific fields
+DEF iActChildSlotPtr EQU iAct0D ; Pointer to spawned child actor
 
-; see Act_Boss_InitIntro
-DEF iBossIntroTimer EQU iActTimer0C
-DEF iBossIntroSprMap0 EQU iAct0D
-DEF iBossIntroSprMap1 EQU iAct0E
-DEF iBossIntroFrameLen EQU iAct0F
+; ActS_PlayAnimRange
+DEF iAnimRangeTimer      EQU iActTimer0C
+DEF iAnimRangeSprMapFrom EQU iAct0D
+DEF iAnimRangeSprMapTo   EQU iAct0E
+DEF iAnimRangeFrameLen   EQU iAct0F
 
-; See ActS_InitCirclePath
-DEF iArcIdDir = iAct0D
-DEF iArcIdX = iAct0E
-DEF iArcIdY = iAct0F
+; ActS_InitCirclePath
+DEF iArcIdDir EQU iAct0D
+DEF iArcIdX EQU iAct0E
+DEF iArcIdY EQU iAct0F
+
+; Act_Bee
+DEF iBeeTargetX EQU iActTimer0C
+DEF iBeeShiftTimer EQU iActTimer0C
+
+; Act_Tama
+DEF iTamaAttackType EQU iAct0D
+
+; Act_NeedlePress
+DEF iNePrCycleTarget EQU iActTimer0C
+DEF iNePrAnimOff EQU iAct0D
+
+; Act_BlockyHead and Act_BlockyBody
+DEF iBlockyWaveTimer EQU iAct0D ; Position in the triangle wave pattern
+DEF iBlockyRelY EQU iAct0E ; Position relative to the master block
+DEF iBlockyGroundBounce EQU iAct0F ; 
+
+; Act_Pipi
+DEF iPipiSpawnX EQU iAct0D
+DEF iPipiEggSlotPtr_Low EQU iAct0E
+DEF iPipiEggSlotPtr_High EQU iAct0F
+
+; Act_Egg
+DEF iEggBirdDead EQU iAct0D
+
+; Act_Shotman
+DEF iShotmanShotsLeft EQU iAct0D ; Number of shots remaining before switching arc
+
+; Act_Springer
+DEF iSpringerAnimTimer EQU iAct0E ; Animation timer for the spring out effect
+DEF iSpringerRtnBak EQU iAct0F ; Backup of iActRtnId
+
+; Act_PieroBotGear
+DEF iPieroGearBotSlotPtr EQU iAct0E ; Pointer to Pierobot, from the gear's side
+DEF iPieroGearBotDead EQU iAct0F 
+
+; Act_PieroBot
+DEF iPieroBotTargetY EQU iAct0D ; Target Y position when falling
+DEF iPieroBotGearSlotPtr EQU iAct0E ; Pointer to the gear, from Pierobot's side
+DEF iPieroBot0F EQU iAct0F
+
+; Act_Mole
+DEF iMoleSprMapBaseId EQU iAct0D
+
+; Act_Press
+DEF iPressSpawnY EQU iAct0D
+
+; Act_Robbit
+DEF iRobbitCarrotsLeft EQU iAct0D ; Remaining carrots
+
+; Act_Batton
+DEF iBattonFlySprMapId EQU iAct0D
+DEF iBattonFlyAnimTimer EQU iAct0E
+
+; Act_Friender
+DEF iFrienderShotsLeft EQU iAct0D
+
+; Act_Goblin
+DEF iGoblinPuchiDir EQU iAct0D
+DEF iGoblinRiseDelay EQU iAct0E
+
+; Act_KaminariGoro
+DEF iActGoroCloudXPtr EQU iAct0D ; Pointer to the cloud's iActX
+
+; Act_Wily1
+DEF iWily1RtnBak EQU iAct0D
+
+; Act_Wily2
+DEF iWily2ShotsLeft EQU iAct0D ; Number of shots remaining
+
+; Act_Wily3
+DEF iWily3AnimPart EQU iAct0D ; Triggers animation for a specific Act_Wily3Part instance
+
+; Act_WilyShip
+DEF iWilyShipRtnId EQU iAct0D
+
+; Act_Quint
+DEF iQuintDebrisTimer EQU iAct0D
+DEF iQuintSgJumpOkPtrLow EQU iAct0E
+DEF iQuintSgJumpOkPtrHigh EQU iAct0F
+
+; Act_Wily3Part
+DEF iWily3PartSprMapId EQU iAct0D
+DEF iWily3PartAnimPtr EQU iAct0E
+
+; Act_Wily2Intro
+DEF iWily2Intro_Unk_Dir EQU iAct0D
+
+; Act_QuintSakugarne
+DEF iQuintSgJumpOk EQU iAct0D
+
+; Act_WilyCtrl
+DEF iWilyCtrlChildPtrLow EQU iAct0E
+DEF iWilyCtrlChildPtrHigh EQU iAct0F
+DEF iWilyCtrl3PartAnimPtr EQU iAct0E
+
+; Act_CrashMan
+DEF iCrashManWalkTimer EQU iAct0D
+
+; Act_MetalMan
+DEF iMetalManWalkTimer EQU iAct0D
+
+; Act_WoodMan
+DEF iWoodManRiseLeft EQU iAct0D ; Remaining rising leaves to spawn
+
+; Act_AirMan
+DEF iAirManWavesLeft EQU iAct0D ; Waves remaining using the below pattern
+DEF iAirManPatId EQU iAct0E ; Shot pattern index
+
+; Act_AirManShot
+DEF iAirManShotPathId EQU iAct0D ; "Path ID" of the whirlwind (actually an index to a table of speed values)
+
+; Act_WoodManLeafShield
+DEF iLeafShieldOrgX EQU iAct0E ; Horizontal origin point of the lead shield. Leaves rotate around this.
+DEF iLeafShieldOrgY EQU iAct0F ; Vertical origin point ""
 
 ; wActColi
 DEF iActColiBoxH EQU $00 ; Collision box, horizontal radius

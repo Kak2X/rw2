@@ -3074,7 +3074,7 @@ L0B4BFC: db $00
 L0B4BFD: db $00
 L0B4BFE: db $00
 L0B4BFF: db $00
-L0B4C00: db $00
+GFX_Wpn_SgRide: db $00
 L0B4C01: db $00
 L0B4C02: db $00
 L0B4C03: db $00
@@ -3330,7 +3330,7 @@ L0B4CFC: db $1C
 L0B4CFD: db $08
 L0B4CFE: db $08
 L0B4CFF: db $00
-L0B4D00: db $00
+GFX_Wpn_Sg: db $00
 L0B4D01: db $00
 L0B4D02: db $00
 L0B4D03: db $00

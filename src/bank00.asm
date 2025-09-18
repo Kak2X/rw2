@@ -2912,8 +2912,8 @@ Game_Init:
 	ld   a, PL_MODE_WARPININIT
 	ld   [wPlMode], a
 	
-	; ???
-	ld   a, $FF
+	; Reset player collision markers
+	ld   a, ACTSLOT_NONE
 	ld   [wActHurtSlotPtr], a
 	ld   [wActPlatColiSlotPtr], a
 	ld   [wActHelperColiSlotPtr], a
@@ -2928,13 +2928,13 @@ Game_Init:
 	ld   [wPlSpdX], a
 	ld   [wPlHurtTimer], a
 	ld   [wPlInvulnTimer], a
-	ld   [wShutterNum], a
+	ld   [wBossMode], a
 	ld   [wBossDmgEna], a
 	ld   [wBossIntroHealth], a
 	ld   [wShutterMode], a
 	ld   [wWpnId], a 			; Start with the buster always
-	ld   [wWpnHelperActive], a
-	ld   [wWpnSGUseTimer], a
+	ld   [wWpnHelperWarpRtn], a
+	ld   [wWpnHelperUseTimer], a
 	ld   [wUnk_Unused_CF5F], a
 	ld   [wLvlWarpDest], a
 	ld   [wWpnTpActive], a
@@ -3075,8 +3075,8 @@ Shutter_InitOpen:
 	;
 	
 	; As this is pointless to do when entering the boss corridor (1st shutter), it's skipped there.
-	ld   a, [wShutterNum]
-	or   a							; First one we went through?
+	ld   a, [wBossMode]
+	or   a							; First one we're going through? (wBossMode == BSMODE_NONE)
 	call nz, ActS_ReqLoadRoomGFX	; If not, load the new room gfx
 	
 	;--
@@ -3295,11 +3295,11 @@ Shutter_Close:
 .nextMode:
 	;
 	; Determine how much to scroll the screen right the next mode.
-	; Because the scrolling isn't locked to the right when going through the first shutter,
+	; Because the scrolling isn't locked before entering a boss shutter,
 	; it needs its own different value.
 	;
 	ld   b, $30				; B = Scroll amount the 1st time
-	ld   a, [wShutterNum]
+	ld   a, [wBossMode]
 	or   a					; 1st shutter we go through?
 	jr   z, .setTimer		; If so, skip
 	; [BUG] Off by one, this should have been $69.
@@ -3328,13 +3328,14 @@ Shutter_ScrollR:
 	jp   nz, Pl_DoCtrl_NoMove	; If not, jump
 	
 .end:
-	; Otherwise, increment the count of shutters went through.
-	; This is effectively used as a boolean flag to determine if it's the first time
-	; the player goes through a door.
-	; In particular, other than affecting this shutter subroutine, if non-zero it 
-	; also prevents the screen from scrolling horizontally, which is what fixes the
-	; camera in boss corridors and boss rooms.
-	ld   hl, wShutterNum		; wShutterNum++
+	; Otherwise, increment the boss (intro) mode routine.
+	; Here, this is effectively used as a boolean flag to determine if it's the first time
+	; the player goes through a door. It also affects the screen scrolling, as it is disabled if non-zero.
+	;
+	; The 2nd shutter we go through is important, as it advances the routine again, from BSMODE_CORRIDOR to BSMODE_INIT,
+	; which lets boss actors start their intro sequence (every mode before BSMODE_INIT makes the boss do nothing).
+	; 
+	ld   hl, wBossMode			; wBossMode++
 	inc  [hl]
 	xor  a						; End shutter effect
 	ld   [wShutterMode], a
@@ -3797,8 +3798,8 @@ PlMode_Ground:
 	;
 	; If there is no solid ground, start falling down.
 	;
-	call Pl_IsOnGround		; Make wPlColiGround
-	ld   a, [wPlColiGround]	
+	call Pl_IsOnGround		; Make wColiGround
+	ld   a, [wColiGround]	
 	and  %11				; Keep only bits for the current frame
 	cp   %11				; Are we fully on empty blocks?
 	jr   nz, .chkWalk		; If not, skip
@@ -4335,13 +4336,13 @@ PlMode_Climb:
 	ldh  a, [hJoyKeys]
 	bit  KEYB_LEFT, a	; Holding LEFT?
 	jr   z, .chkTurnR	; If not, skip
-	xor  a ; PLDIR_L
+	xor  a ; DIR_L
 	ld   [wPlDirH], a
 	jp   Pl_DrawSprMap
 .chkTurnR:
 	bit  KEYB_RIGHT, a	; Holding RIGHT?
 	jr   z, .chkU		; If not, skip
-	ld   a, PLDIR_R
+	ld   a, DIR_R
 	ld   [wPlDirH], a
 	jp   Pl_DrawSprMap
 	
@@ -4656,8 +4657,8 @@ PlMode_Slide:
 	; Annoyingly, there's no special version of Pl_IsOnGround used for sliding,
 	; so it's not possible to slide through 1 block gaps.
 	;
-	call Pl_IsOnGround		; Make wPlColiGround
-	ld   a, [wPlColiGround]
+	call Pl_IsOnGround		; Make wColiGround
+	ld   a, [wColiGround]
 	and  %11				; Filter this frame's bits
 	cp   %11				; Are both blocks below empty?
 	jr   nz, .decTimer		; If not, skip
@@ -4726,7 +4727,7 @@ PlMode_Slide:
 ; =============== PlMode_RushMarine ===============
 ; Rush Marine ride mode.
 ; This mode is special, as it works in conjunction with the Rush Marine actor.
-; This player mode handles the controls, while the actor handles the sprites being drawn. ???
+; This player mode handles the controls, while the actor handles the sprites being drawn.
 PlMode_RushMarine:
 	; Rush Marine can fire normal shots.
 	; Unfortunately there's no animation for it, but there's no space left for it in VRAM.
@@ -4815,7 +4816,7 @@ DEF RMSPD_DEC EQU $04
 	bit  KEYB_RIGHT, a			; Holding right?
 	jr   z, .decSpdR			; If not, slow down
 .incSpdR:
-	ld   a, PLDIR_R
+	ld   a, DIR_R
 	ld   [wPlDirH], a
 	ld   a, [hl]				; wPlRmSpdR += $08
 	add  RMSPD_INC
@@ -5325,7 +5326,7 @@ Pl_DoConveyor:
 ; =============== Pl_IsOnGround ===============
 ; Checks if the player is on solid ground.
 ; OUT
-; - wPlColiGround: Collision flags
+; - wColiGround: Collision flags
 ;                ------LR
 ;                L - If set, the left block is not solid
 ;                R - If set, the right block is not solid
@@ -5337,7 +5338,7 @@ Pl_IsOnGround:
 	cp   ACTSLOT_NONE			; wActPlatColiSlotPtr == ACTSLOT_NONE?
 	jr   z, .calcFlags			; If so, jump
 	xor  a						; Set both blocks as solid
-	ld   [wPlColiGround], a
+	ld   [wColiGround], a
 	ret
 .calcFlags:
 	ld   a, [wPlRelY]			; YPos = PlY + 1 (ground)
@@ -5350,7 +5351,7 @@ Pl_IsOnGround:
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId			; A = Block ID
 	cp   BLOCKID_TOPSOLID_START	; C Flag = Is empty? (A < BLOCKID_TOPSOLID_START)
-	ld   hl, wPlColiGround
+	ld   hl, wColiGround
 	rl   [hl]					; << in result
 	
 	; Check bottom-right block
@@ -5359,7 +5360,7 @@ Pl_IsOnGround:
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId			; A = Block ID
 	cp   BLOCKID_TOPSOLID_START	; C Flag = Is empty? (A < BLOCKID_TOPSOLID_START)
-	ld   hl, wPlColiGround
+	ld   hl, wColiGround
 	rl   [hl]					; << in result
 	ret
 	
@@ -5441,13 +5442,13 @@ Pl_DoHurtSpeed:
 	jr   z, Pl_IncSpeedX		; If so, move right 
 	jr   Pl_DecSpeedX		; Otherwise, move left
 	
-; =============== Pl_Unk_SetSpeedByActDir ===============
+; =============== Pl_SetSpeedByActDir ===============
 ; Updates the player's speed, towards the same direction the actor is facing.
 ; Used by enemies in Air Man's stage that blow the player away.
 ; IN
 ; - A: iActSprMap
 ; - BC: Offset
-Pl_Unk_SetSpeedByActDir:
+Pl_SetSpeedByActDir:
 	bit  ACTDIRB_R, a		; Is the actor facing right?
 	jr   nz, Pl_IncSpeedX	; If so, move the player right
 	; Fall-through
@@ -5633,14 +5634,15 @@ Pl_MoveL:
 	;       It only makes sense to perform the redraw when the viewport crosses a block
 	;       boundary, not when the player does it!
 	;       In practice, when the player does, the viewport also does it, so all it serves
-	;       is calling LvlScroll_DrawEdgeL before hScrollX and wLvlColL get updated.
+	;       is calling LvlScroll_DrawEdgeL before hScrollX and wLvlColL get updated,
+	;       which is proper behavior (due to actors getting shifted).
 	;
 	
 	; Boss corridors and boss rooms lock the screen.
-	; We can detect if we're in one of the two by checking if we went through a shutter, 
+	; We can detect if we're in one of the two by checking if we're at least in a boss corridor, 
 	; as in this game they only ever are at the end of a level.
-	ld   a, [wShutterNum]
-	or   a							; Went through a shutter?	
+	ld   a, [wBossMode]
+	or   a							; In a boss corridor or boss room?
 	jr   nz, .lock					; If so, skip
 	
 	; Then check for a standard screen lock, from the current column number.
@@ -5662,8 +5664,8 @@ Pl_MoveL:
 	;
 	
 	; Boss corridors and boss rooms lock the screen.
-	ld   a, [wShutterNum]
-	or   a						; Went through a shutter?	
+	ld   a, [wBossMode]
+	or   a						; In a boss corridor or boss room?	
 	jr   nz, .lock				; If so, skip
 	
 	; Then check for a standard screen lock, from the current column number.
@@ -5757,8 +5759,8 @@ Pl_MoveR:
 	; - If the screen is locked, move the player right
 	; - If the screen isn't locked, move the viewport right
 	;
-	ld   a, [wShutterNum]
-	or   a					; Went through a shutter?	
+	ld   a, [wBossMode]
+	or   a					; In a boss corridor or boss room?	
 	jr   nz, .lock			; If so, skip
 	; Then check for a standard screen lock, from the current column number.
 	ld   h, HIGH(wLvlScrollLocks)	; HL = wLvlScrollLocks[ColNum]
@@ -5807,11 +5809,14 @@ Pl_MoveR:
 	;
 	; [POI] The same note from Pl_MoveL applies here, except we're at the end of the subroutine.
 	;       Here, hScrollX and wLvlColL already got updated.
+	; [BUG] That causes an off by one problem when spawning actors. They are already placed at the correct
+	;       location, but due to scrolling happening during the frame, ActS_MoveByScrollX will trigger and move them left.
+	;       This inconsistency was worked around in actors like Act_Goblin.
 	;
 	
 	; Boss corridors and boss rooms lock the screen.
-	ld   a, [wShutterNum]
-	or   a						; Went through a shutter?	
+	ld   a, [wBossMode]
+	or   a						; Went through a shutter? (!= BSMODE_NONE)
 	ret  nz						; If so, return
 	
 	; Then check for a standard screen lock, from the current column number.
@@ -6319,7 +6324,7 @@ ActS_ClearAll:
 	
 	; Start processing actors from the first slot
 	xor  a
-	ld   [wActStartEndSlotPtr], a
+	ld   [wActStartSlotPtr], a
 	
 	; Delete everything old from the actor area
 	ld   hl, wAct
@@ -6360,7 +6365,7 @@ ActS_DespawnAll:
 	; By despawning all actors, we also despawned Rush & the Sakugarne.
 	; Clear out their flags that affect the player.
 	xor  a
-	ld   [wWpnHelperActive], a			; Rush/SG no longer there, can be recalled
+	ld   [wWpnHelperWarpRtn], a		; Rush/SG no longer there, can be recalled
 	ld   [wWpnSGRide], a			; Disable pogo movement mode
 	
 	; Remove all weapon shots/actors.
@@ -6680,11 +6685,16 @@ ActS_ExplTbl:
 ; Useful to spawn projectiles relative to the actor's origin.
 ; Obviously requires an actor being processed.
 ;
+; After this is called, a new actor can be spawned using the same template
+; by calling ActS_Spawn directly.
+;
 ; IN
 ; - A: Actor ID
 ; - B: Relative X pos
 ; - C: Relative Y pos
 ; OUT
+; - HL: Pointer to the actor slot with the newly spawned one.
+;       Only valid if the following flag is clear.
 ; - C Flag: If set, the actor couldn't be spawned (no free slot found)
 ActS_SpawnRel:
 	ld   [wActSpawnId], a
@@ -6741,10 +6751,9 @@ ActS_Spawn:
 		push hl ; Save base slot ptr
 			
 			; Actor ID
-			; This merges it with a flag whose entire purpose is to prevent the slot from being seen as free.
-			; Note that the flag is not used determine if a slot is empty, only those with iActId $00 are treated as such.
+			; This merges it with a flag that's mandatory to draw and execute the actor's code.
 			ld   a, [wActSpawnId]	
-			or   ACT_UNK_PROCFLAG
+			or   ACTF_PROC
 			ldi  [hl], a ; iActId
 			
 			; Start from the first routine
@@ -6816,6 +6825,8 @@ ActS_Spawn:
 		; ???
 		; For reasons unknown to man, the two digits of the actor's health
 		; are stored separately in the ROM.
+		; This might be related to how actors with special behavior on death die when their
+		; health reaches $10, but it's still a waste.
 		ld   b, [hl]	; Read low nybble (byte4)
 		inc  hl
 		ld   a, [hl]	; Read high nybble (byte5)
@@ -6923,127 +6934,222 @@ ActS_ReqLoadRoomGFX:
 	jr   nz, .loop		; If not, loop
 	ret ; We never get here
 
-L001DE4:;C
+; =============== ActS_ChkExplodeWithChild ===============
+; Checks if the actor has been defeated, and if so, makes it explode alongside its child.
+;
+; Used for actors that directly spawn a single child actor that work together.
+; (ie: defeating a bee that's carrying a beehive should also despawn the latter)
+;
+; This cannot be used when there is more than one child actor at play, such as with Blocky's 
+; 3 invulnerable sections, so those must handle it manually.
+;
+; OUT
+; - C Flag: If set, the actor exploded
+ActS_ChkExplodeWithChild:
+
+	; Actors that keep track of a child slot die when their health reaches $10, not $00.
+	; This is because actor health is decremented by the weapon shot collision code,
+	; but that does not account for child actors, so if we used the normal thresold of $00,
+	; only the parent would have died.
+	
+	; The leads into the assumption that no weapon should deal more than 16 damage to these actors.
+
 	call ActS_GetHealth
-	cp   $11
-	ret  nc
-	call L001E11
-	call L001E25
-	ld   h, $CD
-	ldh  a, [hActCur+iAct0D]
+	cp   $11					; Health >= $11?
+	ret  nc						; If so, return
+	call ActS_Explode			; Otherwise, blow it up
+	call ActS_TrySpawnItemDrop	; and maybe drop some items
+	
+	; Also despawn the child actor, but without showing an explosion.
+	ld   h, HIGH(wAct)			; HL = Ptr to child slot
+	ldh  a, [hActCur+iActChildSlotPtr]
 	ld   l, a
 	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   a, l
-	add  $04
+	ldi  [hl], a ; wActId		; Despawn the actor
+	
+	;##
+	; This part doesn't affect anything, as despawning the actor means it won't get drawn or executed.
+	
+	ldi  [hl], a ; iActRtnId
+	ldi  [hl], a ; iActSprMap, seek to iActLayoutPtr
+	
+	; Move the child actor 4px above 
+	ld   a, l					; Seek to iActY
+	add  iActY-iActLayoutPtr
 	ld   l, a
-	ld   a, [hl]
+	ld   a, [hl]				; iActY -= 4
 	sub  $04
 	ld   [hl], a
-	scf  
+	;##
+	
+	scf							; C Flag = Set
 	ret
-L001E03:;C
+	
+; =============== ActS_ChkExplodeNoChild ===============
+; Variation of ActS_ChkExplodeWithChild used when the child actor doesn't need
+; to be affected by the parent's death anymore, or when the actor needs to perform
+; code on death, that otherwise wouldn't be executed with the normal death routine.
+;
+; This exists due to the health value still accounting for the $10 threshold.
+;
+; OUT
+; - C Flag: If set, the actor exploded
+ActS_ChkExplodeNoChild:
 	call ActS_GetHealth
-	cp   $11
-	ret  nc
-	call L001E11
-	call L001E25
-	scf  
+	cp   $11					; Health >= $11?
+	ret  nc						; If so, return
+	call ActS_Explode			; Otherwise, blow it up
+	call ActS_TrySpawnItemDrop	; and maybe drop some items
+	scf							; C Flag = Set
 	ret
-L001E11:;JC
-	ld   a, $80
+	
+; =============== ActS_Explode ===============
+; Makes the current actor explode.
+; Specifically, it converts the currently processed actor into an explosion,
+; using equivalent code to what Wpn_OnActColi.actDeadTp does.
+ActS_Explode:
+	; Replace ID with the explosion one
+	ld   a, ACTF_PROC|ACT_EXPLSM
 	ldh  [hActCur+iActId], a
+	
 	xor  a
 	ldh  [hActCur+iActRtnId], a
 	ldh  [hActCur+iActSprMap], a
-	ld   h, $CE
+	
+	; Make the actor intangible, as explosions shouldn't damage the player.
+	ld   h, HIGH(wActColi)		; HL = Ptr to respective collision entry
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
-	inc  l
-	inc  l
+	
+	inc  l ; iActColiBoxV
+	inc  l ; iActColiType
 	xor  a
-	ld   [hl], a
+	ld   [hl], a				; Set ACTCOLI_PASS
 	ret
-L001E25:;JC
-	call Rand
-	cp   $4D
-	ret  nc
-	ld   b, $05
+	
+; =============== ActS_TrySpawnItemDrop ===============
+; Spawns a random item drop from the current actor's location, if any.
+ActS_TrySpawnItemDrop:
+	call Rand			; Roll the dice
+	
+	; $4D-$FF: Nothing (~70%)
+	cp   $4D			; A >= $4D?
+	ret  nc				; If so, don't spawn anything
+	
+	; The order of the actor IDs directly influences their rarity.
+	; The lower its ID, the rarer it is.
+	
+	; $26-$4C: Small Weapon Energy (~15%)
+	ld   b, ACT_AMMOSM
 	cp   $26
-	jr   nc, L001E41
-	dec  b
+	jr   nc, .spawn
+	
+	; $0A-$25: Large Life Energy (~11%)
+	dec  b ; ACT_HEALTHSM
 	cp   $0A
-	jr   nc, L001E41
-	dec  b
+	jr   nc, .spawn
+	
+	; $06-$09: Large Life Energy (~1.5%)
+	dec  b ; ACT_HEALTHLG
 	cp   $06
-	jr   nc, L001E41
-	dec  b
+	jr   nc, .spawn
+	
+	; $03-$05: Large Weapon Energy (~1%)
+	dec  b ; ACT_AMMOLG
 	cp   $03
-	jr   nc, L001E41
-	dec  b
-L001E41:;R
+	jr   nc, .spawn
+	
+	; $00-$02: Extra Life (~1%)
+	dec  b ; ACT_1UP
+	
+.spawn:
 	ld   a, b
 	ld   [wActSpawnId], a
-	xor  a
+	
+	xor  a							; Not part of the actor layout
 	ld   [wActSpawnLayoutPtr], a
-	ld   h, $CD
+	
+	; Spawn the item at the same position of the current actor (which we just defeated)
+	; Note that the actor code (Act_Item) will move it slightly above that location,
+	; to make it closer to the center of the explosion.
+	; A more accurate way would have been to offset wActSpawnY here, since we still
+	; have the actor's collision radius at hand.
+	ld   h, HIGH(wAct)			; Seek HL to iActX
 	ld   a, [wActCurSlotPtr]
-	add  $05
+	add  iActX
 	ld   l, a
-	ldi  a, [hl]
+	ldi  a, [hl]				; wActSpawnX = iActX
 	ld   [wActSpawnX], a
 	inc  l
-	ld   a, [hl]
+	ld   a, [hl]				; wActSpawnY = iActY
 	ld   [wActSpawnY], a
-	call ActS_Spawn
-	ret  c
-	inc  l
-	ld   a, $01
-	ld   [hl], a
-	ret
-L001E63:;C
-	or   $80
-	ld   e, a
-	ld   bc, $0000
-	ld   hl, wAct
-L001E6C:;R
-	ld   a, [hl]
-	or   a
-	jr   z, L001E75
-	inc  c
-	cp   e
-	jr   nz, L001E75
-	inc  b
-L001E75:;R
-	ld   a, l
-	add  $10
-	ld   l, a
-	jr   nc, L001E6C
-	ret
 	
-; =============== ActS_Unk_ResetSprMap ===============
-; IN
-; - HL: Ptr to ???
-L001E7C:;C
-	inc  l
-	inc  l
-	ldh  a, [hActCur+iActSprMap]
-	and  ACTDIR_R
+	call ActS_Spawn				; Did it spawn?
+	ret  c						; If not, return
+	
+	; Items by default spawn as fixed collectables.
+	; Make them item drops instead.
+	inc  l ; iActRtnId
+	ld   a, ACTRTN_ITEMDROP_INIT
 	ld   [hl], a
 	ret
 	
-; =============== ActS_Unk_ResetSprMapFlip ===============
+; =============== ActS_CountById ===============
+; Counts:
+; - The active slots with the specified actor ID
+; - Number of active slots
+; Used to limit how many actors a parent can spawn.
+;
 ; IN
-; - HL: Ptr to ???
-L001E84:;C
-	inc  l
-	inc  l
-	ldh  a, [hActCur+iActSprMap]
-	and  ACTDIR_R
-	xor  ACTDIR_R
-	ld   [hl], a
+; - A: Actor ID to match
+; OUT
+; - B: Actor count (with specified ID)
+; - C: Actor count (total)
+ActS_CountById:
+	or   ACTF_PROC		; E = iActId to find
+	ld   e, a			; (with the processing flag since all active slots have it)
+	
+	ld   bc, $0000		; Init counters
+	ld   hl, wAct		; Start from first slot
+.loop:
+	ld   a, [hl]		; A = iActId
+	or   a				; Is the slot empty?
+	jr   z, .nextSlot	; If so, skip
+	inc  c				; TotalCount++
+	cp   e				; Does its ID match?
+	jr   nz, .nextSlot	; If not, skip
+	inc  b				; MatchCount++
+.nextSlot:
+	ld   a, l			; Seek to next slot
+	add  iActEnd
+	ld   l, a			; Overflowed back to the first one? 
+	jr   nc, .loop		; If not, loop
+	ret
+	
+; =============== ActS_SyncDirToSpawn ===============
+; Makes the newly spawned actor face the same horizontal direction as its spawner.
+; Can be used after an actor spawns another actor.
+; IN
+; - HL: Ptr to newly spawned actor slot
+ActS_SyncDirToSpawn:
+	inc  l ; iActRtnId
+	inc  l ; iActSprMap
+	ldh  a, [hActCur+iActSprMap]	; Get parent flags
+	and  ACTDIR_R					; Filter direction
+	ld   [hl], a					; Save to child iActSprMap
+	ret
+; =============== ActS_SyncRevDirToSpawn ===============
+; Makes the newly spawned actor face the opposite horizontal direction as its spawner.
+; Can be used after an actor spawns another actor.
+; IN
+; - HL: Ptr to newly spawned actor slot
+ActS_SyncRevDirToSpawn:
+	inc  l ; iActRtnId
+	inc  l ; iActSprMap
+	ldh  a, [hActCur+iActSprMap]	; Get parent flags
+	and  ACTDIR_R					; Filter direction
+	xor  ACTDIR_R					; Flip
+	ld   [hl], a					; Save to child iActSprMap
 	ret
 ; =============== ActS_SetSpeedX ===============
 ; Sets the current actor's horizontal speed.
@@ -7080,7 +7186,7 @@ ActS_FlipV:
 	ldh  [hActCur+iActSprMap], a
 	ret
 ; =============== ActS_ClrSprMapId ===============
-; Resets the current actor's sprite mapping to return to the first frame.
+; Resets the current actor's relative sprite mapping to return to the first frame.
 ActS_ClrSprMapId:
 	ldh  a, [hActCur+iActSprMap]
 	and  ACTDIR_R|ACTDIR_D	; Keep direction flags only
@@ -7265,6 +7371,8 @@ ActS_SetSprMapId:
 	
 ; =============== ActS_Anim2 ===============
 ; Animates the actor's 2 frame animation.
+; This and all other animation functions work on the relative sprite mapping ID,
+; so the actual sprite ID shown is offset by wActCurSprMapBaseId.
 ; IN
 ; - C: Animation speed
 ActS_Anim2:
@@ -7277,9 +7385,9 @@ ActS_Anim2:
 	; This and other ActS_Anim* cycles are accomplished by adding an arbitrary value to the
 	; animation timer stored in iActSprMap, then modulo-ing the result.
 	;
-	; This timer is stored in the lower 3 bits of iActSprMap, while the sprite mapping ID 
-	; uses the next 3 bits after that. Therefore, it eventually will overflow, triggering
-	; the frame change.
+	; This timer is stored in the lower 3 bits of iActSprMap, while the relative sprite 
+	; mapping ID uses the next 3 bits after that. Therefore, it eventually will overflow,
+	; triggering the frame change.
 	;
 	
 	ldh  a, [hActCur+iActSprMap]
@@ -7340,91 +7448,91 @@ ActS_AnimCustom:
 	ldh  [hActCur+iActSprMap], a
 	ret
 	
-; =============== Act_Boss_InitIntro ===============
-; Sets up the necessary data to play a boss intro.
+; =============== ActS_InitAnimRange ===============
+; Sets up an actor's non-looping animation, using the consecutive range of sprite IDs specified.
+; Each sprite lasts the same amount of time.
 ;
-; Intros all use two different sprite mappings, each lasting the same amount of frames.
-; This applies to both the gameplay and in the stage select screen.
-;
-; Note that the sprite mappings specified are all relative to the current one (iActSprMap).
+; Mainly used by boss intros.
 ;
 ; IN
-; - D: 1st sprite mapping
-; - E: 2nd sprite mapping
+; - D: Starting sprite mapping (inclusive)
+; - E: Ending sprite mapping (inclusive)
 ; - C: Frame length
-Act_Boss_InitIntro:
+ActS_InitAnimRange:
 	ld   a, $00
-	ldh  [hActCur+iBossIntroTimer], a
+	ldh  [hActCur+iAnimRangeTimer], a
 	; With the exception of the timer above, these fields will not be written back to during playback.
 	ld   a, d
-	ldh  [hActCur+iBossIntroSprMap0], a
+	ldh  [hActCur+iAnimRangeSprMapFrom], a
 	ld   a, e
-	ldh  [hActCur+iBossIntroSprMap1], a
+	ldh  [hActCur+iAnimRangeSprMapTo], a
 	ld   a, c
-	ldh  [hActCur+iBossIntroFrameLen], a
+	ldh  [hActCur+iAnimRangeFrameLen], a
 	ret
 
-; =============== Act_Boss_PlayIntro ===============
-; Handles the boss intro's timing, updating the sprite mapping frame.
+; =============== ActS_PlayAnimRange ===============
+; Handles the non-looping animation.
+; Unlike other animation routines, this directly sets the base sprite ID to allow
+; using a greater range of values, it also means the subroutine needs to be called
+; every frame by the actor, otherwise the sprite is reset.
 ;
 ; OUT
-; - Z Flag: If set, the intro hasn't finished playing
-Act_Boss_PlayIntro:
+; - Z Flag: If set, the animation hasn't finished playing
+ActS_PlayAnimRange:
 
 	; Advance its timer
-	ldh  a, [hActCur+iBossIntroTimer]
+	ldh  a, [hActCur+iAnimRangeTimer]
 	add  $01
-	ldh  [hActCur+iBossIntroTimer], a
+	ldh  [hActCur+iAnimRangeTimer], a
 	
 	; Get its fields out
-	ldh  a, [hActCur+iBossIntroSprMap0]		; D = 1st sprite mapping ID / current
-	ld   d, a								;     
-	ldh  a, [hActCur+iBossIntroSprMap1]		; E = 2nd ""
+	ldh  a, [hActCur+iAnimRangeSprMapFrom]	; D = Starting sprite / current
+	ld   d, a   
+	ldh  a, [hActCur+iAnimRangeSprMapTo]	; E = Ending sprite
 	ld   e, a
-	ldh  a, [hActCur+iBossIntroFrameLen]	; C = Target frame length / (*2)
+	ldh  a, [hActCur+iAnimRangeFrameLen]	; C = Target frame length (will be multiplied for every frame)
 	ld   c, a
-
-	ld   b, a								; Separate copy to use as offset
-.loop:
-
-	; If the timer has gone past the target, check if we're done.
-	; During playback of the second frame, this will *always* trigger the first time.
-	ldh  a, [hActCur+iBossIntroTimer]
-	cp   c									; Timer >= Target?
-	jr   nc, .timerGtC						; If so, jump
+	ld   b, a								; Separate copy to use as offset, which is used to multiply the above's running value
 	
-.notDone:
-	ld   a, d								; Set to wActCurSprMapRelId the current frame
-	ld   [wActCurSprMapRelId], a
-	xor  a									; Z Flag = set
+	;
+	; What we want to calculate is this:
+	; wActCurSprMapBaseId = MIN(iAnimRangeSprMapTo, iAnimRangeSprMapFrom + (iAnimRangeTimer / iAnimRangeFrameLen))
+	;
+	; The division is simulated through a loop, by finding how many times iAnimRangeFrameLen fits into iAnimRangeTimer.
+	; Each loop increments the running copy of the sprite ID (initialized to iAnimRangeSprMapFrom).
+	;
+.loop:
+	; If the timer has gone past the current target, check if we're done.
+	; From the second sprite onwards, this will *always* trigger at least once.
+	ldh  a, [hActCur+iAnimRangeTimer]
+	cp   c								; Timer >= Target?
+	jr   nc, .nextLoop					; If so, jump
+	
+.divFound:
+	ld   a, d							; Set to wActCurSprMapBaseId the current sprite
+	ld   [wActCurSprMapBaseId], a
+	xor  a								; Z Flag = set
 	or   a
 	ret
 	
-.timerGtC:
-	;
-	; Note how there's nothing keeping track of the current frame ID in a sensible way.
-	; Instead, when a frame ends, we hack around the checks above to make them work
-	; for the next frame, in a loop.
-	; During playback of the second frame, we'll always have to get here at least once.
-	;
-
-	; Switch to the next frame
+.nextLoop:
+	; Increment running sprite ID
 	inc  d							
 	
-	; If we've went past the 2nd frame, we're done
+	; If we went *past* the last sprite, we're done
 	ld   a, e
-	cp   d							; 2ndFrame < CurFrame? 
+	cp   d							; LastSprite < CurSprite?
 	jr   c, .done					; If so, we're done
 	
-	; Otherwise, multiply the target frame by 2, then recheck
-	ld   a, c						; Target += Target
+	; Otherwise, set the division boundary for the target
+	ld   a, c						; Target += iAnimRangeFrameLen
 	add  b
 	ld   c, a
 	jr   .loop
 	
 .done:
-	ld   a, e						; Set to wActCurSprMapRelId the 2nd frame for consistency
-	ld   [wActCurSprMapRelId], a
+	ld   a, e						; Cap the sprite ID to the last frame 
+	ld   [wActCurSprMapBaseId], a
 	ld   a, $01						; Z Flag = clear
 	or   a
 	ret
@@ -7436,7 +7544,7 @@ ActS_AngleToPl:
 
 	; Target is 12 pixels above the player's origin.
 	; This corresponds to the center of their body.
-	ld   b, $0C		
+	ld   b, PLCOLI_V	
 	
 	; Fall-through
 	
@@ -7462,7 +7570,7 @@ ActS_AngleToPlCustom:
 	; PREPARATIONS
 	;
 	
-	DEF tSprMapFlags = wPlColiGround
+	DEF tSprMapFlags = wColiGround
 	DEF tActPlYDiff = wTmpCF52
 	DEF tActPlXDiff = wTmpCF53
 	
@@ -7604,7 +7712,7 @@ ActS_AngleToPlCustom:
 ; Initializes the data for the circular path.
 ActS_InitCirclePath:
 
-	; Not used here, presumably leftover copypaste from Act_Boss_InitIntro
+	; Not used here, presumably leftover copypaste from ActS_InitAnimRange
 	xor  a
 	ldh  [hActCur+iActTimer0C], a
 	
@@ -7687,6 +7795,16 @@ ActS_ApplyCirclePath:
 	; Increase the index by the speed amount we passed to the subroutine.
 	; If it reaches the maximum value of ARC_MAX, make the actor turn horizontally
 	; and, from the next frame, start decreasing the indexes.
+	;
+	; TODO: ??? The wanted behavior is likely the normal case. If so, rewrite the comments.
+	; A consequence of the way this is done is that the actor will make less ground.
+	; If that is the wanted behavior but not the increased speed, actors may immediately
+	; call ActS_HalfSpdSub to counterbalance it.
+	; test comment next:
+	; When $02 is used as increment, half of the values will be skipped, leading to a smaller arc.
+	; However, as it will take half the time to do a full rotations, actors may want to counterbalance
+	; it by calling ActS_HalfSpdSub after this subroutine returns.
+	;
 	;
 	
 	ld   a, [tArcSpd]				; iArcIdX += tArcSpd
@@ -7842,7 +7960,7 @@ ActS_GetBlockIdFwdGround:
 ; Gets ground solidity flags for the current actor.
 ; Used exclusively to detect if the actor has moved off solid ground.
 ; OUT
-; - wPlColiGround: Bitmask containing the ground solidity info.
+; - wColiGround: Bitmask containing the ground solidity info.
 ;                Each bit, if set, marks that there's no solid ground at that position.
 ;                ------LR
 ;                L -> Bottom-left corner
@@ -7853,7 +7971,7 @@ ActS_GetGroundColi:
 
 	; Reset return value
 	xor  a
-	ld   [wPlColiGround], a
+	ld   [wColiGround], a
 	
 	DEF tActColiH = wTmpCF52
 	
@@ -7865,7 +7983,7 @@ ActS_GetGroundColi:
 	ld   [tActColiH], a
 	
 	;
-	; Do the collision checks and store their result into wPlColiGround.
+	; Do the collision checks and store their result into wColiGround.
 	;
 	; This needs to detect if there's currently any solid block on the ground in either direction.
 	; To do that, two sensors are needed, one on each side, both on the ground.
@@ -7886,7 +8004,7 @@ ActS_GetGroundColi:
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId			; Solid block there? (if not, C flag set)
 	
-	ld   hl, wPlColiGround		; Shift to bit0
+	ld   hl, wColiGround		; Shift to bit0
 	rl   [hl]
 	
 	; RIGHT SIDE
@@ -7897,7 +8015,7 @@ ActS_GetGroundColi:
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId			; Solid block there? (if not, C flag set)
 	
-	ld   hl, wPlColiGround		; Shift to bit0, and the L one to bit1
+	ld   hl, wColiGround		; Shift to bit0, and the L one to bit1
 	rl   [hl]
 	ret
 	
@@ -8686,12 +8804,12 @@ ActS_Despawn:
 	; Clear that for later, otherwise they can't be called in again.
 	;
 	ldh  a, [hActCur+iActId]
-	cp   ACT_UNK_PROCFLAG|ACT_WPN_RC			; iActId < $E0?
+	cp   ACTF_PROC|ACT_WPN_RC			; iActId < $E0?
 	jr   c, .despawn	; If so, skip
-	cp   ACT_UNK_PROCFLAG|ACT_WPN_SG+1		; iActId >= $E4?
+	cp   ACTF_PROC|ACT_WPN_SG+1		; iActId >= $E4?
 	jr   nc, .despawn	; If so, skip
 	xor  a
-	ld   [wWpnHelperActive], a
+	ld   [wWpnHelperWarpRtn], a
 	
 .despawn:
 	; Mark the slot as free
@@ -8768,7 +8886,7 @@ ActS_DrawSprMap:
 	
 	; First, seek HL to the sprite mapping table associated to the current actor.
 	ldh  a, [hActCur+iActId]
-	and  $FF^ACT_UNK_PROCFLAG	; Filter out ??? visibility flag
+	and  $FF^ACTF_PROC	; Filter out ??? visibility flag
 	sla  a						; * 2
 	ld   hl, ActS_SprMapPtrTbl
 	ld   b, $00
@@ -8788,17 +8906,16 @@ ActS_DrawSprMap:
 	;
 	; The index itself is not straightforward, two separate values are added together to make
 	; it easier using relative offsets.
-	; One of the values ("base ID") is stored directly into the slot, the other ("relative ID")
+	; One of the values ("relative ID") is stored directly into the slot, the other ("base ID")
 	; is a one-off that needs to be manually set each time the actor is processed.
-	; On top of that, the base ID is packed into just three bits of iActSprMap.
 	;
 	
-	; B = Relative ID * 2
-	ld   a, [wActCurSprMapRelId]		; Read relative ID
+	; B = Base ID * 2
+	ld   a, [wActCurSprMapBaseId]	; Read base ID
 	sla  a							; Pointer table requirement
 	ld   b, a
-	; The base ID is packed into just three bits of iActSprMap. (bits3-5)
-	; This implies a big limit on the number of mappings actors can normally have.
+	; The relative ID is packed into just three bits of iActSprMap. (bits3-5)
+	; This implies a big limit on the number of mappings animations can normally have.
 	; A = (iActSprMap >> 2) & $0E
 	ldh  a, [hActCur+iActSprMap]	
 	srl  a							; Shift them down twice to bits1-5
@@ -9283,12 +9400,12 @@ Module_Game:
 	; Actor code, unlike everything else, expects the default bank to be BANK $02, because ???
 	;
 	push af
-		ld   a, BANK(L024000) ; BANK $02
+		ld   a, BANK(ActS_Do) ; BANK $02
 		ldh  [hRomBankLast], a
 		ldh  [hRomBank], a
 		ld   [MBC1RomBank], a
 	pop  af
-	call L024000
+	call ActS_Do
 	push af
 		ld   a, $01
 		ldh  [hRomBankLast], a
@@ -9370,12 +9487,12 @@ L002896:;R
 	ldh  [hWorkOAMPos], a
 	call WpnS_Do ; BANK $01
 	push af
-		ld   a, BANK(L024000) ; BANK $02
+		ld   a, BANK(ActS_Do) ; BANK $02
 		ldh  [hRomBankLast], a
 		ldh  [hRomBank], a
 		ld   [MBC1RomBank], a
 	pop  af
-	call L024000
+	call ActS_Do
 	push af
 		ld   a, $01
 		ldh  [hRomBankLast], a
@@ -9443,8 +9560,8 @@ L002916:;R
 	dec  b
 	jr   nz, L002916
 	call Module_Game_InitScrOn
-	ld   a, $01
-	ld   [wShutterNum], a
+	ld   a, BSMODE_CORRIDOR
+	ld   [wBossMode], a
 	xor  a
 	ld   [wPlRespawn], a
 	scf  
@@ -9686,12 +9803,12 @@ L002A97:;C
 	call Game_Do
 	call WpnS_Do ; BANK $01
 	push af
-	ld   a, BANK(L024000); BANK $02
+	ld   a, BANK(ActS_Do); BANK $02
 	ldh  [hRomBankLast], a
 	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
-	call L024000
+	call ActS_Do
 	push af
 	ld   a, $01
 	ldh  [hRomBankLast], a
@@ -10473,7 +10590,7 @@ StageSel_DoAct:
 		; Perform any changes in the proc area.
 		
 		ld   a, $00						; Act_StageSelBoss will set this as needed.
-		ld   [wActCurSprMapRelId], a
+		ld   [wActCurSprMapBaseId], a
 		
 		; This call here is the main reason why this intro screen has a specific
 		; version of the actor processing subroutine.
@@ -10627,10 +10744,11 @@ Act_StageSelBoss_WaitAnim:
 	ret  nz
 	
 	; Set up the intro animation.
-	; Every single intro uses the two same sprite mapping IDs.
+	; Every single intro uses the first three sprite mapping IDs.
+	; Use sprites $00-$02 at 1/30 speed
 	ld   de, ($00 << 8)|$02
-	ld   c, $1E
-	call Act_Boss_InitIntro
+	ld   c, 30
+	call ActS_InitAnimRange
 	
 	jp   ActS_IncRtnId
 	
@@ -10639,11 +10757,11 @@ Act_StageSelBoss_WaitAnim:
 ; Performs the boss' animation while the starfield scrolls.
 Act_StageSelBoss_IntroAnim:
 	call Starfield_Do
-	call Act_Boss_PlayIntro		; Is it done?
+	call ActS_PlayAnimRange		; Is it done?
 	ret  z						; If not, return
 								
 	ld   a, $00					; Restore 1st frame
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	
 	ld   a, $01
 	call ActS_SetSprMapId
@@ -11629,7 +11747,7 @@ Wpn_DoActColi:
 	or   a						; iActId == 0?
 	jr   z, .nextSlot			; If so, jump
 	
-	and  $FF^ACT_UNK_PROCFLAG	; Save original actor ID (without flags) for future reference
+	and  $FF^ACTF_PROC	; Save original actor ID (without flags) for future reference
 	ld   [wTmpColiActId], a		; as it might get replaced with an explosion if it gets defeated.
 	
 	; Prepare collision data slot pointer.
@@ -11746,7 +11864,8 @@ Wpn_OnActColi:
 	; ACTCOLI_ENEMYREFLECT is for invulerable enemies (always deflect)
 	cp   ACTCOLI_ENEMYREFLECT	; A == ACTCOLI_ENEMYREFLECT
 	jp   z, .deflect
-	; ACTCOLI_PLATFORM, ACTCOLI_MAGNET, ACTCOLI_ITEM and to ACTCOLI_7 are for special collisions not used by enemies.
+	; ACTCOLI_PLATFORM, ACTCOLI_MAGNET, ACTCOLI_ITEM and ACTCOLI_UNUSED_PASS2 are for special collisions not used by enemies.
+	; ACTCOLI_UNUSED_PASS2 is unused and acts like a duplicate of ACTCOLI_PASS.
 	; Shots pass through them.
 	cp   ACTCOLI_8_START		; A < ACTCOLI_8_START?
 	ret  c						; If so, return
@@ -11754,12 +11873,12 @@ Wpn_OnActColi:
 ; --------------- .typePartial ---------------
 .typePartial:
 	;
-	; All types above ACTCOLI_7 are used for "partially resistant" collision.
+	; All types above ACTCOLI_UNUSED_PASS2 are used for "partially resistant" collision.
 	; The collision type is treated as an offset relative to the vertical center of the actor.
 	;
 	; The actor will be damaged only if the shot's position is below that point.
 	;
-	; This is exclusively used by Quint and the final boss.
+	; Used by Quint, the final boss and Pickelman Bull.
 	;
 	
 	; B = Absolute threshold point (relative to the screen)
@@ -11975,7 +12094,9 @@ Wpn_OnActColi:
 	call z, WpnS_UseAmmo
 	
 	;
-	; Convert the defeated actor into an explosion
+	; Convert the defeated actor into an explosion.
+	; The explosion actor will make use of the inherited properties
+	; to position itself to the center of its collision box.
 	;
 	
 	ld   h, HIGH(wAct)			; HL = Ptr to actor slot
@@ -11983,7 +12104,7 @@ Wpn_OnActColi:
 	ld   l, a
 	
 	; Replace ID with the explosion one
-	ld   a, ACT_UNK_PROCFLAG|ACT_EXPLSM
+	ld   a, ACTF_PROC|ACT_EXPLSM
 	ldi  [hl], a ; iActId
 	
 	xor  a
@@ -12004,18 +12125,18 @@ Wpn_OnActColi:
 	; If the actor we just defeated was a boss.
 	; These are nearly the same checks used for .bossHit
 	;
-	;--
+
 	; For performance, boss damage checks aren't always enabled.
-	; This has the difference with .bossHit, as if we aren't in a boss room,
-	; it leads to code that ???
+	; If they aren't, roll the dice and try to spawn an item.
 	ld   a, [wBossDmgEna]
 	or   a
-	jp   z, L001E25
+	jp   z, ActS_TrySpawnItemDrop
 	;--
 	
 	; Check for the actor ID ranges used by bosses
 	ld   a, [wTmpColiActId]
 	; Final bosses in range $50-$53 (Quint and the three Wily Machine forms) 
+	; [POI] Quint never has wBossDmgEna enabled, so we'll never get there.
 	cp   ACT_SPECBOSS_START		; ID < $50?
 	ret  c						; If so, return
 	cp   ACT_SPECBOSS_END		; ID < $54?
@@ -12206,7 +12327,7 @@ Pl_DoActColi:
 	jr   nc, .setDistX	; Is that a positive value? If so, skip
 	xor  $FF			; Otherwise, convert to positive
 	inc  a
-	scf					; ???
+	scf					; (leftover from other code that uses this flag)
 .setDistX:
 	ld   b, a			; B = Distance
 	; If the player isn't horizontally overlapping with the collision box, seek to the next slot
@@ -12234,7 +12355,7 @@ Pl_DoActColi:
 	jr   nc, .setDistY		; Is that a positive value? If so, skip
 	xor  $FF				; Otherwise, convert to positive
 	inc  a
-	scf  					; ???
+	scf  					; (leftover from other code that uses this flag)
 .setDistY:
 	ld   b, a				; B = Distance
 	; Do the bounds check
@@ -12267,7 +12388,7 @@ Pl_OnActColi:
 	ret  z					; If so, return
 	; Actors with collision types >= $80 are enemies partially vulnerable on top (see Wpn_OnActColi.typePartial).
 	; [POI] Note that this isn't the full range of values for this collision type, that would be $08-$FF.
-	;       This causes the excluded range to fall back to ????? where ????.
+	;       This causes the excluded range to fail all checks and not hurt the player at all.
 	bit  ACTCOLIB_PARTIAL, a	; A >= $80?
 	jr   nz, .coliEnemy		; If so, jump
 	; Check non-enemy collision types elsewhere
@@ -12426,7 +12547,7 @@ Pl_OnActColi:
 	; Rotate bit0 to bit7
 	rrca 							; A = iActSprMap (Direction)
 	ld   bc, $0080					; BC = 0.5px/frame
-	call Pl_Unk_SetSpeedByActDir	; Update the speed by BC
+	call Pl_SetSpeedByActDir	; Update the speed by BC
 	
 	; And actually move the player
 	jp   Pl_BgColiApplySpeedX
@@ -12440,8 +12561,8 @@ Pl_OnActColi:
 	; Only process this collision if the actor is fully active.
 	; (ie: it must be spawned, and it must not be teleporting)
 	ld   b, a
-		ld   a, [wWpnHelperActive]
-		cp   AHW_ACTIVE		; wWpnHelperActive != AHW_ACTIVE?
+		ld   a, [wWpnHelperWarpRtn]
+		cp   AHW_ACTIVE		; wWpnHelperWarpRtn != AHW_ACTIVE?
 		ret  nz				; If so, return
 	ld   a, b
 	
@@ -12557,8 +12678,12 @@ Pl_OnActColi:
 	ld   a, [tActY]			; A = Actor Y origin (bottom)
 	sub  b					; to middle
 	sub  b					; to top
-	; Don't put the player directly above the border, but 2 pixels below.
-	; This is to make sure the player keeps colliding with the platform.
+	
+	; Don't put the player directly above the border, but 2 pixels below,
+	; to make sure the player keeps colliding with the platform even when
+	; said platform moves down.
+	; A consequence is that platforms can't move down faster than 1px/frame,
+	; otherwise the player may stop overlapping with its collision box.
 	inc  a
 	inc  a
 	ld   [wPlRelY], a		; Save back updated player pos
@@ -12584,7 +12709,7 @@ Pl_OnActColi:
 	; There are no magnetic fields that attract to the left, so the direction here is hardcoded.
 	ld   a, ACTDIR_R	; Move right
 	ld   bc, $0080		; Move 0.5px/frame
-	jp   Pl_Unk_SetSpeedByActDir
+	jp   Pl_SetSpeedByActDir
 	
 ; --------------- .coliItem ---------------
 ; Collectable items.
@@ -13310,12 +13435,12 @@ Pause_WpnGfxPtrTbl:
 	db HIGH(L0B4E00) ; WPN_AR
 	db HIGH(GFX_Space1OBJ) ; WPN_WD
 	db HIGH(L0B4F00) ; WPN_ME
-	db HIGH(L0B4D00) ; WPN_CR
+	db HIGH(GFX_Wpn_Sg) ; WPN_CR
 	db HIGH(L0B4F00) ; WPN_NE
 	db HIGH(GFX_Space1OBJ) ; WPN_HA
 	db HIGH(L0B4E00) ; WPN_MG
-	db HIGH(L0B4D00) ; WPN_SG (wWpnSGRide = $00)
-	db HIGH(L0B4C00) ; WPN_SG (wWpnSGRide = $01)
+	db HIGH(GFX_Wpn_Sg) ; WPN_SG (wWpnSGRide = $00)
+	db HIGH(GFX_Wpn_SgRide) ; WPN_SG (wWpnSGRide = $01)
 
 
 ; =============== Pause_ClrShots ===============
@@ -13359,18 +13484,18 @@ Pause_StartHelperWarp:
 	; Actor IDs between $E0-$E3 are reserved to the helpers.
 	; If the actor ID for the slot is outside this range, seek to the next.
 	ld   a, [hl]		; A = iActId
-	cp   ACT_UNK_PROCFLAG|ACT_WPN_RC			; A < ACT_WPN_RC?
+	cp   ACTF_PROC|ACT_WPN_RC		; A < ACT_WPN_RC?
 	jr   c, .next		; If so, skip
-	cp   ACT_UNK_PROCFLAG|ACT_WPN_SG+1		; A >= ACT_E4?
+	cp   ACTF_PROC|ACT_WPN_SG+1		; A >= ACT_E4?
 	jr   nc, .next		; If so, skip
 	
 	; If the actor is already in the middle of teleporting out, there's nothing to do.
-	ld   a, [wWpnHelperActive]
-	cp   AHW_WARPOUT_START
+	ld   a, [wWpnHelperWarpRtn]
+	cp   AHW_WARPOUT_INITANIM
 	jr   z, .notFound
-	cp   AHW_MODE_7
+	cp   AHW_WARPOUT_ANIM
 	jr   z, .notFound
-	cp   AHW_MODE_8
+	cp   AHW_WARPOUT_MOVEU
 	jr   z, .notFound
 	
 .found:
@@ -13381,8 +13506,8 @@ Pause_StartHelperWarp:
 	xor  a
 	ld   [hl], a		; iActRtnId = 0
 	
-	ld   a, AHW_WARPOUT_START
-	ld   [wWpnHelperActive], a
+	ld   a, AHW_WARPOUT_INITANIM
+	ld   [wWpnHelperWarpRtn], a
 	
 	scf ; C Flag = set
 	ret

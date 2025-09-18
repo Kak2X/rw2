@@ -179,6 +179,10 @@ DEF BLOCKID_TOPSOLID_START EQU $21 ; Solid blocks on top ($22-$3B)
 DEF BLOCKID_SOLID_START EQU $22 ; Solid blocks ($22-$3B)
 DEF BLOCKID_HALF_START  EQU $3C ; Small platforms ($3C-$3F)
 
+DEF BLOCKID_WLEAF  EQU $03 ; White leaf
+DEF BLOCKID_WLEAFL EQU $04 ; White leaf, left edge
+DEF BLOCKID_WLEAFR EQU $05 ; White leaf, right edge
+
 DEF BLOCKID_WATER      EQU $10 ; Underwater block
 
 DEF BLOCKID_SPIKE_START EQU $18
@@ -201,10 +205,23 @@ DEF BLOCKID_CONVMID_R  EQU $32 ; Right conveyor belt, middle
 DEF BLOCKID_CONVMID_L  EQU $33 ; Left conveyor belt, middle
 DEF BLOCKID_SHUTTER    EQU $38 ; Shutter
 
+; wBossMode
+DEF BSMODE_NONE     EQU $00 ; Nothing (still on the main level)
+DEF BSMODE_CORRIDOR EQU $01 ; Boss corridor (from this mode onwards, the screen is locked)
+DEF BSMODE_INIT     EQU $02 ; Boss initialization
+DEF BSMODE_INITANIM EQU $03 ; Set up boss intro animation
+DEF BSMODE_PLAYANIM EQU $04 ; Play boss intro animation
+DEF BSMODE_REFILL   EQU $05 ; Refill health bar
+DEF BSMODE_END      EQU $06 ; End of intro
+
 ; wLvlEnd
-DEF LVLEND_NONE     EQU $00 ; Nothing
-DEF LVLEND_PLDEAD   EQU $01 ; Player explodes (restart level)
-DEF LVLEND_BOSSDEAD EQU $02 ; Boss explodes (won level)
+DEF LVLEND_NONE      EQU $00 ; Nothing
+DEF LVLEND_PLDEAD    EQU $01 ; Player explodes (restart level)
+DEF LVLEND_BOSSDEAD  EQU $02 ; Boss explodes (won level)
+DEF LVLEND_TLPHARD   EQU (LVL_HARD+1) << 4 ; Teleport to Hard Man's stage
+DEF LVLEND_TLPTOP    EQU (LVL_TOP+1) << 4 ; ...
+DEF LVLEND_TLPMAGNET EQU (LVL_MAGNET+1) << 4
+DEF LVLEND_TLPNEEDLE EQU (LVL_NEEDLE+1) << 4
 
 ; wPlMode
 DEF PL_MODE_GROUND        EQU $00 ; On the ground
@@ -263,21 +280,17 @@ DEF PLSPR_WARPLAND3  EQU $35
 DEF PLSPR_WARP_END   EQU $36
 
 
-; wPlDirH
-; TODO: This might be renamed to a generic DIR_*
-DEF PLDIRB_R EQU 0
-DEF PLDIR_L EQU $00
-DEF PLDIR_R EQU $01
-; Metal Blade (& Wood Shield) directions
-DEF MEDIR_L  EQU PLDIR_L
-DEF MEDIR_R  EQU PLDIR_R
-DEF MEDIR_U  EQU $02
-DEF MEDIR_D  EQU $03
-; Metal Blade only
-DEF MEDIR_UL EQU $04 
-DEF MEDIR_UR EQU $05
-DEF MEDIR_DL EQU $06
-DEF MEDIR_DR EQU $07
+; wPlDirH / iShotDir
+; The player direction only uses DIR_L and DIR_R.
+DEF DIRB_R EQU 0
+DEF DIR_L  EQU $00
+DEF DIR_R  EQU $01
+DEF DIR_U  EQU $02
+DEF DIR_D  EQU $03
+DEF DIR_UL EQU $04 
+DEF DIR_UR EQU $05
+DEF DIR_DL EQU $06
+DEF DIR_DR EQU $07
 
 DEF PLCOLI_H EQU $06 ; Player collision box, horizontal radius
 DEF PLCOLI_V EQU $0C ; Player collision box, vertical radius
@@ -302,6 +315,78 @@ DEF ACT_HEALTHSM        EQU $04 ; Small Life Energy
 DEF ACT_AMMOSM          EQU $05 ; Small Weapon Energy
 DEF ACT_ETANK           EQU $06 ; E-Tank
 DEF ACT_EXPLLGPART      EQU $07 ; Large explosion particle
+DEF ACT_BEE             EQU $08 ; Have "Su" Bee
+DEF ACT_BEEHIVE         EQU $09 ; Have "Su" Bee Beehive
+DEF ACT_CHIBEE          EQU $0A ; Chibee
+DEF ACT_WANAAN          EQU $0B ; Wanaan
+DEF ACT_HAMMERJOE       EQU $0C ; Hammer Joe
+DEF ACT_HAMMER          EQU $0D ; Hammer thrown by Hammer Joe
+DEF ACT_NEOMONKING      EQU $0E ; Kaettekita Monking
+DEF ACT_NEOMET          EQU $0F ; Neo Metall
+DEF ACT_PICKELBULL      EQU $10 ; Pickelman Bull
+DEF ACT_BIKKY           EQU $11 ; Bikky
+DEF ACT_KOMASABURO      EQU $12 ; Komasaburo
+DEF ACT_KOMA            EQU $13 ; Komasaburo - Spinning Top shot
+DEF ACT_MECHAKKERO      EQU $14 ; Mechakkero 
+DEF ACT_SPINTOPU        EQU $15 ; Spinning Top Platform - Moving Up
+DEF ACT_SPINTOPD        EQU $16 ; Spinning Top Platform - Moving Down
+DEF ACT_TAMA            EQU $17 ; Tama
+DEF ACT_TAMABALL        EQU $18 ; Tama - Yarn ball
+DEF ACT_TAMAFLEA        EQU $19 ; Tama - Flea
+DEF ACT_MAGFLY          EQU $1A ; Mag Fly
+DEF ACT_GSPRINGER       EQU $1B ; Giant Springer
+DEF ACT_GSPRINGERSHOT   EQU $1C ; Giant Springer - Homing Missile
+DEF ACT_PETERCHY        EQU $1D ; Peterchy
+DEF ACT_MAGNETFIELD     EQU $1E ; Magnet attraction area
+DEF ACT_RESPAWNER       EQU $1F ; Unused, Respawner
+DEF ACT_BLOCK0          EQU $20 ; Disappearing Block - Timing #0
+DEF ACT_BLOCK1          EQU $21 ; Disappearing Block - Timing #1
+DEF ACT_BLOCK2          EQU $22 ; Disappearing Block - Timing #2
+DEF ACT_BLOCK3          EQU $23 ; Disappearing Block - Timing #3
+DEF ACT_NEWSHOTMAN      EQU $24 ; New Shotman
+DEF ACT_NEEDLEPRESS     EQU $25 ; Needle Press
+DEF ACT_YAMBOW          EQU $26 ; Yambow
+DEF ACT_HARI            EQU $27 ; Hari Harry
+DEF ACT_HARISHOT        EQU $28 ; Hari Harry Shot
+DEF ACT_CANNON          EQU $29 ; Cannon
+DEF ACT_CANNONSHOT      EQU $2A ; Cannon Ball
+DEF ACT_TELLYSPAWN      EQU $2B ; Telly Spawner
+DEF ACT_LIFT0           EQU $2C ; Moving Lift - Path #0
+DEF ACT_LIFT1           EQU $2D ; Moving Lift - Path #1
+DEF ACT_LIFT2           EQU $2E ; Moving Lift - Path #2
+DEF ACT_BLOCKYHEAD      EQU $2F ; Blocky - Head part (master)
+DEF ACT_BLOCKYBODY      EQU $30 ; Blocky - Invulnerable body
+DEF ACT_BLOCKYRISE      EQU $31 ; Blocky - Rising body
+DEF ACT_PIPI            EQU $32 ; Pipi
+DEF ACT_EGG             EQU $33 ; Pipi's Egg
+DEF ACT_COPIPI          EQU $34 ; Copipi hatched from egg
+DEF ACT_SHOTMAN         EQU $35 ; Shotman
+DEF ACT_FLYBOY          EQU $36 ; Fly Boy
+DEF ACT_FLYBOYSPAWN     EQU $37 ; Fly Boy Spawner
+DEF ACT_SPRINGER        EQU $38 ; Springer
+DEF ACT_PIEROGEAR       EQU $39 ; Pierobot Cog (master)
+DEF ACT_PIEROBOT        EQU $3A ; Pierobot
+DEF ACT_MOLE            EQU $3B ; Mole
+DEF ACT_MOLESPAWN       EQU $3C ; Mole Spawner
+DEF ACT_PRESS           EQU $3D ; Press
+DEF ACT_ROBBIT          EQU $3E ; Robbit
+DEF ACT_CARROT          EQU $3F ; Robbit - Carrot shot
+DEF ACT_COOK            EQU $40 ; Kukku
+DEF ACT_COOKSPAWN       EQU $41 ; Kukku Spawner
+DEF ACT_BATTON          EQU $42 ; Batton
+DEF ACT_FRIENDER        EQU $43 ; Friender
+DEF ACT_FLAME           EQU $44 ; Friender - Flame shot
+DEF ACT_GOBLINHORN      EQU $45 ; Goblin - Horns
+DEF ACT_GOBLIN          EQU $46 ; Goblin - Fader
+DEF ACT_PUCHIGOBLIN     EQU $47 ; Petit Goblin
+DEF ACT_SCWORMBASE      EQU $48 ; Scworm base
+DEF ACT_SCWORMSHOT      EQU $49 ; Schworm shot
+DEF ACT_MATASABURO      EQU $4A ; Matasaburo
+DEF ACT_KAMINARIGORO    EQU $4B ; Kaminari Goro (master)
+DEF ACT_KAMINARICLOUD   EQU $4C ; Kaminari Goro - Cloud platform
+DEF ACT_KAMINARI        EQU $4D ; Kaminari Goro - Thunder shot
+DEF ACT_TELLY           EQU $4E ; Telly
+DEF ACT_PIPISPAWN       EQU $4F ; Pipi Spawner
 DEF ACT_SPECBOSS_START  EQU $50
 DEF ACT_WILY1           EQU $50 ; Wily Machine (1st phase)
 DEF ACT_WILY2           EQU $51 ; Wily Machine (2nd phase)
@@ -313,17 +398,21 @@ DEF ACT_WILY2INTRO      EQU $55 ; Wily Machine (2nd phase) - Intro cutscene
 DEF ACT_QUINT_SG        EQU $56 ; Quint - Sakugarne
 DEF ACT_QUINT_DEBRIS    EQU $57 ; Quint - Sakugarne debris
 DEF ACT_WILY1BOMB       EQU $58 ; Wily Machine (1st phase) - Bouncing Bomb
-DEF ACT_WILY1TOE        EQU $59 ; Wily Machine (1st phase) - Toenail
+DEF ACT_WILY1NAIL       EQU $59 ; Wily Machine (1st phase) - Toenail
 DEF ACT_WILY2BOMB       EQU $5A ; Wily Machine (2nd phase) - Bouncing Bomb and projectile
 DEF ACT_WILY2SHOT       EQU $5B ; Wily Machine (2nd phase) - Energy Shot
 DEF ACT_WILY3MISSILE    EQU $5C ; Wily Machine (3rd phase) - Crayola Missile
-DEF ACT_WILY3MET        EQU $5C ; Wily Machine (3rd phase) - Goomba
-DEF ACT_WILYSHIP        EQU $5E ; Wily Machine - Spaceship (between phases)
+DEF ACT_WILY3MET        EQU $5D ; Wily Machine (3rd phase) - Goomba
+DEF ACT_WILYCTRL        EQU $5E ; Wily Machine - Master
+DEF ACT_5F              EQU $5F ; Unused, points to ACT_EXPLSM's code
 DEF ACT_WPN_RC          EQU $60 ; Rush Coil
 DEF ACT_WPN_RM          EQU $61 ; Rush Marine
 DEF ACT_WPN_RJ          EQU $62 ; Rush Jet
 DEF ACT_WPN_SG          EQU $63 ; Sakugarne
 DEF ACT_BUBBLE          EQU $64 ; Air bubble when the player is underwater
+DEF ACT_WILYCASTLESC    EQU $65 ; Wily Castle Cutscene - Wily
+DEF ACT_TELEPORTCTRL    EQU $66 ; Wily Castle - Teleport Room Controller
+DEF ACT_TELEPORTLIGHT   EQU $67 ; Wily Castle Teleporter Light
 DEF ACT_BOSS_START      EQU $68
 DEF ACT_HARDMAN         EQU $68 ; Hard Man
 DEF ACT_TOPMAN          EQU $69 ; Top Man
@@ -334,26 +423,66 @@ DEF ACT_METALMAN        EQU $6D ; Metal Man
 DEF ACT_WOODMAN         EQU $6E ; Wood Man
 DEF ACT_AIRMAN          EQU $6F ; Air Man
 DEF ACT_BOSS_END        EQU $70
+DEF ACT_HARDKNUCKLE     EQU $70 ; Hard Man - Hard Knuckle shot
+DEF ACT_SPINTOPSHOT     EQU $71 ; Top Man - Spinning Top
+DEF ACT_MAGNETMISSILE   EQU $72 ; Magnet Man - Magnet Missile
+DEF ACT_NEEDLECANNON    EQU $73 ; Needle Man - Needle Cannon
+DEF ACT_CRASHBOMB       EQU $74 ; Crash Man - Crash Bomb
+DEF ACT_METALBLADE      EQU $75 ; Metal Man - Metal Blade
+DEF ACT_WHIRLWIND       EQU $76 ; Air Man - Wind
+DEF ACT_LEAFSHIELD      EQU $77 ; Wood Man - Shield Leaf
+DEF ACT_LEAFRISE        EQU $78 ; Wood Man - Rising leaf
+DEF ACT_LEAFFALL        EQU $79 ; Wood Man - Falling leaf
+DEF ACT_CRASHBOMBEXPL   EQU $7A ; Crash Man - Large Crash Bomb explosion
+DEF ACT_GROUNDEXPL      EQU $7B ; Wily Castle Cutscene - Ground explosion
+DEF ACT_NEOMETSHOT      EQU $7C ; Neo Metall - Shot
+DEF ACT_NEWSHOTMANSHOTV EQU $7D ; New Shotman - Vertical Arc Shot
+DEF ACT_NEWSHOTMANSHOTH EQU $7E ; New Shotman - Horizontal Shot
+DEF ACT_SHOTMANSHOT     EQU $7F ; Shotman - Shot
 
-; wWpnHelperActive
-DEF AHW_NONE   EQU $00 ; Not spawned
-DEF AHW_MODE_1 EQU $01
-DEF AHW_MODE_2 EQU $02
-DEF AHW_MODE_3 EQU $03
-DEF AHW_MODE_4 EQU $04
-DEF AHW_MODE_5 EQU $05
-DEF AHW_WARPOUT_START EQU $06
-DEF AHW_MODE_7 EQU $07
-DEF AHW_MODE_8 EQU $08
-DEF AHW_ACTIVE EQU $FF ; Active and usable
+DEF ACTRTN_ITEMDROP_INIT EQU $01
+
+; wActBlockyMode - to Act_BlockyBody
+DEF BLOCKYBODY_IDLE0   EQU $00
+DEF BLOCKYBODY_THROW   EQU $01
+; wActBlockyMode - to Act_BlockyRise
+DEF BLOCKYRISE_REBUILD EQU $00
+DEF BLOCKYRISE_IDLE1   EQU $01
+DEF BLOCKYRISE_DEAD    EQU $02
+
+DEF ACTRTN_QUINTDEBRIS_INIT0 EQU $00
+DEF ACTRTN_QUINTDEBRIS_INIT1 EQU $01
+DEF ACTRTN_QUINTDEBRIS_INIT2 EQU $02
+DEF ACTRTN_QUINTDEBRIS_INIT3 EQU $03
+
+DEF ACTRTN_WILYSHIP_MOVESCROLLR EQU $04
+DEF ACTRTN_WILYSHIP_END EQU $06
+
+DEF ACTRTN_WILY3_INIT EQU $01
+
+DEF WILY3PART_SPR_NONE EQU $00
+DEF WILY3PART_SPR_ARM  EQU $04
+DEF WILY3PART_SPR_TAIL EQU $06
+
+; wWpnHelperWarpRtn
+DEF AHW_NONE                 EQU $00 ; Not spawned
+DEF AHW_WARPIN_INIT          EQU $01
+DEF AHW_WARPIN_MOVED         EQU $02
+DEF AHW_WARPIN_MOVEDCHKSPAWN EQU $03
+DEF AHW_WARPIN_ANIM          EQU $04
+DEF AHW_WARPIN_CHKSOLID      EQU $05
+DEF AHW_WARPOUT_INITANIM     EQU $06
+DEF AHW_WARPOUT_ANIM         EQU $07
+DEF AHW_WARPOUT_MOVEU        EQU $08
+DEF AHW_ACTIVE               EQU $FF ; Active and usable
 
 DEF ACTLB_SPAWNNORM   EQU 4 ; Spawn the actor normally
 DEF ACTLB_SPAWNBEHIND EQU 5 ; Spawn the actor from behind
 DEF ACTLB_NOSPAWN     EQU 7 ; Prevents the actor from being respawned
 DEF ACTL_NOSPAWN      EQU 1 << ACTLB_NOSPAWN
 
-DEF ACTB_UNK_PROCFLAG EQU 7
-DEF ACT_UNK_PROCFLAG EQU 1 << ACTB_UNK_PROCFLAG
+DEF ACTFB_PROC EQU 7 ; Actor processing flag
+DEF ACTF_PROC  EQU 1 << ACTFB_PROC
 
 ; iActSprMap directional flags
 DEF ACTDIRB_D EQU 6
@@ -371,10 +500,9 @@ DEF ACTCOLI_ENEMYREFLECT EQU 3 ; Enemy - Invulnerable from shots
 DEF ACTCOLI_PLATFORM     EQU 4 ; Platform / helper item
 DEF ACTCOLI_MAGNET       EQU 5 ; Magnetic Field
 DEF ACTCOLI_ITEM         EQU 6 ; Item
-DEF ACTCOLI_7            EQU 7 ; ???
+DEF ACTCOLI_UNUSED_PASS2 EQU 7 ; Intangible
 DEF ACTCOLI_8_START      EQU 8 ; Partially vulnerable
-
-DEF ACTCOLIB_PARTIAL EQU 7 ; Partially vulnerable
+DEF ACTCOLIB_PARTIAL     EQU 7 ; Partially vulnerable
 
 ; iActColiSubtype
 DEF ACTCOLISUB_TOPSOLID EQU $00 ; Top-Solid Platform
@@ -395,14 +523,17 @@ DEF ADR_INC_IDX EQU $00
 DEF ADR_DEC_IDX EQU 1 << ADRB_DEC_IDX
 DEF ARC_MAX EQU 88
 
+DEF ARC_LG EQU $01 ; Large arc path (no values skipped)
+DEF ARC_SM EQU $02 ; Small arc path (half of the values skipped)
 
 DEF WPNPIERCE_NONE    EQU 0 ; Weapon always disappears on contact
 DEF WPNPIERCE_LASTHIT EQU 1 ; Weapon pierces only if it defeats the enemy
 DEF WPNPIERCE_ALWAYS  EQU 2 ; Weapon always pierces
 
-; Might be a marker to distinguish between free slots and $00
-DEF SHOTB_UNK_PROCFLAG EQU 7
-DEF SHOT_UNK_PROCFLAG EQU 1 << SHOTB_UNK_PROCFLAG
+; Marker to distinguish between free slots and $00.
+; Not as important as ACTF_PROC as their code will be executed even without it.
+DEF SHOT0B_PROC EQU 7
+DEF SHOT0_PROC EQU 1 << SHOT0B_PROC
 
 DEF SHOT3B_DEFLECT EQU 7 ; Marks the shot has getting deflected
 DEF SHOT3_DEFLECT EQU 1 << SHOT3B_DEFLECT

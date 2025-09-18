@@ -1,4508 +1,6952 @@
-L024000:;C
-	ld   h, $CD
-	ld   a, [wActStartEndSlotPtr]
-L024005:;R
+; =============== ActS_Do ===============
+; Processes all active actors.
+ActS_Do:
+	; Start processing actors from where we left off last time
+	ld   h, HIGH(wAct)				; Set high byte
+	ld   a, [wActStartSlotPtr]	; A = Ptr to initial slot
+.loop:
+	; Save the current slot pointer for any actor code using it.
+	; Generally used when actors need to check if the player has collided with them,
+	; since those checks are made by comparing slot pointers.
 	ld   [wActCurSlotPtr], a
-	ld   l, a
+	ld   l, a			; HL = Ptr to current slot
+	
+	; Skip empty slots
 	ld   a, [hl]
-	or   a
-	jr   z, L024045
+	or   a				; iActId == 0?
+	jr   z, .nextSlot	; If so, skip to the next one
+	
 	push hl
-	push hl
-	ld   de, hActCur+iActId
-	ld   b, $10
-L024014:;R
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	dec  b
-	jr   nz, L024014
-	ld   a, $00
-	ld   [wActCurSprMapRelId], a
-	call ActS_MoveByScrollX
-	ldh  a, [hActCur+iActId]
-	bit  7, a
-	jr   z, L024038
-	call L02405B
-	ldh  a, [hActCur+iActId]
-	bit  7, a
-	jr   z, L024038
-	ldh  a, [hWorkOAMPos]
-	cp   $A0
-	call c, ActS_DrawSprMap
-L024038:;R
-	pop  de
-	ld   hl, hActCur+iActId
-	ld   b, $10
-L02403E:;R
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	dec  b
-	jr   nz, L02403E
+		push hl
+			
+			;--
+			;
+			; Copy the actor to a working area for processing.
+			;
+			ld   de, hActCur+iActId	; DE = Working area (destination)
+			ld   b, iActEnd		; B = Bytes to copy
+		.wkInLoop:
+			ldi  a, [hl]		; Read byte from slot, SlotPtr++
+			ld   [de], a		; Copy over to wk
+			inc  de				; WkPtr++
+			dec  b				; Are we done?
+			jr   nz, .wkInLoop	; If not, loop
+			;--
+			
+			;
+			; Perform the actor-specific actions.
+			;
+			
+			ld   a, $00					; Always needs to be reconfirmed
+			ld   [wActCurSprMapBaseId], a
+			
+			; As actor positions are relative to the screen, if the screen scrolls horizontally,
+			; their positions should be adjusted to match.
+			; This happens even if the processing flag isn't set.
+			call ActS_MoveByScrollX	
+			
+			; If the processing flag is set, execute the actor's code
+			ldh  a, [hActCur+iActId]
+			bit  ACTFB_PROC, a			; Processing flag set?
+			jr   z, .actEnd				; If not, skip to the end
+			call ActS_ExecCode
+			
+			; If the actor didn't despawn itself, draw its sprite mapping
+			ldh  a, [hActCur+iActId]
+			bit  ACTFB_PROC, a			; Processing flag still set?
+			jr   z, .actEnd				; If not, skip to the end (likely zeroed out)
+			ldh  a, [hWorkOAMPos]
+			cp   OAM_SIZE				; OAM is full already?
+			call c, ActS_DrawSprMap		; If not, draw it
+			
+		; 
+		; Save back the changes made to the working area into the slot.
+		;
+	.actEnd:
+		pop  de 			; DE = Slot ptr (destination)
+		ld   hl, hActCur+iActId	; HL = Working area (source)
+		ld   b, iActEnd		; B = Bytes to copy
+	.wkOutLoop:
+		ldi  a, [hl]		; Read byte from wk, WkPtr++
+		ld   [de], a		; Copy back to slot
+		inc  de				; SlotPtr++
+		dec  b				; Are we done?
+		jr   nz, .wkOutLoop	; If not, loop
+	
 	pop  hl
-L024045:;R
-	ld   a, [wActStartEndSlotPtr]
-	ld   b, a			; B = End Slot
-	ld   a, l			; A = Current Slot + SLOT_SIZE
-	add  $10
-	cp   b				; Do they match?
-	jr   nz, L024005	; If not, loop
+.nextSlot:
+	;
+	; Seek to the next actor slot.
+	; If after doing this, we didn't wrap around to the starting slot yet, handle it.
+	;
+	ld   a, [wActStartSlotPtr]
+	ld   b, a			; B = First slot handled
+	ld   a, l			; A = Current slot + $10, potentially overflowing back to the start of wAct
+	add  iActEnd
+	cp   b				; Did we wrap around to the first slot we handled?
+	jr   nz, .loop		; If not, handle this one
 	
 	; If we filled OAM, chances are not all actors could be drawn.
 	; As the processing order and draw order are one and the same, "shuffle"
 	; it by starting processing actors from after the last drawn one.
+	; Note that regardless of the starting slot, every time all 16 actors are
+	; handled -- the game never skips processing actors when they are enabled.
 
 	ldh  a, [hWorkOAMPos]
-	cp   $A0			; Did we fill up OAM?
+	cp   OAM_SIZE		; Did we fill up OAM?
 	ret  nz				; If not, return
 	
 	; Note that this value doesn't need to be reset to 0 at any time, since
 	; it can wrap around just fine.
 	ld   a, [wActLastDrawSlotPtr]
-	ld   [wActStartEndSlotPtr], a
+	ld   [wActStartSlotPtr], a
 	ret
-L02405B:;C
+	
+; =============== ActS_ExecCode ===============
+; Executes actor-specific code.
+ActS_ExecCode:
 	ldh  a, [hActCur+iActId]
-	and  $7F
+	and  $FF^ACTF_PROC			; Remove processing flag
 	rst  $00 ; DynJump
-L024060: db $60
-L024061: db $41
-L024062: db $92
-L024063: db $41
-L024064: db $92
-L024065: db $41
-L024066: db $92
-L024067: db $41
-L024068: db $92
-L024069: db $41
-L02406A: db $92
-L02406B: db $41
-L02406C: db $92
-L02406D: db $41
-L02406E: db $27
-L02406F: db $42
-L024070: db $46
-L024071: db $42
-L024072: db $EC
-L024073: db $42
-L024074: db $8A
-L024075: db $43
-L024076: db $F9
-L024077: db $43
-L024078: db $7C
-L024079: db $44
-L02407A: db $08
-L02407B: db $45
-L02407C: db $52
-L02407D: db $45
-L02407E: db $F3
-L02407F: db $45
-L024080: db $AA
-L024081: db $46
-L024082: db $F5
-L024083: db $46
-L024084: db $6A
-L024085: db $47
-L024086: db $CC
-L024087: db $47
-L024088: db $17
-L024089: db $48
-L02408A: db $86
-L02408B: db $48
-L02408C: db $A8
-L02408D: db $48
-L02408E: db $CD
-L02408F: db $48
-L024090: db $5F
-L024091: db $49
-L024092: db $9B
-L024093: db $49
-L024094: db $F8
-L024095: db $49
-L024096: db $4E
-L024097: db $4A
-L024098: db $DA
-L024099: db $4A
-L02409A: db $89
-L02409B: db $4B
-L02409C: db $CA
-L02409D: db $4B
-L02409E: db $E7;X
-L02409F: db $4B;X
-L0240A0: db $EA
-L0240A1: db $4B
-L0240A2: db $EA
-L0240A3: db $4B
-L0240A4: db $EA
-L0240A5: db $4B
-L0240A6: db $EA
-L0240A7: db $4B
-L0240A8: db $79
-L0240A9: db $4C
-L0240AA: db $37
-L0240AB: db $4D
-L0240AC: db $DC
-L0240AD: db $4D
-L0240AE: db $7E
-L0240AF: db $4E
-L0240B0: db $3D
-L0240B1: db $4F
-L0240B2: db $44
-L0240B3: db $4F
-L0240B4: db $0E
-L0240B5: db $50
-L0240B6: db $2F
-L0240B7: db $50
-L0240B8: db $70
-L0240B9: db $50
-L0240BA: db $70
-L0240BB: db $50
-L0240BC: db $70
-L0240BD: db $50
-L0240BE: db $69
-L0240BF: db $51
-L0240C0: db $F2
-L0240C1: db $52
-L0240C2: db $71
-L0240C3: db $53
-L0240C4: db $BB
-L0240C5: db $53
-L0240C6: db $13
-L0240C7: db $54
-L0240C8: db $BE
-L0240C9: db $54
-L0240CA: db $F2
-L0240CB: db $54
-L0240CC: db $A5
-L0240CD: db $55
-L0240CE: db $27
-L0240CF: db $56
-L0240D0: db $5C
-L0240D1: db $56
-L0240D2: db $15
-L0240D3: db $57
-L0240D4: db $07
-L0240D5: db $58
-L0240D6: db $80
-L0240D7: db $58
-L0240D8: db $3C
-L0240D9: db $59
-L0240DA: db $78
-L0240DB: db $59
-L0240DC: db $D0
-L0240DD: db $59
-L0240DE: db $3F
-L0240DF: db $5A
-L0240E0: db $53
-L0240E1: db $5A
-L0240E2: db $C9
-L0240E3: db $5A
-L0240E4: db $FC
-L0240E5: db $5A
-L0240E6: db $DF
-L0240E7: db $5B
-L0240E8: db $72
-L0240E9: db $5C
-L0240EA: db $A5
-L0240EB: db $5C
-L0240EC: db $FA
-L0240ED: db $5C
-L0240EE: db $A0
-L0240EF: db $5D
-L0240F0: db $1C
-L0240F1: db $5E
-L0240F2: db $44
-L0240F3: db $5E
-L0240F4: db $BD
-L0240F5: db $5E
-L0240F6: db $1F
-L0240F7: db $5F
-L0240F8: db $80
-L0240F9: db $5F
-L0240FA: db $CE
-L0240FB: db $5F
-L0240FC: db $0D
-L0240FD: db $60
-L0240FE: db $4B
-L0240FF: db $60
-L024100: db $81
-L024101: db $60
-L024102: db $CB
-L024103: db $61
-L024104: db $FB
-L024105: db $62
-L024106: db $76
-L024107: db $64
-L024108: db $19
-L024109: db $66
-L02410A: db $60
-L02410B: db $66
-L02410C: db $83
-L02410D: db $66
-L02410E: db $F0
-L02410F: db $66
-L024110: db $71
-L024111: db $67
-L024112: db $A6
-L024113: db $67
-L024114: db $BD
-L024115: db $67
-L024116: db $2D
-L024117: db $68
-L024118: db $44
-L024119: db $68
-L02411A: db $6E
-L02411B: db $68
-L02411C: db $99
-L02411D: db $68
-L02411E: db $60;X
-L02411F: db $41;X
-L024120: db $10
-L024121: db $6A
-L024122: db $59
-L024123: db $6A
-L024124: db $3F
-L024125: db $6B
-L024126: db $3B
-L024127: db $6C
-L024128: db $18
-L024129: db $6E
-L02412A: db $78
-L02412B: db $6E
-L02412C: db $79
-L02412D: db $6E
-L02412E: db $3B
-L02412F: db $6F
-L024130: db $41
-L024131: db $6F
-L024132: db $F7
-L024133: db $70
-L024134: db $AD
-L024135: db $71
-L024136: db $DD
-L024137: db $72
-L024138: db $24
-L024139: db $74
-L02413A: db $F3
-L02413B: db $74
-L02413C: db $EA
-L02413D: db $75
-L02413E: db $38
-L02413F: db $77
-L024140: db $89
-L024141: db $78
-L024142: db $03
-L024143: db $79
-L024144: db $54
-L024145: db $79
-L024146: db $9D
-L024147: db $79
-L024148: db $B4
-L024149: db $79
-L02414A: db $F3
-L02414B: db $79
-L02414C: db $11
-L02414D: db $7A
-L02414E: db $74
-L02414F: db $7A
-L024150: db $40
-L024151: db $7B
-L024152: db $5A
-L024153: db $7B
-L024154: db $92
-L024155: db $7B
-L024156: db $AF
-L024157: db $7B
-L024158: db $CD
-L024159: db $7B
-L02415A: db $D9
-L02415B: db $7B
-L02415C: db $FA
-L02415D: db $7B
-L02415E: db $11
-L02415F: db $7C
-L024160:;I
+	; There are no invalid IDs, every entry is filled in some way.
+	dw Act_ExplSm				; ACT_EXPLSM
+	; Items specifically sorted by item drop rarity, see ActS_TrySpawnItemDrop
+	dw Act_Item					; ACT_1UP
+	dw Act_Item					; ACT_AMMOLG
+	dw Act_Item					; ACT_HEALTHLG
+	dw Act_Item					; ACT_HEALTHSM
+	dw Act_Item					; ACT_AMMOSM
+	; This one is excluded from item drops for obvious reasons
+	dw Act_Item					; ACT_ETANK
+	dw Act_ExplLgPart			; ACT_EXPLLGPART
+	dw Act_Bee					; ACT_BEE
+	dw Act_BeeHive				; ACT_BEEHIVE
+	dw Act_Chibee				; ACT_CHIBEE
+	dw Act_Wanaan				; ACT_WANAAN
+	dw Act_HammerJoe			; ACT_HAMMERJOE
+	dw Act_Hammer				; ACT_HAMMER
+	dw Act_NeoMonking			; ACT_NEOMONKING
+	dw Act_NeoMet				; ACT_NEOMET
+	dw Act_PickelmanBull		; ACT_PICKELBULL
+	dw Act_Bikky				; ACT_BIKKY
+	dw Act_Komasaburo			; ACT_KOMASABURO
+	dw Act_Koma					; ACT_KOMA
+	dw Act_Mechakkero			; ACT_MECHAKKERO
+	dw Act_SpinTopU				; ACT_SPINTOPU
+	dw Act_SpinTopD				; ACT_SPINTOPD
+	dw Act_Tama					; ACT_TAMA
+	dw Act_TamaBall				; ACT_TAMABALL
+	dw Act_TamaFlea				; ACT_TAMAFLEA
+	dw Act_MagFly				; ACT_MAGFLY
+	dw Act_GiantSpringer		; ACT_GSPRINGER
+	dw Act_GiantSpringerShot	; ACT_GSPRINGERSHOT
+	dw Act_Peterchy				; ACT_PETERCHY
+	dw Act_MagnetField			; ACT_MAGNETFIELD
+	dw Act_Respawner			; ACT_RESPAWNER ;X
+	dw Act_Block				; ACT_BLOCK0
+	dw Act_Block				; ACT_BLOCK1
+	dw Act_Block				; ACT_BLOCK2
+	dw Act_Block				; ACT_BLOCK3
+	dw Act_NewShotman			; ACT_NEWSHOTMAN
+	dw Act_NeedlePress			; ACT_NEEDLEPRESS
+	dw Act_Yambow				; ACT_YAMBOW
+	dw Act_HariHarry			; ACT_HARI
+	dw Act_HariHarryShot		; ACT_HARISHOT
+	dw Act_Cannon				; ACT_CANNON
+	dw Act_CannonShot			; ACT_CANNONSHOT
+	dw Act_TellySpawner			; ACT_TELLYSPAWN
+	dw Act_Lift					; ACT_LIFT0
+	dw Act_Lift					; ACT_LIFT1
+	dw Act_Lift					; ACT_LIFT2
+	dw Act_BlockyHead			; ACT_BLOCKYHEAD
+	dw Act_BlockyBody			; ACT_BLOCKYBODY
+	dw Act_BlockyRise			; ACT_BLOCKYRISE
+	dw Act_Pipi					; ACT_PIPI
+	dw Act_Egg					; ACT_EGG
+	dw Act_Copipi				; ACT_COPIPI
+	dw Act_Shotman				; ACT_SHOTMAN
+	dw Act_FlyBoy				; ACT_FLYBOY
+	dw Act_FlyBoySpawner		; ACT_FLYBOYSPAWN
+	dw Act_Springer				; ACT_SPRINGER
+	dw Act_PieroBotGear			; ACT_PIEROGEAR
+	dw Act_PieroBot				; ACT_PIEROBOT
+	dw Act_Mole					; ACT_MOLE
+	dw Act_MoleSpawner			; ACT_MOLESPAWN
+	dw Act_Press				; ACT_PRESS
+	dw Act_Robbit				; ACT_ROBBIT
+	dw Act_RobbitCarrot			; ACT_CARROT
+	dw Act_Cook					; ACT_COOK
+	dw Act_CookSpawner			; ACT_COOKSPAWN
+	dw Act_Batton				; ACT_BATTON
+	dw Act_Friender				; ACT_FRIENDER
+	dw Act_FrienderFlame		; ACT_FLAME
+	dw Act_GoblinHorn			; ACT_GOBLINHORN
+	dw Act_Goblin				; ACT_GOBLIN
+	dw Act_PuchiGoblin			; ACT_PUCHIGOBLIN
+	dw Act_ScwormBase			; ACT_SCWORMBASE
+	dw Act_ScwormShot			; ACT_SCWORMSHOT
+	dw Act_Matasaburo			; ACT_MATASABURO
+	dw Act_KaminariGoro			; ACT_KAMINARIGORO
+	dw Act_KaminariCloud		; ACT_KAMINARICLOUD
+	dw Act_Kaminari				; ACT_KAMINARI
+	dw Act_Telly				; ACT_TELLY
+	dw Act_PipiSpawner			; ACT_PIPISPAWN
+	dw Act_Wily1				; ACT_WILY1
+	dw Act_Wily2				; ACT_WILY2
+	dw Act_Wily3				; ACT_WILY3
+	dw Act_Quint				; ACT_QUINT
+	dw Act_Wily3Part			; ACT_WILY3PART
+	dw Act_Wily2Intro		; ACT_WILY2INTRO
+	dw Act_QuintSakugarne		; ACT_QUINT_SG
+	dw Act_QuintDebris			; ACT_QUINT_DEBRIS
+	dw Act_Wily1Bomb			; ACT_WILY1BOMB
+	dw Act_Wily1Nail			; ACT_WILY1NAIL
+	dw Act_Wily2Bomb			; ACT_WILY2BOMB
+	dw Act_Wily2Shot			; ACT_WILY2SHOT
+	dw Act_Wily3Missile			; ACT_WILY3MISSILE
+	dw Act_Wily3Met				; ACT_WILY3MET
+	dw Act_WilyCtrl				; ACT_WILYCTRL
+	dw Act_ExplSm				; ACT_5F ;X
+	dw Act_RushCoil				; ACT_WPN_RC
+	dw Act_RushMarine			; ACT_WPN_RM
+	dw Act_RushJet				; ACT_WPN_RJ
+	dw Act_Sakugarne			; ACT_WPN_SG
+	dw Act_Bubble				; ACT_BUBBLE
+	dw Act_WilyCastleCutscene	; ACT_WILYCASTLESC
+	dw Act_TeleporterRoom		; ACT_TELEPORTCTRL
+	dw Act_TeleporterLight		; ACT_TELEPORTLIGHT
+	dw Act_HardMan				; ACT_HARDMAN
+	dw Act_TopMan				; ACT_TOPMAN
+	dw Act_MagnetMan			; ACT_MAGNETMAN
+	dw Act_NeedleMan			; ACT_NEEDLEMAN
+	dw Act_CrashMan				; ACT_CRASHMAN
+	dw Act_MetalMan				; ACT_METALMAN
+	dw Act_WoodMan				; ACT_WOODMAN
+	dw Act_AirMan				; ACT_AIRMAN
+	dw Act_HardKnuckle			; ACT_HARDKNUCKLE
+	dw Act_TopManShot			; ACT_SPINTOPSHOT
+	dw Act_MagnetManShot		; ACT_MAGNETMISSILE
+	dw Act_NeedleManShot		; ACT_NEEDLECANNON
+	dw Act_CrashManShot			; ACT_CRASHBOMB
+	dw Act_MetalManShot			; ACT_METALBLADE
+	dw Act_AirManShot			; ACT_WHIRLWIND
+	dw Act_WoodManLeafShield	; ACT_LEAFSHIELD
+	dw Act_WoodManLeafRise		; ACT_LEAFRISE
+	dw Act_WoodManLeafFall		; ACT_LEAFFALL
+	dw Act_CrashManShotExpl		; ACT_CRASHBOMBEXPL
+	dw Act_GroundExpl			; ACT_GROUNDEXPL
+	dw Act_NeoMetShot			; ACT_NEOMETSHOT
+	dw Act_NewShotmanShotV		; ACT_NEWSHOTMANSHOTV
+	dw Act_NewShotmanShotH		; ACT_NEWSHOTMANSHOTH
+	dw Act_ShotmanShot			; ACT_SHOTMANSHOT
+
+; =============== Act_ExplSm ===============
+; ID: ACT_EXPLSM
+; Small explosion.
+;
+; This actor isn't directly spawned in a level -- when defeating enemies, their actor ID
+; gets replaced by ACT_EXPLSM, and so they keep most of their properties, such as
+; coordinates and collision box (see below).
+Act_ExplSm:
+	; Typically, the first routine is used to initialize the actor
 	ldh  a, [hActCur+iActRtnId]
 	and  $7F
 	rst  $00 ; DynJump
-L024165: db $69
-L024166: db $41
-L024167: db $7C
-L024168: db $41
-L024169:;I
-	ld   h, $CE
+	dw Act_ExplSm_Init
+	dw Act_ExplSm_Anim
+	
+; =============== Act_ExplSm_Init ===============
+Act_ExplSm_Init:
+	;
+	; Place the explosion at the center of the actor that just died.
+	;
+	; Currently the explosion is at the previous actor's origin, so it needs
+	; to be moved up by the vertical radius of the collision box.
+	; Of course, this assumes the sprite mapping to not be weirdly offset from its origin.
+	;
+	ld   h, HIGH(wActColi)		; Seek HL to iActColiBoxV, vertical radius
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
-	inc  l
-	ldh  a, [hActCur+iActY]
+	inc  l ; iActColiBoxV
+	ldh  a, [hActCur+iActY]		; Move the actor up by that
 	sub  [hl]
 	ldh  [hActCur+iActY], a
-	ld   a, $04
+	
+	ld   a, SFX_ENEMYDEAD		; Play explosion sound
 	ldh  [hSFXSet], a
 	jp   ActS_IncRtnId
-L02417C:;I
+	
+; =============== Act_ExplSm_Anim ===============
+Act_ExplSm_Anim:
+	; Advance the animation at 1/4 speed, every four frames.
 	ldh  a, [hActCur+iActSprMap]
-	add  $02
-	and  $1F
+	add  $02						; Timer += 2
+	and  $1F						; Force valid frame range
 	ldh  [hActCur+iActSprMap], a
+	
+	; If we went past the last valid sprite, the animation is over.
+	srl  a				; >> 3 to sprite ID
 	srl  a
 	srl  a
-	srl  a
-	and  $03
-	cp   $03
-	ret  nz
-	jp   ActS_Despawn
-L024192:;I
+	and  $03			; Filter out other flags
+	cp   $03			; Sprite ID reached $03?
+	ret  nz				; If not, return
+	jp   ActS_Despawn	; Otherwise, we're done
+	
+; =============== Act_Item ===============
+; ID: ACT_1UP, ACT_AMMOLG, ACT_HEALTHLG, ACT_HEALTHSM, ACT_AMMOSM, ACT_ETANK
+; Collectable Items.
+; While these use the same actor code, their effects when collected by the player
+; are handled separately by Pl_DoActColi.coliItem, which goes off their actor ID.
+Act_Item:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024195: db $A3
-L024196: db $41
-L024197: db $A9
-L024198: db $41
-L024199: db $C8
-L02419A: db $41
-L02419B: db $EB
-L02419C: db $41
-L02419D: db $F7
-L02419E: db $41
-L02419F: db $03
-L0241A0: db $42
-L0241A1: db $16
-L0241A2: db $42
-L0241A3:;I
+	dw Act_ItemFixed_Anim
+	dw Act_ItemDrop_Init
+	dw Act_ItemDrop_MoveU
+	dw Act_ItemDrop_MoveD
+	dw Act_ItemDrop_InitGround
+	dw Act_ItemDrop_Ground
+	dw Act_ItemDrop_Flash
+	
+; =============== Act_ItemFixed_Anim ===============
+; Item directly part of the level, never despawns over time.
+; This is the first routine since actors defined in the actor layout
+; *always* spawn in their first routine, no exceptions.
+Act_ItemFixed_Anim:
+	; Every item has the same 2-frame animation, at 1/8 speed.
+	; Those that don't animate, like E-Tanks, merely repeat the same two frames.
 	ld   c, $01
 	call ActS_Anim2
 	ret
-L0241A9:;I
-	ld   h, $CE
+	
+; =============== Act_ItemDrop_* ===============
+; The rest of these routines are used to handle item drops from defeated enemies,
+; which are spawned through ActS_TrySpawnItemDrop.
+; These items fall down until they hit a solid block (but not actor platforms,
+; for performance reasons) and despawn after some amount of time.
+	
+; =============== Act_ItemDrop_Init ===============
+Act_ItemDrop_Init:
+	;--
+	; Try to move the actor a bit closer to the explosion.
+	; This is the same thing done in Act_ExplSm_Init, except here it's not exactly accurate
+	; given iActColiBoxV isn't inherited.
+	ld   h, HIGH(wActColi)		; Seek HL to iActColiBoxV, vertical radius
 	ld   a, [wActCurSlotPtr]
 	ld   l, a
-	inc  l
-	ldh  a, [hActCur+iActY]
+	inc  l ; iActColiBoxV
+	ldh  a, [hActCur+iActY]		; Move the actor up by that
 	sub  [hl]
 	ldh  [hActCur+iActY], a
+	;--
 	ld   c, $01
 	call ActS_Anim2
-	ld   bc, $0300
+	ld   bc, $0300				; 3px/frame upwards speed
 	call ActS_SetSpeedY
-	ld   b, $00
+	ld   b, $00					; Cannot collect it while moving up
 	call ActS_SetColiType
-	jp   ActS_IncRtnId
-L0241C8:;I
+	jp   ActS_IncRtnId			; Next mode
+	
+; =============== Act_ItemDrop_MoveU ===============
+; Move upwards until it hits a ceiling, reach the peak of the jump, or are near the top of the screen.
+; The item can't be collected during this.
+Act_ItemDrop_MoveU:
 	ld   c, $01
 	call ActS_Anim2
-	ldh  a, [hActCur+iActSpdYSub]
+	
+	;--
+	; If our current speed would move us near the top of the screen, cut the jump
+	ldh  a, [hActCur+iActSpdYSub]	; BC = Y Speed
 	ld   c, a
 	ldh  a, [hActCur+iActSpdY]
 	ld   b, a
-	ldh  a, [hActCur+iActYSub]
+	ldh  a, [hActCur+iActYSub]		; Set carry from iActYSub - C
 	sub  c
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]			; A = iActY - B - carry
 	sbc  b
-	and  $F0
-	cp   $00
-	jr   z, L0241E3
-	call ActS_ApplySpeedUpYColi
-	ret  c
-L0241E3:;R
-	ld   b, $06
+	and  $F0						; Check block row range
+	cp   $00						; Are we in the top row? ($00-$0F)
+	jr   z, .setMoveD				; If so, cut the jump
+	;--
+	call ActS_ApplySpeedUpYColi		; Otherwise, apply gravity
+	ret  c							; Did we move anywhere? If so, return
+.setMoveD:							; Otherwise, we hit a solid block or gravity set our speed to 0
+	ld   b, ACTCOLI_ITEM			; Make item tangible as it moves down
 	call ActS_SetColiType
 	jp   ActS_IncRtnId
-L0241EB:;I
+	
+; =============== Act_ItemDrop_MoveD ===============
+; The item moves down.
+Act_ItemDrop_MoveD:
 	ld   c, $01
 	call ActS_Anim2
-	call ActS_ApplySpeedDownYColi
-	ret  c
+	call ActS_ApplySpeedDownYColi	; Apply gravity
+	ret  c							; Hit a solid block? If not, return
 	jp   ActS_IncRtnId
-L0241F7:;I
+	
+; =============== Act_ItemDrop_InitGround ===============
+; Prepares the item to be on the ground.
+Act_ItemDrop_InitGround:
 	ld   c, $01
 	call ActS_Anim2
-	ld   a, $B4
+	ld   a, 3*60					; 3 seconds before flashing
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024203:;I
+	
+; =============== Act_ItemDrop_Ground ===============
+; Item is on the ground.
+; Once on the ground, it won't check for collision anymore.
+Act_ItemDrop_Ground:
 	ld   c, $01
 	call ActS_Anim2
-	ldh  a, [hActCur+iActTimer0C]
+	
+	ldh  a, [hActCur+iActTimer0C]	; Wait those 3 seconds
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $78
+	
+	ld   a, 2*60					; 2 seconds before despawning
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024216:;I
-	ld   bc, $0302
+	
+; =============== Act_ItemDrop_Flash ===============
+; Item is fading out.
+Act_ItemDrop_Flash:
+	; For this part, extend the animation to 3 frames, at 1/4 speed.
+	; This third frame is fully blank, giving the effect of the item fading out.
+	ld   bc, ($03 << 8)|$02			; B = 3 frames, C = 2/8 speed
 	call ActS_AnimCustom
-	ldh  a, [hActCur+iActTimer0C]
+	
+	ldh  a, [hActCur+iActTimer0C]	; Wait those 2 seconds
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	xor  a
+	xor  a							; Despawn
 	ldh  [hActCur+iActId], a
 	ret
-L024227:;I
+	
+; =============== Act_ExplLgPart ===============
+; ID: ACT_EXPLLGPART
+; Individual particle for the large 8-way explosion displayed when either:
+; - The player dies
+; - A boss dies
+; - Energy is being absorbed
+; See also: ActS_SpawnLargeExpl, ActS_SpawnAbsorb
+Act_ExplLgPart:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02422A: db $2E
-L02422B: db $42
-L02422C: db $39
-L02422D: db $42
-L02422E:;I
+	dw Act_ExplLgPart_Init
+	dw Act_ExplLgPart_Move
+; =============== Act_ExplLgPart_Init ===============
+Act_ExplLgPart_Init:
+	; Boss explosions and the weapon absorption particles move twice as fast.
 	ld   a, [wLvlEnd]
-	cp   $01
-	call nz, ActS_DoubleSpd
+	cp   LVLEND_PLDEAD			; Is the player exploding?
+	call nz, ActS_DoubleSpd		; If not, speed up
 	jp   ActS_IncRtnId
-L024239:;I
-	ld   bc, $0301
+; =============== Act_ExplLgPart_Move ===============
+Act_ExplLgPart_Move:
+	ld   bc, ($03 << 8)|$01			; B = 3 frames, C = 1/8 speed
 	call ActS_AnimCustom
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L024246:;I
+	
+; =============== Act_Bee ===============
+; ID: ACT_BEE
+; Giant bee carrying a beehive coming from behind, which it drops
+; on the ground to spawn many smaller bees.
+Act_Bee:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024249: db $55
-L02424A: db $42
-L02424B: db $64
-L02424C: db $42
-L02424D: db $8C
-L02424E: db $42
-L02424F: db $AD
-L024250: db $42
-L024251: db $C8
-L024252: db $42
-L024253: db $E3
-L024254: db $42
-L024255:;I
-	ld   a, $09
-	ld   bc, $000C
-	call ActS_SpawnRel
-	ret  c
+	dw Act_Bee_InitChild
+	dw Act_Bee_InitPath
+	dw Act_Bee_MoveToTarget
+	dw Act_Bee_MoveU
+	dw Act_Bee_MoveD
+	dw Act_Bee_FlyAway
+
+; =============== Act_Bee_InitChild ===============
+; Spawns the beehive.
+Act_Bee_InitChild:
+	; Spawn the child beehive directly below.
+	; If the beehive couldn't spawn, don't continue and try again next frame.
+	ld   a, ACT_BEEHIVE
+	ld   bc, ($00 << 8)|$0C		; 12px below
+	call ActS_SpawnRel			; Could it spawn?
+	ret  c						; If not, return
+	
+	; Keep track of the slot the beehive spawned into.
+	; By convention, tracked child slots are written into iAct0D/iActChildSlotPtr,
+	; as some shared helper subroutines expect it to be there.
 	ld   a, l
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iActChildSlotPtr], a
 	jp   ActS_IncRtnId
-L024264:;I
-	call L001DE4
-	ret  c
-	ld   c, $02
+	
+; =============== Act_Bee_InitPath ===============
+; Sets up the bee's initial horizontal path.
+Act_Bee_InitPath:
+	call ActS_ChkExplodeWithChild	; Did we defeat the bee?
+	ret  c							; If so, return (bee and beehive despawned)
+									; Otherwise...
+	ld   c, $02				; Animate wings at 1/4
 	call ActS_Anim2
-	call ActS_FacePl
-	ld   bc, $0200
+	call ActS_FacePl		; Move towards the player
+	
+	; Set the 2px/frame forward speed, will be used immediately
+	ld   bc, $0200			; 2px/frame forward
 	call ActS_SetSpeedX
+	
+	; Set for later a 0.125px/frame vertical speed, it will be used
+	; when the bee bobs when it's about to drop the hive
 	ld   bc, $0020
 	call ActS_SetSpeedY
-	ld   b, $10
+	
+	;
+	; Set the target position for the bee, it will stop moving when it's reached.
+	;
+	; The bee will pick the opposite side of the screen while coming from behind,
+	; to try place itself in front of the player at the time of this check.
+	; Since the target is relative to the screen, attempting to outrun the bee
+	; will move the target with it.
+	; 
+	ld   b, OBJ_OFFSET_X+$08						; B = 0-16 pixels from the left edge
 	ldh  a, [hActCur+iActSprMap]
-	bit  7, a
-	jr   z, L024286
-	ld   b, $90
-L024286:;R
+	bit  ACTDIRB_R, a								; Facing right?
+	jr   z, .setTarget								; If not, jump (if facing left, the bee spawned on the right)
+	ld   b, OBJ_OFFSET_X+SCREEN_GAME_H-BLOCK_H-$08	; B = 0-16 pixels from the right edge (bee spawned on the left)
+.setTarget:
 	ld   a, b
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iBeeTargetX], a
 	jp   ActS_IncRtnId
-L02428C:;I
-	call L001DE4
+
+; =============== Act_Bee_MoveToTarget ===============
+; Move horizontally until it reaches the target.
+Act_Bee_MoveToTarget:
+	call ActS_ChkExplodeWithChild
 	ret  c
-	ld   c, $02
+	
+	ld   c, $02	
 	call ActS_Anim2
+	
+	; Move forward at 2px/frame
 	call ActS_ApplySpeedFwdX
-	ldh  a, [hActCur+iActX]
-	and  $F0
+	
+	; If we didn't reach the target yet, return.
+	ldh  a, [hActCur+iActX]			; Get bee position
+	and  $F0						; Check 16px wide range to avoid missing the pixel (clear low nybble)
 	ld   b, a
-	ldh  a, [hActCur+iActTimer0C]
-	and  $F0
-	cp   b
-	ret  nz
+	ldh  a, [hActCur+iBeeTargetX]	; Get target
+	and  $F0						; Check 16px ...
+	cp   b							; Do the ranges match?
+	ret  nz							; If not, return
+	
+	; Target reached, turn the other side (the player) and wait for a bit
 	call ActS_FlipH
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0242AD:;I
-	call L001DE4
+	
+; =============== Act_Bee_MoveU ===============
+; Bob upwards for a bit, waiting.	
+Act_Bee_MoveU:
+	call ActS_ChkExplodeWithChild
 	ret  c
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Move up at 0.125px/frame
 	call ActS_ApplySpeedFwdY
+	
+	; Do so for 20 frames
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
 	cp   $14
 	ret  nz
+	
+	; Move vertically after that
 	call ActS_FlipV
 	jp   ActS_IncRtnId
-L0242C8:;I
-	call L001DE4
+	
+; =============== Act_Bee_MoveD ===============
+; Bob downwards for a bit, waiting.	
+Act_Bee_MoveD:
+	call ActS_ChkExplodeWithChild
 	ret  c
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Move down at 0.125px/frame
 	call ActS_ApplySpeedFwdY
+	
+	; Do so for 40 frames
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
 	cp   $28
 	ret  nz
+	
+	; Flip back to its original direction
 	call ActS_FlipH
 	jp   ActS_IncRtnId
-L0242E3:;I
+	
+; =============== Act_Bee_FlyAway ===============
+; Move the bee horizontally in the same horizontal direction 
+; from Act_Bee_MoveToTarget until it gets offscreened.
+; Act_BeeHive is manually timed to drop itself during this mode.
+Act_Bee_FlyAway:
 	ld   c, $02
 	call ActS_Anim2
+	; Move forward at 2px/frame
 	call ActS_ApplySpeedFwdX
 	ret
-L0242EC:;I
+	
+; =============== Act_BeeHive ===============
+; ID: ACT_BEEHIVE
+; Beehive carried by a giant bee, when it drops it blows up, spawning smaller bees.
+;
+; Child actor for Act_Bee, but completely independent so its speed and timings need
+; to be consistent with those from its parent.
+Act_BeeHive:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0242EF: db $F9
-L0242F0: db $42
-L0242F1: db $18
-L0242F2: db $43
-L0242F3: db $2D
-L0242F4: db $43
-L0242F5: db $3F
-L0242F6: db $43
-L0242F7: db $56
-L0242F8: db $43
-L0242F9:;I
+	dw Act_BeeHive_InitPath
+	dw Act_BeeHive_MoveToTarget
+	dw Act_BeeHive_MoveU
+	dw Act_BeeHive_MoveD
+	dw Act_BeeHive_Drop
+
+; =============== Act_BeeHive_InitPath ===============
+; Identical to Act_Bee_InitPath except the hive doesn't animate and can't be hit.
+; These differences also apply to the next routines.
+Act_BeeHive_InitPath:
 	call ActS_FacePl
-	ld   bc, $0200
+	
+	ld   bc, $0200			; 2px/frame forward speed
 	call ActS_SetSpeedX
-	ld   bc, $0020
+	
+	ld   bc, $0020			; 0.125px/frame vertical speed
 	call ActS_SetSpeedY
-	ld   b, $10
+	
+	; Set target pos
+	ld   b, OBJ_OFFSET_X+$08
 	ldh  a, [hActCur+iActSprMap]
-	bit  7, a
-	jr   z, L024312
-	ld   b, $90
-L024312:;R
+	bit  ACTDIRB_R, a
+	jr   z, .setTarget
+	ld   b, OBJ_OFFSET_X+SCREEN_GAME_H-BLOCK_H-$08
+.setTarget:
 	ld   a, b
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iBeeTargetX], a
 	jp   ActS_IncRtnId
-L024318:;I
+	
+; =============== Act_BeeHive_MoveToTarget ===============
+; Move horizontally until it reaches the target.
+Act_BeeHive_MoveToTarget:
 	call ActS_ApplySpeedFwdX
+	
+	; Check target pos
 	ldh  a, [hActCur+iActX]
 	and  $F0
 	ld   b, a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iBeeTargetX]
 	and  $F0
 	cp   b
 	ret  nz
+	
+	; (Hive doesn't turn)
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02432D:;I
+	
+; =============== Act_BeeHive_MoveU ===============
+; Bob upwards for a bit, waiting.		
+Act_BeeHive_MoveU:
+	; Move up at 0.125px/frame
 	call ActS_ApplySpeedFwdY
+	
+	; Do so for 20 frames
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
 	cp   $14
 	ret  nz
+	
+	; Move vertically after that
 	call ActS_FlipV
 	jp   ActS_IncRtnId
-L02433F:;I
+	
+; =============== Act_BeeHive_MoveD ===============
+; Bob downwards for a bit, waiting.	
+Act_BeeHive_MoveD:
+	; Move down at 0.125px/frame
 	call ActS_ApplySpeedFwdY
+	
+	; Do so for 40 frames
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
 	cp   $28
 	ret  nz
-	xor  a
+	
+	; This is where the beehive and bee diverge.
+	; Reset the hive's vertical speed, in preparation for dropping it on the ground.
+	xor  a							; And sprite flags too
 	ldh  [hActCur+iActSprMap], a
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
-L024356:;I
+	
+; =============== Act_BeeHive_Drop ===============
+; The beehive drops.
+Act_BeeHive_Drop:
+	; Continue falling down until hitting a solid block
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	
+	; Once we do, immediately despawn the hive.
 	xor  a
 	ldh  [hActCur+iActId], a
-	ld   a, $0A
-	ld   bc, $F0F0
+	
+	; Try to spawn five chibees around the hive.
+	; These bees are what handle the hive explosion, as the hive itself has just despawned.
+	ld   a, ACT_CHIBEE
+	ld   bc, (-$10 << 8)|LOW(-$10)	; Top left		
 	call ActS_SpawnRel
 	ret  c
-	ld   a, $0A
-	ld   bc, $10F0
+	ld   a, ACT_CHIBEE
+	ld   bc, ($10 << 8)|LOW(-$10)	; Top right	
 	call ActS_SpawnRel
 	ret  c
-	ld   a, $0A
-	ld   bc, $F010
+	ld   a, ACT_CHIBEE
+	ld   bc, (-$10 << 8)|$10	; Bottom left	
 	call ActS_SpawnRel
 	ret  c
-	ld   a, $0A
-	ld   bc, $1010
+	ld   a, ACT_CHIBEE
+	ld   bc, ($10 << 8)|$10		; Bottom right	
 	call ActS_SpawnRel
 	ret  c
-	ld   a, $0A
-	ld   bc, $0000
+	ld   a, ACT_CHIBEE
+	ld   bc, ($00 << 8)|$00		; Centered
 	call ActS_SpawnRel
 	ret
-L02438A:;I
+	
+; =============== Act_Chibee ===============
+; ID: ACT_CHIBEE
+; Small bee homing into the player.
+Act_Chibee:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02438D: db $93
-L02438E: db $43
-L02438F: db $A9
-L024390: db $43
-L024391: db $D2
-L024392: db $43
-L024393:;I
+	dw Act_Chibee_ExplAnim
+	dw Act_Chibee_MoveLine
+	dw Act_Chibee_MoveArc
+	
+	DEF ACTRTN_CHIBEE_MOVELINE = $01
+	
+; =============== Act_Chibee_ExplAnim ===============
+; Animates the explosion effect, using identical code to Act_ExplSm_Anim.
+; The first three sprite mappings for the small bee are explosion frames.
+Act_Chibee_ExplAnim:
+	; Advance the animation at 1/4 speed, every four frames.
 	ldh  a, [hActCur+iActSprMap]
-	add  $02
-	and  $1F
+	add  $02						; Timer += 2
+	and  $1F						; Force valid frame range
 	ldh  [hActCur+iActSprMap], a
+	
+	; If we went past the last valid sprite, the animation is over.
+	srl  a				; >> 3 to sprite ID
 	srl  a
 	srl  a
-	srl  a
-	and  $03
-	cp   $03
-	ret  nz
-	jp   ActS_IncRtnId
-L0243A9:;I
+	and  $03			; Filter out other flags
+	cp   $03			; Sprite ID reached $03?
+	ret  nz				; If not, return
+	jp   ActS_IncRtnId	; Otherwise, next mode
+	
+; =============== Act_Chibee_MoveLine ===============
+; Moves the bee in a straight line towards the player.
+Act_Chibee_MoveLine:
+	; Use the 2-frame animation at $03-$04
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Move the bee directly towards the player until it gets too close
 	call ActS_AngleToPl
-	ld   a, [wTmpCF52]
+	ld   a, [tActPlYDiff]	; Get Y distance
 	ld   b, a
-	ld   a, [wTmpCF53]
-	or   b
-	cp   $10
-	jr   c, L0243CC
+	ld   a, [tActPlXDiff]	; Get X distance
+	or   b					; Are both of them...
+	cp   $10				; ...less than 16?
+	jr   c, .nextMode		; If so, prepare circling around
+	
+.moveDiag:
+	; Move diagonally at half speed
 	call ActS_HalfSpdSub
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L0243CC:;R
+	
+.nextMode:
 	call ActS_InitCirclePath
 	jp   ActS_IncRtnId
-L0243D2:;I
+	
+; =============== Act_Chibee ===============
+; Moves the bee in a circular path for ~3 seconds, then loops back to Act_Chibee_MoveLine.
+Act_Chibee_MoveArc:
+	; Use the 2-frame animation at $03-$04
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Wait nearly 3 seconds before returning to the previous mode
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
-	cp   $B0
-	jr   c, L0243EA
-	ld   a, $01
+	cp   $B0							; Timer < $B0?
+	jr   c, .doArc						; If so, skip
+	ld   a, ACTRTN_CHIBEE_MOVELINE
 	ldh  [hActCur+iActRtnId], a
-L0243EA:;R
-	ld   a, $02
+	
+.doArc:
+	ld   a, ARC_SM						; Move along a small circular path
 	call ActS_ApplyCirclePath
-	call ActS_HalfSpdSub
+	call ActS_HalfSpdSub				; At half speed as always
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L0243F9:;I
+	
+; =============== Act_Wanaan ===============
+; ID: ACT_WANAAN
+; Retractable trap that activates when the player gets close.
+Act_Wanaan:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0243FC: db $06
-L0243FD: db $44
-L0243FE: db $1A
-L0243FF: db $44
-L024400: db $2F
-L024401: db $44
-L024402: db $47
-L024403: db $44
-L024404: db $60
-L024405: db $44
-L024406:;I
-	ld   b, $00
+	dw Act_Wanaan_Init
+	dw Act_Wanaan_ChkDistance
+	dw Act_Wanaan_Wait
+	dw Act_Wanaan_MoveU
+	dw Act_Wanaan_MoveD
+	
+	DEF ACTRTN_WANAAN_CHKDISTANCE = $01
+
+; =============== Act_Wanaan_Init ===============
+Act_Wanaan_Init:
+	; Make intangible while retracted
+	ld   b, ACTCOLI_PASS
 	call ActS_SetColiType
+	
+	; The center of the pipe is 8px to the right
 	ldh  a, [hActCur+iActX]
 	add  $08
 	ldh  [hActCur+iActX], a
+	
+	; Rise and retract at 2px/frame
 	ld   bc, $0200
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L02441A:;I
-	ld   a, [wPlRelY]
+	
+; =============== Act_Wanaan_ChkDistance ===============
+Act_Wanaan_ChkDistance:
+	; Do not activate if the player is below
+	ld   a, [wPlRelY]		; B = PlY
 	ld   b, a
-	ldh  a, [hActCur+iActY]
-	sub  b
-	ret  c
+	ldh  a, [hActCur+iActY]	; A = ActY
+	sub  b					; ActY - PlY < 0? (ActY < PlY)
+	ret  c					; If so, return
+	
+	; Wait for the player to get within 20px horizontally before activating
 	call ActS_GetPlDistanceX
 	cp   $14
 	ret  nc
+	
+	; Delay activation by $1E frames
 	ld   a, $1E
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02442F:;I
+	
+; =============== Act_Wanaan_Wait ===============
+Act_Wanaan_Wait:
+	; Wait for it...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Show sprite
 	ld   a, $01
 	call ActS_SetSprMapId
-	ld   b, $03
+	; Make tangible and invulnerable
+	ld   b, ACTCOLI_ENEMYREFLECT
 	call ActS_SetColiType
+	; Move up for 16 frames
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024447:;I
+	
+; =============== Act_Wanaan_MoveU ===============
+Act_Wanaan_MoveU:
+	; Move up for 16 frames at 2px/frame (2 blocks up)
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Close grip
 	ld   a, $02
 	call ActS_SetSprMapId
+	
+	; Start retracting to the ground
 	call ActS_FlipV
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024460:;I
+	
+; =============== Act_Wanaan_MoveD ===============
+Act_Wanaan_MoveD:
+	; Move down for 16 frames at 2px/frame (2 blocks up)
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; We're back inside the pipe
+	
+	; Hide sprite (its first is blank)
 	ld   a, $00
 	call ActS_SetSprMapId
-	ld   b, $00
+	; Make intangible while retracted
+	ld   b, ACTCOLI_PASS
 	call ActS_SetColiType
+	; Set direction for rising up
 	call ActS_FlipV
-	ld   a, $01
+	ld   a, ACTRTN_WANAAN_CHKDISTANCE
 	ldh  [hActCur+iActRtnId], a
 	ret
-L02447C:;I
+	
+; =============== Act_HammerJoe ===============
+; ID: ACT_HAMMERJOE
+; Sniper Joe throwing hammers forward.
+Act_HammerJoe:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02447F: db $85
-L024480: db $44
-L024481: db $A0
-L024482: db $44
-L024483: db $EC
-L024484: db $44
-L024485:;I
-	ld   a, $0D
-	ld   bc, $00E2
+	dw Act_HammerJoe_Init
+	dw Act_HammerJoe_Swing
+	dw Act_HammerJoe_Throw
+	DEF ACTRTN_HAMMERJOE_INIT = $00
+	DEF ACTRTN_HAMMER_INITTHROW = $01
+
+; =============== Act_HammerJoe_Init ===============
+Act_HammerJoe_Init:
+	; Spawn Hammer Joe's hammer immediately.
+	; [BUG] Unlike with bees, no check if made if the hammer could actually spawn.
+	;       Hammer Joe's placement makes it impossible to trigger, but if it could,
+	;       the first slot would be treated as the hammer.
+	ld   a, ACT_HAMMER
+	ld   bc, ($00 << 8)|LOW(-$1E)	; 30px above, right above the top of the collosion box
 	call ActS_SpawnRel
-	ld   a, l
-	ldh  [hActCur+iAct0D], a
-	add  $08
+	ld   a, l						; Keep track of child
+	ldh  [hActCur+iActChildSlotPtr], a
+	
+	; The hammer moves 2px/frame forward
+	add  iActSpdXSub
 	ld   l, a
 	ld   a, $00
-	ldi  [hl], a
+	ldi  [hl], a ; iActSpdXSub
 	ld   a, $02
-	ld   [hl], a
+	ld   [hl], a ; iActSpdX
+	
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0244A0:;I
-	call L001DE4
+	
+; =============== Act_HammerJoe_Swing ===============
+; Swing the hammer while invulnerable.
+Act_HammerJoe_Swing:
+	;--
+	; Not necessary given it's invulnerable here
+	call ActS_ChkExplodeWithChild
 	ret  c
+	;--
+	
+	; Hammer Joe itself only has a 2-frame animation, it's the hammer that has four.
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Always face the player while swinging
 	call ActS_FacePl
-	ld   h, $CD
-	ldh  a, [hActCur+iAct0D]
-	inc  a
-	inc  a
+	
+	;--
+	;
+	; Make the hammer do so too.
+	;
+	
+	; HL = Ptr to hammer iActSprMap
+	ld   h, HIGH(wAct)			
+	ldh  a, [hActCur+iActChildSlotPtr]
+	inc  a ; iActRtnId
+	inc  a ; iActSprMap
 	ld   l, a
+	
+	; B = Joe's direction
 	ldh  a, [hActCur+iActSprMap]
-	and  $80
+	and  ACTDIR_R
 	ld   b, a
-	ld   a, [hl]
-	and  $7F
-	or   b
-	ld   [hl], a
-	ldh  a, [hActCur+iActTimer0C]
+	
+	ld   a, [hl]		; Read hammer iActSprMap
+	and  $FF^ACTDIR_R	; Delete direction flag
+	or   b				; Merge with ours
+	ld   [hl], a		; Save back
+	;--
+	
+
+	ldh  a, [hActCur+iActTimer0C]	; Timer++
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
-	ld   b, $03
-	cp   $5A
-	jr   z, L0244D9
-	cp   $3C
-	jr   c, L0244D4
-	ld   a, $02
-	ld   [wActCurSprMapRelId], a
-	ld   b, $02
-L0244D4:;R
+	
+	;
+	; After 1 second, open Joe's eyes and make him vulnerable.
+	; Half a second after that, throw the hammer forward.
+	;
+	ld   b, ACTCOLI_ENEMYREFLECT
+	cp   60+30						; Timer == $5A? (half a second passed after $3C)
+	jr   z, .throw					; If so, jump
+	cp   60							; Timer < $3C? (second hasn't passed yet)
+	jr   c, .setColi				; If so, jump
+.openEyes:
+	ld   a, $02						; Use frames $02-$03, with eye open	
+	ld   [wActCurSprMapBaseId], a
+	ld   b, ACTCOLI_ENEMYHIT		; Make vulnerable
+.setColi:
 	ld   b, b
 	call ActS_SetColiType
 	ret
-L0244D9:;R
+.throw:
+
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
+	
+	; Reset animation frame
 	call ActS_ClrSprMapId
-	ld   h, $CD
-	ldh  a, [hActCur+iAct0D]
+	
+	; Advance the child hammer's routine to throw it forward
+	ld   h, HIGH(wAct)				 ; HL = Ptr to hammer iActRtnId
+	ldh  a, [hActCur+iActChildSlotPtr]
 	inc  a
 	ld   l, a
-	ld   a, $01
+	ld   a, ACTRTN_HAMMER_INITTHROW
 	ldi  [hl], a
+	
 	jp   ActS_IncRtnId
-L0244EC:;I
-	call L001DE4
+	
+; =============== Act_HammerJoe_Throw ===============
+; Wait a second before looping to the start.
+Act_HammerJoe_Throw:
+	; If defeated during this, also kill off the hammer
+	call ActS_ChkExplodeWithChild
 	ret  c
+	
+	; Use throw frame
 	ld   a, $04
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Wait for one second
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
-	cp   $3C
+	cp   60
 	ret  nz
-	ld   b, $03
+	
+	; Make invulnerable again
+	ld   b, ACTCOLI_ENEMYREFLECT
 	call ActS_SetColiType
-	ld   a, $00
+	
+	; Back to start
+	ld   a, ACTRTN_HAMMERJOE_INIT
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024508:;I
+	
+; =============== Act_Hammer ===============
+; ID: ACT_HAMMER
+; Hammer thrown by Hammer Joe.
+Act_Hammer:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02450B: db $11
-L02450C: db $45
-L02450D: db $17
-L02450E: db $45
-L02450F: db $44
-L024510: db $45
-L024511:;I
+	dw Act_Hammer_Swing
+	dw Act_Hammer_InitThrow
+	dw Act_Hammer_Throw
+
+; =============== Act_Hammer_Swing ===============
+Act_Hammer_Swing:
+	; 4-frame swinging hammer anim at 1/4 speed (frames $00-$03)
 	ld   c, $02
 	call ActS_Anim4
 	ret
-L024517:;I
+	
+; =============== Act_Hammer_InitThrow ===============
+; Sets up the animation and position for the thrown hammer.
+Act_Hammer_InitThrow:
+	; Switch to frame $04 (part of the throw anim)
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $04
-	ld   [wActCurSprMapRelId], a
-	ld   b, $02
+	ld   [wActCurSprMapBaseId], a
+	
+	; Not actually vulnerable, it's set to be invulnerable to all weapons
+	ld   b, ACTCOLI_ENEMYHIT
 	call ActS_SetColiType
+	
+	;
+	; As Hammer Joe's arm is logically moved forward when throwing, reposition the hammer...
+	;
+	
+	; ...18px down
 	ldh  a, [hActCur+iActY]
 	add  $12
 	ldh  [hActCur+iActY], a
+	
+	; ...and 20px forward
 	ldh  a, [hActCur+iActSprMap]
-	bit  7, a
-	jr   nz, L02453B
+	bit  ACTDIRB_R, a			; Facing right?
+	jr   nz, .moveR				; If so, jump
+.moveL:
 	ldh  a, [hActCur+iActX]
 	sub  $18
 	ldh  [hActCur+iActX], a
 	jp   ActS_IncRtnId
-L02453B:;R
+.moveR:
 	ldh  a, [hActCur+iActX]
 	add  $18
 	ldh  [hActCur+iActX], a
 	jp   ActS_IncRtnId
-L024544:;I
+	
+; =============== Act_Hammer_Throw ===============
+; Hammer is thrown forward at 2px/frame.
+Act_Hammer_Throw:
+	; 2-frame animation at $04-$05 when moving through the air
 	ld   c, $01
 	call ActS_Anim2
 	ld   a, $04
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Move forward at 2px/frame.
 	call ActS_ApplySpeedFwdX
 	ret
-L024552:;I
+	
+; =============== Act_NeoMonking ===============
+; ID: ACT_NEOMONKING
+Act_NeoMonking:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024555: db $63
-L024556: db $45
-L024557: db $7A
-L024558: db $45
-L024559: db $98
-L02455A: db $45
-L02455B: db $B6
-L02455C: db $45
-L02455D: db $C2
-L02455E: db $45
-L02455F: db $D7
-L024560: db $45
-L024561: db $E4
-L024562: db $45
-L024563:;I
+	dw Act_NeoMonking_WaitGround
+	dw Act_NeoMonking_JumpCeil
+	dw Act_NeoMonking_WaitCeil
+	dw Act_NeoMonking_DropCeil
+	dw Act_NeoMonking_InitJump
+	dw Act_NeoMonking_JumpU
+	dw Act_NeoMonking_JumpD
+	DEF ACTRTN_NEOMONKING_INITJUMP = $04
+
+; =============== Act_NeoMonking_WaitGround ===============
+; Waits on the ground until the player gets close.
+Act_NeoMonking_WaitGround:
 	ld   c, $01
 	call ActS_Anim2
 	call ActS_FacePl
+	
+	; Wait until the player gets within 4 blocks
 	call ActS_GetPlDistanceX
-	cp   $40
+	cp   BLOCK_H*4
 	ret  nc
+	
+	; Set 4px/frame jump speed
 	ld   bc, $0400
 	call ActS_SetSpeedY
+	
+	; Jump to the ceiling
 	jp   ActS_IncRtnId
-L02457A:;I
+	
+; =============== Act_NeoMonking_JumpCeil ===============
+; Jumps up in the air.
+Act_NeoMonking_JumpCeil:
+	; Use frames $00-$01, at 1/8 speed
 	ld   c, $01
 	call ActS_Anim2
 	call ActS_FacePl
-	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActX]
+	
+	; Move up at 4px/frame until a solid block is above
+	call ActS_ApplySpeedFwdY	; Move up
+	ldh  a, [hActCur+iActX]		; X Target: ActX
 	ld   [wTargetRelX], a
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]		; Y Target: ActY - $18
 	sub  $18
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	ret  c
-	jp   ActS_IncRtnId
-L024598:;I
+	call Lvl_GetBlockId			; Is there a solid block there?
+	ret  c						; If not, return
+	jp   ActS_IncRtnId			; Start idling
+	
+; =============== Act_NeoMonking_WaitCeil ===============
+; Holds on the ceiling until the player gets even closer.
+Act_NeoMonking_WaitCeil:
+	; Use frames $02-$05, at 1/8 speed
 	ld   c, $01
 	call ActS_Anim4
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
 	call ActS_FacePl
+	
+	; Wait until the player gets within 1 block
 	call ActS_GetPlDistanceX
-	cp   $10
+	cp   BLOCK_H
 	ret  nc
+	
+.startJumpD:
+	; Reset relative frame, in preparation for the next base 
 	call ActS_ClrSprMapId
+	
+	; Reset gravity
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
-L0245B6:;I
+	
+; =============== Act_NeoMonking_DropCeil ===============
+; Jumps down from the ceiling.
+Act_NeoMonking_DropCeil:
+	; Use frame $06, no animation
 	ld   a, $06
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Apply gravity until we touch a solid block
 	call ActS_ApplySpeedDownYColi
 	ret  c
 	jp   ActS_IncRtnId
-L0245C2:;I
+	
+; =============== Act_NeoMonking_InitJump ===============
+; Sets up a jump towards the player.
+Act_NeoMonking_InitJump:
 	xor  a
 	ldh  [hActCur+iActSprMap], a
-	call ActS_FacePl
-	ld   bc, $0180
+	
+	call ActS_FacePl		; Towards the player
+	ld   bc, $0180			; 1.5px/frame forward
 	call ActS_SetSpeedX
-	ld   bc, $0300
+	ld   bc, $0300			; 3px/frame jump
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L0245D7:;I
-	call ActS_ApplySpeedFwdXColi
-	call nc, ActS_FlipH
-	call ActS_ApplySpeedUpYColi
-	ret  c
-	jp   ActS_IncRtnId
-L0245E4:;I
-	call ActS_ApplySpeedFwdXColi
-	call nc, ActS_FlipH
-	call ActS_ApplySpeedDownYColi
-	ret  c
-	ld   a, $04
-	ldh  [hActCur+iActRtnId], a
+	
+; =============== Act_NeoMonking_JumpU ===============
+; Handles jump arc while moving up.
+Act_NeoMonking_JumpU:
+	call ActS_ApplySpeedFwdXColi	; Move forward
+	call nc, ActS_FlipH				; Touched a wall? If so, rebound
+	call ActS_ApplySpeedUpYColi		; Move up
+	ret  c							; Reached the peak? If not, return
+	jp   ActS_IncRtnId				; Start moving down
+	
+; =============== Act_NeoMonking_JumpD ===============
+; Handles jump arc while moving down.
+Act_NeoMonking_JumpD:
+	call ActS_ApplySpeedFwdXColi	; Move forward
+	call nc, ActS_FlipH				; Touched a wall? If so, rebound
+	call ActS_ApplySpeedDownYColi	; Move down
+	ret  c							; Touched the ground? If not, return
+	ld   a, ACTRTN_NEOMONKING_INITJUMP	; Otherwise, immediately set up a new jump
+	ldh  [hActCur+iActRtnId], a		; Unlike RM3, these will never return to idling
 	ret
-L0245F3:;I
+	
+; =============== Act_NeoMet ===============
+; ID: ACT_NEOMET
+; Rockman 2-style Met.
+Act_NeoMet:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0245F6: db $06
-L0245F7: db $46
-L0245F8: db $1D
-L0245F9: db $46
-L0245FA: db $27
-L0245FB: db $46
-L0245FC: db $3C
-L0245FD: db $46
-L0245FE: db $54
-L0245FF: db $46
-L024600: db $65
-L024601: db $46
-L024602: db $73
-L024603: db $46
-L024604: db $A1
-L024605: db $46
-L024606:;I
+	dw Act_NeoMet_InitHide
+	dw Act_NeoMet_WaitNotice
+	dw Act_NeoMet_Notice
+	dw Act_NeoMet_UnHide
+	dw Act_NeoMet_Fire
+	dw Act_NeoMet_PostFireWait
+	dw Act_NeoMet_Walk
+	dw Act_NeoMet_Fall
+	DEF ACTRTN_NEOMET_INITHIDE = $00
+
+; =============== Act_NeoMet_InitHide ===============
+Act_NeoMet_InitHide:
+	; When walking forwards, do so at 0.5px/frame
 	ld   bc, $0080
 	call ActS_SetSpeedX
-	ld   b, $03
+	
+	; Mets start out hiding inside their invulnerable hat
+	ld   b, ACTCOLI_ENEMYREFLECT
 	call ActS_SetColiType
 	ld   a, $00
 	call ActS_SetSprMapId
-	ld   a, $3C
+	
+	; Wait for 1 second
+	ld   a, 60
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02461D:;I
+	
+; =============== Act_NeoMet_WaitNotice ===============
+; Waits for 1 second before noticing the player.
+Act_NeoMet_WaitNotice:
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	jp   ActS_IncRtnId
-L024627:;I
+	
+; =============== Act_NeoMet_Notice ===============
+; Waits for the player to get close.
+Act_NeoMet_Notice:
+	; Always face player while on the lookout
 	call ActS_FacePl
+	; If the player isn't within 4 blocks, return
 	call ActS_GetPlDistanceX
-	cp   $40
+	cp   BLOCK_H*4
 	ret  nc
+	; Set transition sprite
 	ld   a, $01
 	call ActS_SetSprMapId
+	; Show it for 8 frames
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02463C:;I
+	
+; =============== Act_NeoMet_UnHide ===============
+; Rise up from shield.
+Act_NeoMet_UnHide:
+	; Wait those 8 frames first
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Set fully risen sprite
 	ld   a, $02
 	call ActS_SetSprMapId
-	ld   b, $02
+	; Met isn't hiding anymore, make vulnerable
+	ld   b, ACTCOLI_ENEMYHIT
 	call ActS_SetColiType
+	; Wait 20 frames before attacking
 	ld   a, $14
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024654:;I
+	
+; =============== Act_NeoMet_Fire ===============
+; Fire projectiles.
+Act_NeoMet_Fire:
+	; Wait for it...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	call L027C64
-	ld   a, $3C
+	; Do spread shot
+	call Act_NeoMet_SpawnShots
+	; Wait for another second
+	ld   a, 60
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024665:;I
+	
+; =============== Act_NeoMet_PostFireWait ===============
+; Stands still after firing.
+Act_NeoMet_PostFireWait:
+	; Wait 1 second before walking forward
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Walk for $30 frames
 	ld   a, $30
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024673:;I
+	
+; =============== Act_NeoMet_Walk ===============
+; Slowly walk forward.
+Act_NeoMet_Walk:
+	; After almost a second of walking, hide instantly.
+	; There is no transition sprite unlike when rising up.
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
-	jr   nz, L024680
-	ld   a, $00
+	jr   nz, .move
+	ld   a, ACTRTN_NEOMET_INITHIDE
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024680:;R
+.move:
+	; Use frames $03-$04, at 1/8 speed
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ld   c, $01
 	call ActS_Anim2
-	call ActS_ApplySpeedFwdXColi
-	jp   nc, ActS_FlipH
-	call ActS_GetGroundColi
-	ld   a, [wPlColiGround]
-	cp   $03
-	ret  nz
-	xor  a
+	
+	; Move forward at 0.5px/frame
+	call ActS_ApplySpeedFwdXColi	; Solid wall hit?
+	jp   nc, ActS_FlipH				; If so, turn around
+	
+	; If there's no solid ground above, start falling
+	call ActS_GetGroundColi			; Calc collision flags
+	ld   a, [wColiGround]
+	cp   %11						; Are both blocks empty?
+	ret  nz							; If not, return
+	xor  a							; Otherwise, init fall speed
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
-L0246A1:;I
-	call ActS_ApplySpeedDownYColi
-	ret  c
-	ld   a, $00
+	
+; =============== Act_NeoMet_Fall ===============
+; Falling mode, in case we walked off a platform.
+Act_NeoMet_Fall:
+	call ActS_ApplySpeedDownYColi	; Apply gravity
+	ret  c							; Hit a solid block yet? If not, return
+	ld   a, ACTRTN_NEOMET_INITHIDE	; Otherwise, hide immediately
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0246AA:;I
+	
+; =============== Act_PickelmanBull ===============
+; ID: ACT_PICKELBULL
+; Pickelman riding a bulldozer.
+Act_PickelmanBull:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0246AD: db $B3
-L0246AE: db $46
-L0246AF: db $BC
-L0246B0: db $46
-L0246B1: db $DA
-L0246B2: db $46
-L0246B3:;I
+	dw Act_PickelmanBull_Init
+	dw Act_PickelmanBull_MoveFwd
+	dw Act_PickelmanBull_Shake
+
+; =============== Act_PickelmanBull_Init ===============
+Act_PickelmanBull_Init:
+	; Move forward 0.5px/frame
 	ld   bc, $0080
 	call ActS_SetSpeedX
 	jp   ActS_IncRtnId
-L0246BC:;I
+	
+; =============== Act_PickelmanBull_MoveFwd ===============
+; Moves the bulldozer forward.
+Act_PickelmanBull_MoveFwd:
+	; Animate wheels
 	ld   c, $01
 	call ActS_Anim2
-	call ActS_ApplySpeedFwdXColi
-	jp   nc, ActS_FlipH
-	call ActS_GetBlockIdFwdGround
-	jp   c, ActS_FlipH
-	call Rand
-	cp   $08
-	ret  nc
-	ld   a, $1E
+	
+	; Move forward
+	call ActS_ApplySpeedFwdXColi	; Hit a solid wall?
+	jp   nc, ActS_FlipH				; If so, turn
+	call ActS_GetBlockIdFwdGround	; Is there no ground forward?
+	jp   c, ActS_FlipH				; If so, turn
+	
+	; This forward movement happens for a random amount of frames.
+	; Each time we get there, there's a ~3% chance of shaking for a bit.
+	call Rand		; A = Rand()
+	cp   $08		; A >= $09?
+	ret  nc			; If so, return
+					; 1/32 chance of getting here
+	
+	; Stutter for half a second
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0246DA:;I
+	
+; =============== Act_PickelmanBull_Shake ===============
+; Shakes the bulldozer.
+Act_PickelmanBull_Shake:
+	; Still animate wheels
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Go back to moving forward after the 30 frames pass
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	jp   z, ActS_DecRtnId
-	ldh  a, [hActCur+iActTimer0C]
-	ld   hl, hActCur+iActX
-	bit  2, a
-	jr   z, L0246F3
-	dec  [hl]
+	
+	; Alternate between moving left and right every 4 frames, at 1px/frame.
+	ldh  a, [hActCur+iActTimer0C]	; A = Timer
+	ld   hl, hActCur+iActX			; HL = Ptr to iActX
+	bit  2, a						; Timer & 4 == 0?
+	jr   z, .moveR					; If so, move right
+.moveL:
+	dec  [hl]						; iActX--
 	ret
-L0246F3:;R
-	inc  [hl]
+.moveR:
+	inc  [hl]						; iActX++
 	ret
-L0246F5:;I
+	
+; =============== Act_Bikky ===============
+; ID: ACT_BIKKY
+; Giant jumper robot.
+Act_Bikky:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0246F8: db $02
-L0246F9: db $47
-L0246FA: db $1F
-L0246FB: db $47
-L0246FC: db $3C
-L0246FD: db $47
-L0246FE: db $4E
-L0246FF: db $47
-L024700: db $5B
-L024701: db $47
-L024702:;I
-	ld   bc, $0080
+	dw Act_Bikky_Init
+	dw Act_Bikky_GroundReflect
+	dw Act_Bikky_GroundHit
+	dw Act_Bikky_JumpU
+	dw Act_Bikky_JumpD
+	DEF ACTRTN_BIKKY_INIT = $00
+
+; =============== Act_Bikky_Init ===============
+; Initializes the jumps.
+Act_Bikky_Init:
+	; Set up jump speed for later
+	ld   bc, $0080			; 0.5px/frame forward
 	call ActS_SetSpeedX
-	ld   bc, $0300
+	ld   bc, $0300			; 3px/frame upwards
 	call ActS_SetSpeedY
-	ld   b, $03
+	
+	; Start invulnerable
+	ld   b, ACTCOLI_ENEMYREFLECT
 	call ActS_SetColiType
+	
+	; With eyes closed
 	ld   a, $00
 	call ActS_SetSprMapId
-	ld   a, $3C
+	
+	; Stay for one second like this
+	ld   a, 60
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02471F:;I
+	
+; =============== Act_Bikky_GroundReflect ===============
+; Stays on the ground, invulnerable.
+Act_Bikky_GroundReflect:
+	; Use frames $00-$01, at 1/8 speed, giving a shaking effect
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Wait for the second...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   b, $02
+	
+	; After the second passes, show its eyes and make it vulnerable
+	ld   b, ACTCOLI_ENEMYHIT	; Vulnerable
 	call ActS_SetColiType
-	ld   a, $02
+	ld   a, $02					; Set frame $02
 	call ActS_SetSprMapId
+	
+	; Small delay before jumping
 	ld   a, $14
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02473C:;I
+	
+; =============== Act_Bikky_GroundHit ===============
+; Stays on the ground, vulnerable.
+Act_Bikky_GroundHit:
+	; Wait for those 20 frames
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Set jumping sprite and jump towards the player.
 	ld   a, $03
 	call ActS_SetSprMapId
 	call ActS_FacePl
 	jp   ActS_IncRtnId
-L02474E:;I
+	
+; =============== Act_Bikky_JumpU ===============
+; Jumping, moving up.
+Act_Bikky_JumpU:
+	; Move forward, turn around if a wall is hit
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Apply gravity, switch to next routine when reaching the peak of the jump
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L02475B:;I
+	
+; =============== Act_Bikky_JumpD ===============
+; Jumping, moving down.
+Act_Bikky_JumpD:
+	; Move forward, turn around if a wall is hit
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Apply gravity, return invulnerable on the ground and loop
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $00
+	ld   a, ACTRTN_BIKKY_INIT
 	ldh  [hActCur+iActRtnId], a
 	ret
-L02476A:;I
+	
+; =============== Act_Komasaburo ===============
+; ID: ACT_KOMASABURO
+; Spawns spinning tops.
+Act_Komasaburo:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02476D: db $77
-L02476E: db $47
-L02476F: db $83
-L024770: db $47
-L024771: db $8F
-L024772: db $47
-L024773: db $9E
-L024774: db $47
-L024775: db $C0
-L024776: db $47
-L024777:;I
+	dw Act_Komasaburo_Init
+	dw Act_Komasaburo_InitIdle
+	dw Act_Komasaburo_Idle
+	dw Act_Komasaburo_Shoot
+	dw Act_Komasaburo_AfterShoot
+	DEF ACTRTN_KOMASABURO_INITIDLE = $01
+	
+; =============== Act_Komasaburo_Init ===============
+Act_Komasaburo_Init:
 	call ActS_FacePl
+	; This actor is around two blocks wide and is intended to be spawned
+	; between those two blocks, but the actor layout format isn't precise
+	; enough for that, so move him right by 8px during init.
 	ldh  a, [hActCur+iActX]
 	add  $08
 	ldh  [hActCur+iActX], a
 	jp   ActS_IncRtnId
-L024783:;I
+	
+; =============== Act_Komasaburo_InitIdle ===============
+; Sets up the delay before shooting.
+Act_Komasaburo_InitIdle:
+	; Use frames $00-$01, at 1/4 speed
 	ld   c, $02
 	call ActS_Anim2
-	ld   a, $3C
+	
+	; Wait for 60 seconds in the next mode
+	ld   a, 60
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02478F:;I
+	
+; =============== Act_Komasaburo_Idle ===============
+; Enemy is idle, waiting for a second before shooting.
+Act_Komasaburo_Idle:
+	; Use frames $00-$01, at 1/4 speed
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Wait for those 60 seconds before shooting
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	jp   ActS_IncRtnId
-L02479E:;I
-	ld   a, $13
-	call L001E63
+	
+; =============== Act_Komasaburo_Shoot ===============
+; Shoots a spinning top if there aren't too many of them.
+Act_Komasaburo_Shoot:
+	
+	; If there are 3 or more spinning tops on screen, try again next frame.
+	; Returning like this means the actor won't animate while waiting for one of them to despawn.
+	ld   a, ACT_KOMA
+	call ActS_CountById
 	ld   a, b
-	cp   $03
-	ret  nc
-	ld   a, $13
-	ld   bc, $0000
-	call ActS_SpawnRel
-	jr   c, L0247B4
-	call L001E7C
-L0247B4:;X
+	cp   $03		; Are there 3 or more spinning tops onscreen?
+	ret  nc			; If so, return
+	
+	; Otherwise, spawn a new one directly at the parent's location.
+	ld   a, ACT_KOMA
+	ld   bc, $0000		; Directly on top
+	call ActS_SpawnRel	; Could it spawn?
+	jr   c, .setSpr		; If not, skip
+	call ActS_SyncDirToSpawn ; Throw it forward (same direction as parent)
+.setSpr:
+	; Use shoot frame...
 	ld   a, $02
 	call ActS_SetSprMapId
+	
+	; ...for 12 frames
 	ld   a, $0C
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0247C0:;I
+	
+; =============== Act_Komasaburo_AfterShoot ===============
+; Waits 12 frames in the shooting sprite, as cooldown.
+Act_Komasaburo_AfterShoot:
+	; After they pass, return to the start again, in its idle animation
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $01
+	ld   a, ACTRTN_KOMASABURO_INITIDLE
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0247CC:;I
+	
+; =============== Act_Koma ===============
+; ID: ACT_KOMA
+; Spinning top projectile spawned by Act_Komasaburo.	
+Act_Koma:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0247CF: db $D5
-L0247D0: db $47
-L0247D1: db $E2
-L0247D2: db $47
-L0247D3: db $09
-L0247D4: db $48
-L0247D5:;I
-	ld   bc, $0180
+	dw Act_Koma_Init
+	dw Act_Koma_MoveH
+	dw Act_Koma_FallV
+	DEF ACTRTN_KOMA_MOVEH = $01
+	
+; =============== Act_Koma_Init ===============
+Act_Koma_Init:
+	ld   bc, $0180				; 1.5px/frame forward
 	call ActS_SetSpeedX
-	ld   a, $B4
+	ld   a, 60*3				; Explode after 3 seconds (outside of when they fall down)
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0247E2:;I
+	
+; =============== Act_Koma_MoveH ===============
+; Spinning top moves horizontally.
+Act_Koma_MoveH:
+	; Use frames $00-$01, at 1/4 speed
 	ld   c, $02
 	call ActS_Anim2
+	
+	; When the life timer elapses, explode (without dropping items)
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
-	jr   nz, L0247F2
-	jp   L001E11
-L0247F2:;R
+	jr   nz, .moveH
+	jp   ActS_Explode
+.moveH:
+	; Move horizontally, turning the other way when hitting a wall
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	
+	; If there's no ground below, start falling
 	call ActS_GetGroundColi
-	ld   a, [wPlColiGround]
-	cp   $03
+	ld   a, [wColiGround]
+	cp   %11
 	ret  nz
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
-L024809:;I
+	
+; =============== Act_Koma_FallV ===============
+; Spinning top falls off a platform.
+; During this time, the life timer is paused (ie: not handled).
+Act_Koma_FallV:
+	; Use frames $00-$01, at 1/4 speed
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Keep moving down until we hit solid ground.
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $01
+	
+	; Then return to moving forward
+	ld   a, ACTRTN_KOMA_MOVEH
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024817:;I
+	
+; =============== Act_Mechakkero ===============
+; ID: ACT_MECHAKKERO
+; Hopping frog-like enemy that's hard to hit on the ground.
+Act_Mechakkero:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02481A: db $24
-L02481B: db $48
-L02481C: db $3F
-L02481D: db $48
-L02481E: db $4C
-L02481F: db $48
-L024820: db $62
-L024821: db $48
-L024822: db $75
-L024823: db $48
-L024824:;I
-	ld   bc, $0100
+	dw Act_Mechakkero_InitJump
+	dw Act_Mechakkero_JumpU
+	dw Act_Mechakkero_JumpD
+	dw Act_Mechakkero_Wait0
+	dw Act_Mechakkero_Wait1
+	DEF ACTRTN_MECHAKKERO_INITJUMP = $00
+
+; =============== Act_Mechakkero_InitJump ===============
+; Initializes the jump
+Act_Mechakkero_InitJump:
+	; Set up jump speed
+	ld   bc, $0100			; 1px/frame forward
 	call ActS_SetSpeedX
-	ld   bc, $0200
+	ld   bc, $0200			; 2px/frame up
 	call ActS_SetSpeedY
+	
+	; Face player when starting the jump
 	call ActS_FacePl
+	
+	; Use jumping sprite
 	ld   a, $02
 	call ActS_SetSprMapId
+	
+	;--
+	; [TCRF] This suggests the intention to wait for 1.5 seconds before jumping,
+	;        similar to what Rockman 3 does, but the code isn't quite set up for that.
 	ld   a, $5A
 	ldh  [hActCur+iActTimer0C], a
+	;--
 	jp   ActS_IncRtnId
-L02483F:;I
+	
+; =============== Act_Mechakkero_JumpU ===============
+; Jump, before peak.
+Act_Mechakkero_JumpU:
+	; Move forward, turning around when hitting a solid wall
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Move up until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L02484C:;I
+	
+; =============== Act_Mechakkero_JumpD ===============
+; Jumps, after peak.
+Act_Mechakkero_JumpD:
+	; Move forward, turning around when hitting a solid wall
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Move down until we touch the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	
+	; After landing, stay on the ground for 24 frames.
+	; For the first 12, use a sprite with half-closed eyes, for the latter fully open.
+	
+	; Use normal eyes sprite for 12 frames
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $0C
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024862:;I
+	
+; =============== Act_Mechakkero_Wait0 ===============
+; On the ground, normal eyes.
+Act_Mechakkero_Wait0:
+	; Wait for it...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Use open eyes sprite for 12 frames
 	ld   a, $01
 	call ActS_SetSprMapId
 	ld   a, $0C
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024875:;I
+	
+; =============== Act_Mechakkero_Wait1 ===============
+; On the ground, open eyes.
+Act_Mechakkero_Wait1:
+	; Wait for it..
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $00
+	;--
+	; [POI] Why return to this for a single frame?
+	ld   a, $00					
 	call ActS_SetSprMapId
-	ld   a, $00
+	;--
+	; Loop back to setting up the next jump
+	ld   a, ACTRTN_MECHAKKERO_INITJUMP
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024886:;I
+	
+; =============== Act_SpinTopU ===============
+; ID: ACT_SPINTOPU
+; Large spinning top platform that moves up.
+; This uses its own collision type ACTCOLI_PLATFORM -> ACTCOLISUB_SPINTOP, to act
+; as a top-solid platform that spins the player around.
+Act_SpinTopU:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024889: db $8D
-L02488A: db $48
-L02488B: db $96
-L02488C: db $48
-L02488D:;I
+	dw Act_SpinTopU_Init
+	dw Act_SpinTopU_Move
+	
+; =============== Act_SpinTopU_Init ===============
+Act_SpinTopU_Init:
+	; Move 0.5px/frame up
 	ld   bc, $0080
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L024896:;I
+	
+; =============== Act_SpinTopU_Move ===============
+Act_SpinTopU_Move:
+	; Use frames $00-$03 at 1/2 speed
 	ld   c, $04
 	call ActS_Anim4
+	
+	; Move up
 	call ActS_ApplySpeedFwdY
+	
+	; When it goes off-screen above, make it wrap around to the bottom.
+	; This makes it relatively safe to idle on the platform (spinning aside).
 	ldh  a, [hActCur+iActY]
-	cp   $10
-	ret  nz
-	ld   a, $9F
-	ldh  [hActCur+iActY], a
+	cp   OBJ_OFFSET_Y			; ActY == $10?
+	ret  nz						; If not, return
+	ld   a, OBJ_OFFSET_Y+SCREEN_GAME_V+BLOCK_V-1
+	ldh  [hActCur+iActY], a		; Otherwise, ActY = $9F
 	ret
-L0248A8:;I
+	
+; =============== Act_SpinTopD ===============
+; ID: ACT_SPINTOPD
+; Large spinning top platform that moves down.
+Act_SpinTopD:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0248AB: db $AF
-L0248AC: db $48
-L0248AD: db $BB
-L0248AE: db $48
-L0248AF:;I
+	dw Act_SpinTopD_Init
+	dw Act_SpinTopD_Move
+	
+; =============== Act_SpinTopD_Init ===============
+Act_SpinTopD_Init:
+	; Move 0.5px/frame down
 	ld   bc, $0080
 	call ActS_SetSpeedY
-	call ActS_FlipV
+	call ActS_FlipV ; Move down
 	jp   ActS_IncRtnId
-L0248BB:;I
+	
+; =============== Act_SpinTopD_Move ===============
+Act_SpinTopD_Move:
+	; Use frames $00-$03 at 1/2 speed
 	ld   c, $04
 	call ActS_Anim4
 	call ActS_ApplySpeedFwdY
+	
+	; When it goes off-screen below, make it wrap around to the top.
+	; The positions used are identical to those in Act_SpinTopU_Move,
+	; except the other way around, making sure the platforms won't desync
+	; once they are spawned,
 	ldh  a, [hActCur+iActY]
-	cp   $9F
+	cp   OBJ_OFFSET_Y+SCREEN_GAME_V+BLOCK_V-1
 	ret  nz
-	ld   a, $10
+	ld   a, OBJ_OFFSET_Y
 	ldh  [hActCur+iActY], a
 	ret
-L0248CD:;I
+	
+; =============== Act_Tama ===============
+; ID: ACT_TAMA
+; Giant cat miniboss in Top Man's stage.
+Act_Tama:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0248D0: db $DC
-L0248D1: db $48
-L0248D2: db $E2
-L0248D3: db $48
-L0248D4: db $EC
-L0248D5: db $48
-L0248D6: db $16
-L0248D7: db $49
-L0248D8: db $2D
-L0248D9: db $49
-L0248DA: db $51
-L0248DB: db $49
-L0248DC:;I
-	call L027E4C
+	dw Act_Tama_InitTilemap
+	dw Act_Tama_InitAttackType
+	dw Act_Tama_ChkAttack
+	dw Act_Tama_Throw0
+	dw Act_Tama_Throw1
+	dw Act_Tama_ThrowAfter
+	DEF ACTRTN_TAMA_CHKATTACK = $02
+
+; =============== Act_Tama_InitTilemap ===============
+; Draws the tilemap for the miniboss.
+Act_Tama_InitTilemap:
+	call Act_BGBoss_ReqDraw
 	jp   ActS_IncRtnId
-L0248E2:;I
-	call L027E55
+	
+; =============== Act_Tama_InitAttackType ===============
+Act_Tama_InitAttackType:
+	; Return if dead
+	call Act_Tama_ChkExplode
 	ret  c
+	; First attack will be the Yarn Ball.
+	; (While iTamaAttackType 0 is for the fleas, it will be pre-xor'd to 1)
 	xor  a
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iTamaAttackType], a
 	jp   ActS_IncRtnId
-L0248EC:;I
-	call L027E55
+	
+; =============== Act_Tama_ChkAttack ===============
+Act_Tama_ChkAttack:
+	; Return if dead
+	call Act_Tama_ChkExplode
 	ret  c
+	
+	; Use frames $00-$01 at 1/8 speed
 	ld   c, $01
 	call ActS_Anim2
-	ld   a, $18
-	call L001E63
+	
+	; Wait until no Yarn Balls or Fleas are onscreen
+	ld   a, ACT_TAMABALL
+	call ActS_CountById
 	ld   a, b
-	or   a
-	ret  nz
-	ld   a, $19
-	call L001E63
+	or   a					; Count != 0?
+	ret  nz					; If so, wait
+	ld   a, ACT_TAMAFLEA
+	call ActS_CountById
 	ld   a, b
-	or   a
-	ret  nz
-	ld   a, $1E
+	or   a					; Count != 0?
+	ret  nz					; If so, wait
+	
+	; Start one of the two possible attacks
+	
+	; Set the delay for the throw animation, in case we're throwing the Yarn Ball next
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
-	ldh  a, [hActCur+iAct0D]
+	
+	; Alternate betwen attack types
+	ldh  a, [hActCur+iTamaAttackType]
 	xor  $01
-	ldh  [hActCur+iAct0D], a
-	or   a
-	jp   nz, ActS_IncRtnId
-	jp   L027C9F
-L024916:;I
-	call L027E55
+	ldh  [hActCur+iTamaAttackType], a
+	
+	or   a						; iTamaAttackType != 0?
+	jp   nz, ActS_IncRtnId		; If so, prepare to spawn the Yarn Ball
+	jp   Act_Tama_SpawnFleas	; Otherwise, spawn fleas (and stay on Act_Tama_WaitAttack)
+	
+; =============== Act_Tama_Throw0 ===============
+; First part of the throw sequence.
+Act_Tama_Throw0:
+	call Act_Tama_ChkExplode
 	ret  c
+	
+	; Use frames $00-$01 at 1/8 speed
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Wait for half a second in the same animation as Act_Tama_WaitAttack
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $1E
+	
+	; Wait another half a second in the next mode
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02492D:;I
-	call L027E55
+	
+; =============== Act_Tama_Throw1 ===============
+; Second part of the throw sequence.
+Act_Tama_Throw1:
+	call Act_Tama_ChkExplode
 	ret  c
+	
+	; Use frames $02-$03 at 1/8 speed, the actual throw animation
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Wait half a second before spawning the ball
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; This does nothing
 	ld   a, $0F
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $18
-	ld   bc, $E8FC
+	
+	; Finally spawn the Yarn Ball
+	ld   a, ACT_TAMABALL
+	ld   bc, (LOW(-$18) << 8)|LOW(-$04)	; 24px left, 4px up
 	call ActS_SpawnRel
 	jp   ActS_IncRtnId
-L024951:;I
-	call L027E55
+	
+; =============== Act_Tama_ThrowAfter ===============
+; Cooldown
+Act_Tama_ThrowAfter:
+	call Act_Tama_ChkExplode
 	ret  c
+	
+	; Use frames $00-$01 at 1/8 speed
 	ld   c, $01
 	call ActS_Anim2
-	ld   a, $02
+	
+	; Wait for the Yarn Ball to be destroyed
+	ld   a, ACTRTN_TAMA_CHKATTACK
 	ldh  [hActCur+iActRtnId], a
 	ret
-L02495F:;I
+	
+; =============== Act_TamaBall ===============
+; ID: ACT_TAMABALL
+; Bouncing yarn ball thrown by Tama.
+Act_TamaBall:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024962: db $6A
-L024963: db $49
-L024964: db $76
-L024965: db $49
-L024966: db $7F
-L024967: db $49
-L024968: db $8C
-L024969: db $49
-L02496A:;I
+	dw Act_TamaBall_InitSpdX
+	dw Act_TamaBall_InitJump
+	dw Act_TamaBall_JumpU
+	dw Act_TamaBall_JumpD
+	DEF ACTRTN_TAMABALL_INITJUMP = $01
+	
+; =============== Act_TamaBall_InitSpdX ===============
+; Initializes the horizontal speed, which never changes.
+Act_TamaBall_InitSpdX:
+	; Move towards the player at 0.5px/frame
 	call ActS_FacePl
 	ld   bc, $0080
 	call ActS_SetSpeedX
 	jp   ActS_IncRtnId
-L024976:;I
+	
+; =============== Act_TamaBall_InitJump ===============
+; Sets up the next jump.
+Act_TamaBall_InitJump:
+	; Set jump at 2px/frame
 	ld   bc, $0200
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L02497F:;I
+	
+; =============== Act_TamaBall_JumpU ===============
+; Jump, pre-peak.
+Act_TamaBall_JumpU:
+	; Move forwards, turn if we hit a wall
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Apply gravity while moving up until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L02498C:;I
+	
+; =============== Act_TamaBall_JumpD ===============
+; Jump, post-peak.
+Act_TamaBall_JumpD:
+	; Move forwards, turn if we hit a wall
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Apply gravity while moving down until we hit the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $01
+	; Then set up another jump
+	ld   a, ACTRTN_TAMABALL_INITJUMP
 	ldh  [hActCur+iActRtnId], a
 	ret
-L02499B:;I
+	
+; =============== Act_TamaFlea ===============
+; ID: ACT_TAMAFLEA
+; Flea that jump out of Tama.
+Act_TamaFlea:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02499E: db $A6
-L02499F: db $49
-L0249A0: db $B1
-L0249A1: db $49
-L0249A2: db $BE
-L0249A3: db $49
-L0249A4: db $DA
-L0249A5: db $49
-L0249A6:;I
+	dw Act_TamaFlea_Init
+	dw Act_TamaFlea_JumpU
+	dw Act_TamaFlea_JumpD
+	dw Act_TamaFlea_Ground
+	DEF ACTRTN_TAMAFLEA_INIT = $00
+	
+; =============== Act_TamaFlea_Init ===============
+; Initializes some of the properties of the jump.
+; Note that the speed isn't set here -- the first time we get here, our speed
+; will be the one set by Act_Tama_SpawnFleas since each individual flea has
+; their *first* jump at a different arc.
+Act_TamaFlea_Init:
+	; Use jumping sprite $01
 	ld   a, $01
 	call ActS_SetSprMapId
+	; Always jump towards the player
 	call ActS_FacePl
 	jp   ActS_IncRtnId
-L0249B1:;I
+	
+; =============== Act_TamaFlea_JumpU ===============
+; Jump, pre-peak.
+Act_TamaFlea_JumpU:
+	; Move forwards, turn if we hit a wall
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Apply gravity while moving up until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L0249BE:;I
+	
+; =============== Act_TamaFlea_JumpD ===============
+; Jump, post-peak.
+Act_TamaFlea_JumpD:
+	; Move forwards, turn if we hit a wall
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Apply gravity while moving down until we hit the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   bc, $0303
+	
+	; The fleas, while on the ground, use a smaller sprite than their jumping one
+	; so adjust the collision box to be smaller.
+	ld   bc, $0303			; H Radius: 3, V Radius: 3
 	call ActS_SetColiBox
+	
+	; Use standing sprite $00
 	ld   a, $00
 	call ActS_SetSprMapId
-	ld   a, $3C
+	
+	; Delay the next jump by 1 second
+	ld   a, 60
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0249DA:;I
+	
+; =============== Act_TamaFlea_Ground ===============
+; Flea is on the ground.
+Act_TamaFlea_Ground:
+	; Wait for the second to pass before setting up a new jump
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   bc, $0305
+	
+	; Larger sprite when jumping (set in ACTRTN_TAMAFLEA_INIT) means larger collision box by 4px vertically
+	ld   bc, $0305			; H Radius: 3, V Radius: 5
 	call ActS_SetColiBox
-	ld   bc, $0080
+	; Set up standard jump settings for the second jump onwards
+	ld   bc, $0080			; 0.5px/frame forward
 	call ActS_SetSpeedX
-	ld   bc, $0300
+	ld   bc, $0300			; 3px/frame up
 	call ActS_SetSpeedY
-	ld   a, $00
+	
+	; Set jump settings shared with the first one
+	ld   a, ACTRTN_TAMAFLEA_INIT
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0249F8:;I
+
+; =============== Act_MagFly ===============
+; ID: ACT_MAGFLY
+; Flying Magnet that attracts the player.
+Act_MagFly:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0249FB: db $FF
-L0249FC: db $49
-L0249FD: db $08
-L0249FE: db $4A
-L0249FF:;I
+	dw Act_MagFly_Init
+	dw Act_MagFly_Move
+	
+; =============== Act_MagFly_Init ===============
+Act_MagFly_Init:
+	; Move 0.5px/frame forward
 	ld   bc, $0080
 	call ActS_SetSpeedX
 	jp   ActS_IncRtnId
-L024A08:;I
+	
+; =============== Act_MagFly_Move ===============
+Act_MagFly_Move:
+	; Use frames $00-$01 at 1/8 speed
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Move forward
 	call ActS_ApplySpeedFwdX
+	
+	;
+	; Attract the player when they get close to its horizontal range.
+	; This can't be done through the collision box as the magnet itself deals damage.
+	;
+	
+	; Do not attract if the player is either hurt or invulnerable.
+	; This causes the player to fall off when hitting the magnet directly.
 	ld   a, [wPlHurtTimer]
 	ld   b, a
 	ld   a, [wPlInvulnTimer]
 	or   b
 	ret  nz
+	
+	; Only attract the player when on the ground or jumping.
+	; This means it's possible to avoid getting attracted by sliding through.
 	ld   a, [wPlMode]
-	cp   $04
+	cp   PL_MODE_CLIMB
 	ret  nc
-	ldh  a, [hActCur+iActX]
+	
+	;--
+	; A = Horizontal distance from player.
+	; This is identical to ActS_GetPlDistanceX, except with wPlRelX 
+	; and iActX swapped, which makes no difference.
+	ldh  a, [hActCur+iActX]	; B = iActX
 	ld   b, a
-	ld   a, [wPlRelX]
-	sub  b
-	jr   nc, L024A2C
-	xor  $FF
+	ld   a, [wPlRelX]		; A = wPlRelX
+	sub  b					; A = wPlRelX - iActX
+	jr   nc, .chkDistance	; Did we underflow? (Player is to the left) If not, return
+	xor  $FF				; Otherwise, flip the result's sign
 	inc  a
-	scf  
-L024A2C:;R
-	cp   $04
-	ret  nc
-	ldh  a, [hActCur+iActSprMap]
-	ld   bc, $0080
-	call Pl_Unk_SetSpeedByActDir
-	ldh  a, [hActCur+iActY]
-	add  $0C
+	scf  					; and set the C flag since that xor cleared it
+	;--
+.chkDistance:
+	; Don't attract if more than 4px away from the origin.
+	; This makes the "collision box" for getting attracted infinitely tall, 7 pixels wide.
+	cp   $04				; Distance >= $04?
+	ret  nc					; If so, return
+	
+	; HORIZONTAL MOVEMENT
+	; If we get here, always take the player for a ride
+	ldh  a, [hActCur+iActSprMap]	; In the same direction as the magnet...
+	ld   bc, $0080					; ...move 0.5px/frame
+	call Pl_SetSpeedByActDir
+	
+	; VERTICAL MOVEMENT
+	; Do not move the player up if its center point is above the magnet's origin.
+	ldh  a, [hActCur+iActY]		; Get actor Y pos
+	add  PLCOLI_V				; Adding PLCOLI_V means the player's center will be the target
 	ld   b, a
-	ld   a, [wPlRelY]
-	cp   b
-	ret  c
-	xor  a
+	ld   a, [wPlRelY]			; Get player Y pos
+	cp   b						; PlY - PLCOLI_V < ActY?
+	ret  c						; If so, return
+	
+	; Otherwise, force a 1px/frame upwards jump that can't be cut early.
+	xor  a					; 0 subpx
 	ld   [wPlSpdYSub], a
-	inc  a
+	inc  a					; 1px/frame
 	ld   [wPlSpdY], a
-	inc  a
+	inc  a					; Player mode 2 (PL_MODE_FULLJUMP, forced jump)
 	ld   [wPlMode], a
 	ret
-L024A4E:;I
+	
+; =============== Act_GiantSpringer ===============
+; ID: ACT_GSPRINGER
+; Large Springer that fires homing missiles.	
+Act_GiantSpringer:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024A51: db $5B
-L024A52: db $4A
-L024A53: db $64
-L024A54: db $4A
-L024A55: db $9E;X
-L024A56: db $4A;X
-L024A57: db $A7
-L024A58: db $4A
-L024A59: db $C0
-L024A5A: db $4A
-L024A5B:;I
+	dw Act_GiantSpringer_Init
+	dw Act_GiantSpringer_Main
+	dw Act_GiantSpringer_FallV
+	dw Act_GiantSpringer_FireMissile
+	dw Act_GiantSpringer_SpringOut
+	DEF ACTRTN_GSPRINGER_MAIN = $01
+	DEF ACTRTN_GSPRINGER_FIREMISSILE = $03
+	DEF ACTRTN_GSPRINGER_SPRINGOUT = $04
+	
+	DEF DISTANCE_SPRINGOUT = $20
+	
+; =============== Act_GiantSpringer_Init ===============
+Act_GiantSpringer_Init:
+	; Move very slowly forward, at 0.0625px/frame
 	ld   bc, $0010
 	call ActS_SetSpeedX
 	jp   ActS_IncRtnId
-L024A64:;I
+	
+; =============== Act_GiantSpringer_Main ===============
+; Main routine, handles checks for all actions.
+Act_GiantSpringer_Main:
+	; Always move towards the player
 	call ActS_FacePl
+	
+	; Whenver the player gets nearby, activate the springout animation.
+	; This is a misleading animation, as while it looks like an attack
+	; the actor's collosion box doesn't change at all.
 	call ActS_GetPlDistanceX
-	cp   $20
-	jr   nc, L024A73
-	ld   a, $04
+	cp   DISTANCE_SPRINGOUT		; Distance >= $20?
+	jr   nc, .far				; If so, jump
+.near:
+	ld   a, ACTRTN_GSPRINGER_SPRINGOUT
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024A73:;R
-	ld   a, $1C
-	call L001E63
+.far:
+
+	; Try to immediately spawn a missile when outside its nearby range.
+	; Typically this triggers immediately after the actor spawns.
+	ld   a, ACT_GSPRINGERSHOT
+	call ActS_CountById	; Find how many ACT_GSPRINGERSHOT active
 	ld   a, b
-	or   a
-	jr   nz, L024A8A
-	ld   a, $01
+	or   a				; Count != 0?
+	jr   nz, .move	; If so, jump
+	
+	; Otherwise, do a round trip for spawning the missile before returning back here
+	ld   a, $01					; Use shooting frame
 	call ActS_SetSprMapId
-	ld   a, $1E
+	ld   a, 30					; Delay firing for half a second
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $03
+	ld   a, ACTRTN_GSPRINGER_FIREMISSILE
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024A8A:;R
+	
+.move:
+	; If we got here, just move towards the player
 	call ActS_ApplySpeedFwdXColi
+	
+	; If there's no ground below, start falling
 	call ActS_GetGroundColi
-	ld   a, [wPlColiGround]
-	cp   $03
+	ld   a, [wColiGround]
+	cp   %11
 	ret  nz
-L024A96: db $AF;X
-L024A97: db $E0;X
-L024A98: db $AA;X
-L024A99: db $E0;X
-L024A9A: db $AB;X
-L024A9B: db $C3;X
-L024A9C: db $B1;X
-L024A9D: db $1E;X
-L024A9E: db $CD;X
-L024A9F: db $A8;X
-L024AA0: db $23;X
-L024AA1: db $D8;X
-L024AA2: db $3E;X
-L024AA3: db $01;X
-L024AA4: db $E0;X
-L024AA5: db $A1;X
-L024AA6: db $C9;X
-L024AA7:;I
+	; [TCRF] None are placed in ways that can fall off platforms.
+	;       The rest of the subroutine and Act_GiantSpringer_FallV are unreachable.
+	xor  a
+	ldh  [hActCur+iActSpdYSub], a
+	ldh  [hActCur+iActSpdY], a
+	jp   ActS_IncRtnId
+	
+; =============== Act_GiantSpringer_FallV ===============
+; Enemy falls off a platform.
+Act_GiantSpringer_FallV:
+	; Keep moving down until we hit solid ground.
+	call ActS_ApplySpeedDownYColi
+	ret  c
+	
+	; Return to tracking the player
+	ld   a, ACTRTN_GSPRINGER_MAIN
+	ldh  [hActCur+iActRtnId], a
+	ret
+	
+; =============== Act_GiantSpringer_FireMissile ===============
+; Enemy spawns the homing missile.
+Act_GiantSpringer_FireMissile:
+	; Wait for half a second before spawning the missile
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $1C
-	ld   bc, $00E8
+	; Launch the missile from the top
+	ld   a, ACT_GSPRINGERSHOT
+	ld   bc, ($00 << 8)|LOW(-$18) ; 24px above
 	call ActS_SpawnRel
+	
+	; Return to tracking the player
 	ld   a, $00
 	call ActS_SetSprMapId
-	ld   a, $01
+	ld   a, ACTRTN_GSPRINGER_MAIN
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024AC0:;I
+	
+; =============== Act_GiantSpringer_SpringOut ===============
+; Enemy is in its unretracted spring out animation.
+Act_GiantSpringer_SpringOut:
+	; Use frames $02-$05, at 1/8 speed
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ld   c, $01
 	call ActS_Anim4
+	
+	; Retract the spring and return to to tracking the player when they go out of range
 	call ActS_GetPlDistanceX
-	cp   $20
-	ret  c
+	cp   DISTANCE_SPRINGOUT		; Distance < $20?
+	ret  c						; If so, keep springing
+	
+	; Return to tracking the player
 	ld   a, $00
 	call ActS_SetSprMapId
-	ld   a, $01
+	ld   a, ACTRTN_GSPRINGER_MAIN
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024ADA:;I
+	
+; =============== Act_GiantSpringerShot ===============
+; ID: ACT_GSPRINGERSHOT
+; Homing missile fired by Giant Springers.
+Act_GiantSpringerShot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024ADD: db $E5
-L024ADE: db $4A
-L024ADF: db $F7
-L024AE0: db $4A
-L024AE1: db $2C
-L024AE2: db $4B
-L024AE3: db $82
-L024AE4: db $4B
-L024AE5:;I
+	dw Act_GiantSpringerShot_InitMoveU
+	dw Act_GiantSpringerShot_MoveU
+	dw Act_GiantSpringerShot_Arc
+	dw Act_GiantSpringerShot_MoveLine
+
+; =============== Act_GiantSpringerShot_InitMoveU ===============
+; After the missile spawns, it rises straight up a a few frames.
+Act_GiantSpringerShot_InitMoveU:
+	; For 15 frames...
 	ld   a, $0F
 	ldh  [hActCur+iActTimer0C], a
+	; Move up at 1px/frame
 	ld   bc, $0100
 	call ActS_SetSpeedY
+	; Use vertical missile sprite
 	ld   a, $02
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
-L024AF7:;I
+	
+; =============== Act_GiantSpringerShot_MoveU ===============
+; Moves the missile up, then sets up the arc.
+Act_GiantSpringerShot_MoveU:
+	; Handle the upwards movement set up before
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+		
+	;--
+	; Not necessary, done below
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
-	ldh  a, [hActCur+iActX]
+	;--
+	
+	;
+	; After that is done, prepare the settings for the circular path.
+	; This does not go through ActS_InitCirclePath since that one makes it start moving horizontally (start from top to l/r),
+	; while we, due to having just finished moving straight up, want to start it moving vertically (start from l/r to top)
+	; so that horizontal movement will be gradual.
+	;
+
+	
+	
+	; PATH DIRECTION
+	; The missile always moves away from the player on its first rotation.
+	
+	;##
+	; This is identical to ActS_GetPlDistanceX, except with wPlRelX and iActX swapped.
+	; The distance is not used directly, there's a bit more code than needed.
+	ldh  a, [hActCur+iActX]	; B = iActX
 	ld   b, a
-	ld   a, [wPlRelX]
-	sub  b
-	jr   nc, L024B12
-	xor  $FF
+	ld   a, [wPlRelX]		; A = wPlRelX
+	sub  b					; wPlRelX >= iActX?
+	jr   nc, .setArc		; If so, jump (player on the right, carry clear)
+	;--
+	; This bit is unnecessary, all we care for is the carry flag, which is alredy set when going here.
+	xor  $FF				; Otherwise, flip the result's sign
 	inc  a
-	scf  
-L024B12:;R
-	rra  
-	and  $80
+	scf  					; and set the C flag since that xor cleared it
+	;--
+	;##
+.setArc:
+	; Using the carry as direction means that:
+	; - If the player is on the left, the carry will be set, making the missile move right
+	; - If the player is on the right, the carry will be clear, making the missile move left
+	rra  					; Shift carry into place
+	and  ACTDIR_R			; Use that as direction.
 	ldh  [hActCur+iActSprMap], a
-	ld   a, $02
-	ldh  [hActCur+iAct0D], a
-	ld   a, $58
-	ldh  [hActCur+iAct0E], a
-	xor  a
-	ldh  [hActCur+iAct0F], a
+	
+	ld   a, ADR_DEC_IDX|ADR_INC_IDY	; Set index directions
+	ldh  [hActCur+iArcIdDir], a
+	ld   a, ARC_MAX					; Move slow horz
+	ldh  [hActCur+iArcIdX], a
+	xor  a							; Move fast vert
+	ldh  [hActCur+iArcIdY], a
+	
 	ldh  [hActCur+iActTimer0C], a
+	; Use diagonal missile sprite
 	ld   a, $00
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
-L024B2C:;I
-	ldh  a, [hActCur+iActTimer0C]
+	
+; =============== Act_GiantSpringerShot_Arc ===============
+; Moves the missile in a circular path, until the player gets close.
+Act_GiantSpringerShot_Arc:
+	;--
+	; [POI] There's nothing using the timer here, including ActS_ApplyCirclePath.
+	ldh  a, [hActCur+iActTimer0C]	; Timer++
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
-	cp   $B0
-	jp   c, L024B3B
-	ld   a, $00
+	cp   $B0						; Timer < $B0?
+	jp   c, doArc					; If so, skip
+	ld   a, $00						; Timer = 0
 	ldh  [hActCur+iActTimer0C], a
-L024B3B:;J
-	ld   a, $02
+	;--
+doArc:
+	; Move missile around a small arc
+	ld   a, ARC_SM
 	call ActS_ApplyCirclePath
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
+	
+	;
+	; Determine when to stop the circular movement and start moving directly towards the player.
+	; It needs to pass a gauntlet of checks first.
+	;
+	
+	; The missile is shound not be near the top or bottom of the circle (X speed at its max value)
+	; as at that time it's traveling nearly horizontally
 	ldh  a, [hActCur+iActSpdXSub]
 	cp   $FF
 	ret  nz
+	
+	; Player should not be too close horizontally (< $30px) ...
 	call ActS_GetPlDistanceX
 	cp   $30
 	ret  c
-	ld   a, [wPlRelY]
-	sub  $0C
+	
+	; But also not too far vertically (>= $40)
+	;--
+	; ActS_GetPlDistanceY, but relative to the player's vertical center. 
+	ld   a, [wPlRelY]		; B = PlY - $0C (center)
+	sub  PLCOLI_V
 	ld   b, a
-	ldh  a, [hActCur+iActY]
-	sub  b
-	jr   nc, L024B60
-	xor  $FF
+	ldh  a, [hActCur+iActY]	; A = ActY (bottom)
+	sub  b					; Do the distance calc
+	jr   nc, .chkDiffY
+	xor  $FF				; Force absolute
 	inc  a
 	scf  
-L024B60:;R
-	cp   $40
-	ret  nc
-	ld   a, [wPlRelX]
+	;--
+.chkDiffY:
+	cp   $40				; DiffY >= $40?
+	ret  nc					; If so, return
+	
+	; The missile must travel towards the same direction as the player.
+	; Otherwise it could do a instant 180°, which would break the illusion of momentum.
+	ld   a, [wPlRelX]			; B = PlX
 	ld   b, a
-	ldh  a, [hActCur+iActX]
-	cp   b
-	jr   c, L024B77
+	ldh  a, [hActCur+iActX]		; A = ActX
+	cp   b						; ActX < PlX?
+	jr   c, .plR				; If so, jump (player is on the right)
+	
+.plL:
+	; Player is on the left, so the missile should be also facing left
 	ldh  a, [hActCur+iActSprMap]
-	bit  7, a
-	ret  nz
+	bit  ACTDIRB_R, a			; Is the missile facing right?
+	ret  nz						; If so, return
+	call ActS_AngleToPl			; Get the speed values to target the player
+	jp   ActS_IncRtnId			; Start moving in a straight line with those values
+	
+.plR:
+	; Player is on the right, so the missile should be also facing right
+	ldh  a, [hActCur+iActSprMap]
+	bit  ACTDIRB_R, a			; Is the missile facing right?
+	ret  z						; If not, return
 	call ActS_AngleToPl
 	jp   ActS_IncRtnId
-L024B77:;R
-	ldh  a, [hActCur+iActSprMap]
-	bit  7, a
-	ret  z
-L024B7C: db $CD;X
-L024B7D: db $B9;X
-L024B7E: db $1F;X
-L024B7F: db $C3;X
-L024B80: db $B1;X
-L024B81: db $1E;X
-L024B82:;I
+	
+; =============== Act_GiantSpringerShot_MoveLine ===============
+; Moves the missile along a straight line.
+; It targets a snapshot of the player's old position at the time of the check.
+Act_GiantSpringerShot_MoveLine:
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L024B89:;I
+	
+; =============== Act_Peterchy ===============
+; ID: ACT_PETERCHY
+; Walker enemy.	
+Act_Peterchy:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024B8C: db $92
-L024B8D: db $4B
-L024B8E: db $9E
-L024B8F: db $4B
-L024B90: db $BB
-L024B91: db $4B
-L024B92:;I
+	dw Act_Peterchy_Init
+	dw Act_Peterchy_MoveH
+	dw Act_Peterchy_FallV
+	DEF ACTRTN_PETERCHY_MOVEH = $01
+	
+; =============== Act_Peterchy_Init ===============
+Act_Peterchy_Init:
+	; Move at 0.5px/frame, starting towards the player
 	ld   bc, $0080
 	call ActS_SetSpeedX
 	call ActS_FacePl
 	jp   ActS_IncRtnId
-L024B9E:;I
-	ld   bc, $0602
+	
+; =============== Act_Peterchy_MoveH ===============
+Act_Peterchy_MoveH:
+	; Use frames $00-$06 at 1/4 speed
+	ld   bc, ($06 << 8)|$02
 	call ActS_AnimCustom
+	
+	; Move forward, turning around when hitting a wall
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	
+	; If there's no ground below, start falling
 	call ActS_GetGroundColi
-	ld   a, [wPlColiGround]
-	cp   $03
+	ld   a, [wColiGround]
+	cp   %11
 	ret  nz
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
-L024BBB:;I
-	ld   bc, $0602
+	
+; =============== Act_Peterchy_FallV ===============
+Act_Peterchy_FallV:
+	; Use frames $00-$06 at 1/4 speed
+	ld   bc, ($06 << 8)|$02
 	call ActS_AnimCustom
+	
+	; Keep moving down until we hit solid ground.
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $01
+	
+	; Return to moving forwards
+	ld   a, ACTRTN_PETERCHY_MOVEH
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024BCA:;I
+	
+; =============== Act_MagnetField ===============
+; ID: ACT_MAGNETFIELD
+; Magnetic field that always attracts the player to the right.
+; The actual attraction itself is done by its collision type (ACTCOLI_MAGNET),
+; this merely displays its wave animation near the visible magnet block.
+Act_MagnetField:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024BCD: db $D1
-L024BCE: db $4B
-L024BCF: db $E0
-L024BD0: db $4B
-L024BD1:;I
-	ldh  a, [hActCur+iActX]
-	sub  $10
+	dw Act_MagnetField_Init
+	dw Act_MagnetField_Anim
+
+; =============== Act_MagnetField_Init ===============
+Act_MagnetField_Init:
+	; In the actor layout, the magnet is placed directly inside the magnet block.
+	; It instead should be placed vertically centered on its left.
+	ldh  a, [hActCur+iActX]		; Move left 1 block
+	sub  BLOCK_H
 	ldh  [hActCur+iActX], a
-	ldh  a, [hActCur+iActY]
-	add  $04
+	ldh  a, [hActCur+iActY]		; Move down by 4 pixels
+	add  $04					; As it's around 1.5blocks tall, that will vertically center it.
 	ldh  [hActCur+iActY], a
 	jp   ActS_IncRtnId
-L024BE0:;I
-	ld   bc, $0301
+	
+; =============== Act_MagnetField_Anim ===============
+Act_MagnetField_Anim:
+	; Use frames $00-$03 at 1/8 speed
+	ld   bc, ($03 << 8)|$01
 	call ActS_AnimCustom
 	ret
-L024BE7: db $C3;X
-L024BE8: db $25;X
-L024BE9: db $1C;X
-L024BEA:;I
+	
+; =============== Act_Respawner ===============
+; [TCRF] Unused.
+; When on-screen, it instantly respawns any defeated actors that are part of the layout.
+Act_Respawner:
+	jp   ActS_SpawnRoom
+	
+; =============== Act_Block ===============
+; ID: ACT_BLOCK0, ACT_BLOCK1, ACT_BLOCK2, ACT_BLOCK3
+; Appearing block, in four separately timed variants.
+Act_Block:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024BED: db $F9
-L024BEE: db $4B
-L024BEF: db $18
-L024BF0: db $4C
-L024BF1: db $2F
-L024BF2: db $4C
-L024BF3: db $42
-L024BF4: db $4C
-L024BF5: db $55
-L024BF6: db $4C
-L024BF7: db $68
-L024BF8: db $4C
-L024BF9:;I
-	ld   b, $00
+	dw Act_Block_Hide
+	dw Act_Block_DelayShow
+	dw Act_Block_Solid0
+	dw Act_Block_Solid1
+	dw Act_Block_Solid2
+	dw Act_Block_Solid3
+	DEF ACTRTN_BLOCK_HIDE = $00
+
+; =============== Act_Block_Hide ===============
+; Hides the block in an intangible state until it's time to make it appear.
+Act_Block_Hide:
+	; Hide the block and make it intangible.
+	ld   b, ACTCOLI_PASS
 	call ActS_SetColiType
 	ld   a, $00
 	call ActS_SetSprMapId
-	ld   a, [wGameTime]
+	
+	;
+	; Determine if the block's timing currently makes it visible, and if so, advance the routine.
+	;
+	; There are four separate actor IDs for the disappearing block. Given groups of four seconds,
+	; each actor starts appearing on a specific one, in order.
+	;
+	; ie: 
+	; - ACT_BLOCK0 starts it sequence at wGameTime % 4 == 0
+	; - ACT_BLOCK1 starts it sequence at wGameTime % 4 == 1
+	;   and so on
+	;
+	
+	; Get the block number that can currently activate
+	ld   a, [wGameTime]			; B = wGameTime % 4
 	and  $03
 	ld   b, a
-	ldh  a, [hActCur+iActId]
-	and  $7F
-	sub  $20
-	cp   b
-	ret  nz
-	ld   a, $3C
+	
+	; Get the block number of this actor, off its ID
+	ldh  a, [hActCur+iActId]	; B = (iActId & $7F) - ACT_BLOCK0
+	and  $FF^ACTF_PROC
+	sub  ACT_BLOCK0
+	
+	cp   b						; Do the block numbers match? 
+	ret  nz						; If not, return (keep waiting)
+	
+	;
+	; [BUG] If we got here on the first try, the blocks can desync since we may get here at any
+	;       possible frame of the second, but the delay always waits for a fixed amount of time.
+	;       
+	;		Because of how much time a block needs to wait after it hides itself, any desync
+	;       fixes itself the second time we get here (see wGameTime shift markers below)
+	;
+	
+	; Delay appearing for a second 
+	; This should have delayed for 60 - wGameTimeSub.
+	ld   a, 60
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024C18:;I
+	
+; =============== Act_Block_DelayShow ===============
+Act_Block_DelayShow:
+	; Wait for a second before making the block show up
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $10
+	; [wGameTime shift = $01/$04]
+	
+	ld   a, SFX_BLOCK			; Play block appear sound
 	ldh  [hSFXSet], a
-	ld   b, $04
+	ld   b, ACTCOLI_PLATFORM	; Make platform tangible
 	call ActS_SetColiType
-	ld   a, $0A
+	
+	ld   a, 10					; For next mode
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024C2F:;I
+	
+; =============== Act_Block_Solid0 ===============
+; First of four routines that manually handle the block's animation.
+; ActS_Anim* is not being used because not only the amount of time to wait on each sprite is
+; higher than what it suppports, each sprite is also displayed for a different amount of frames.
+;
+; Use visible sprite $01 for 10 frames
+Act_Block_Solid0:
 	ld   a, $01
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $0A
+	; [wGameTime shift = $01.$0A/$04]
+	
+	ld   a, 10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024C42:;I
+	
+; =============== Act_Block_Solid1 ===============
+; Use visible sprite $02 for 10 frames
+Act_Block_Solid1:
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $14
+	; [wGameTime shift = $01.$14/$04]
+	
+	ld   a, 20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024C55:;I
+	
+; =============== Act_Block_Solid2 ===============
+; Use visible sprite $03 for 20 frames
+Act_Block_Solid2:
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $3C
+	; [wGameTime shift = $01.$28/$04]
+	
+	ld   a, 60
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024C68:;I
+	
+; =============== Act_Block_Solid3 ===============
+; Use visible sprite $04 for a second
+Act_Block_Solid3:
 	ld   a, $04
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $00
+	
+	; [wGameTime shift = $02.$28/$04]
+	; That leaves over a second of buffer from $04, fixing any desync.
+	
+	ld   a, ACTRTN_BLOCK_HIDE
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024C79:;I
+	
+; =============== Act_NewShotman ===============
+; ID: ACT_NEWSHOTMAN
+; Front-facing variant of the Shotman, alternates between firing horizontally and at an arc.
+Act_NewShotman:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024C7C: db $90
-L024C7D: db $4C
-L024C7E: db $9F
-L024C7F: db $4C
-L024C80: db $E3
-L024C81: db $4C
-L024C82: db $EF
-L024C83: db $4C
-L024C84: db $E3
-L024C85: db $4C
-L024C86: db $EF
-L024C87: db $4C
-L024C88: db $E3
-L024C89: db $4C
-L024C8A: db $EF
-L024C8B: db $4C
-L024C8C: db $18
-L024C8D: db $4D
-L024C8E: db $22
-L024C8F: db $4D
-L024C90:;I
+	dw Act_NewShotman_InitMain
+	dw Act_NewShotman_Main
+REPT 3 ; 3 horizontal shots
+	dw Act_NewShotman_SetSpawnDelayH
+	dw Act_NewShotman_SpawnH
+ENDR
+	dw Act_NewShotman_AfterSpawnH
+	dw Act_NewShotman_AfterSpawnV
+	DEF ACTRTN_NEWSHOTMAN_INITMAIN = $00
+	DEF ACTRTN_NEWSHOTMAN_SPAWNH = $03
+	DEF ACTRTN_NEWSHOTMAN_AFTERSPAWNV = 2*3 + $03 ; $09
+
+; =============== Act_NewShotman_InitMain ===============
+Act_NewShotman_InitMain:
+	; Use frames $00-$01, at 1/8 speed 
 	xor  a
 	ldh  [hActCur+iActSprMap], a
 	ld   c, $01
 	call ActS_Anim2
-	ld   a, $3C
+	
+	; Set delay for triggering horizontal attack
+	ld   a, 60
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024C9F:;I
+	
+; =============== Act_NewShotman_Main ===============
+; Default idle routine.
+Act_NewShotman_Main:
+	; Use frames $00-$01, at 1/8 speed 
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Every $80 frames, alternate between attacks
 	ldh  a, [hTimer]
-	bit  7, a
-	jr   z, L024CD9
+	bit  7, a			; Timer < $80?
+	jr   z, .tryHorz		; If so, jump
+	
+.tryVert:
+	; Only trigger the vertical attack within 3 blocks, fall back to the horizontal one otherwise.
 	call ActS_GetPlDistanceX
-	cp   $30
-	jr   nc, L024CD9
+	cp   BLOCK_H*3
+	jr   nc, .tryHorz
+	
+	; Use sprite $02 while shooting up
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
-	ld   a, $1E
+	ld   [wActCurSprMapBaseId], a
+	
+	; Cooldown of half a second after spawning the shots
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
-	xor  a
-	ld   de, $017D
-	ld   bc, $00F0
-	call L027C29
-	ld   a, $80
-	ld   de, $017D
-	ld   bc, $00F0
-	call L027C29
-	ld   a, $09
+	
+	; Spawn the two vertical shots, one on each side.
+	xor  a									; A = Sprite $00, Moving left
+	ld   de, ($01 << 8)|ACT_NEWSHOTMANSHOTV ; D = 1px/frame up, E = Actor Id
+	ld   bc, ($00 << 8)|LOW(-$10)			; B = Same X pos, C = 16px above
+	call ActS_SpawnArcShot
+	
+	ld   a, ACTDIR_R						; A = Sprite $00, Moving right
+	ld   de, ($01 << 8)|ACT_NEWSHOTMANSHOTV	; D = 1px/frame up, E = Actor Id
+	ld   bc, ($00 << 8)|LOW(-$10)			; B = Same X pos, C = 16px above
+	call ActS_SpawnArcShot
+	
+	; Switch to after-shot cooldown
+	ld   a, ACTRTN_NEWSHOTMAN_AFTERSPAWNV
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024CD9:;R
+	
+.tryHorz:
+	; Wait until the second ticks down before triggering the horizontal attack.
+	; This is mainly useful if we came here from .tryVert, as it gives a window of opportunity
+	; for the vertical attack to trigger.
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Otherwise, prepare the horizontal attack.
 	jp   ActS_IncRtnId
-L024CE3:;I
+	
+; =============== Act_NewShotman_SetSpawnDelayH ===============
+; Sets up the delay between horizontal shots.
+Act_NewShotman_SetSpawnDelayH:
+	; Use frames $00-$01, at 1/8 speed 
 	ld   c, $01
 	call ActS_Anim2
-	ld   a, $1E
+	; Half a second cooldown between shots
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024CEF:;I
+	
+; =============== Act_NewShotman_SpawnH ===============
+; Fires an horizontal shot on each side.
+Act_NewShotman_SpawnH:
+	; While waiting, use frames $00-$01, at 1/8 speed 
 	ld   c, $01
 	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $7E
-	ld   bc, $F8F8
+	
+	; Then, fire both shots on each side.
+	; These are aligned to the small chutes at the side of the enemy.
+	
+	ld   a, ACT_NEWSHOTMANSHOTH
+	ld   bc, (LOW(-$08) << 8)|LOW(-$08) ; 8px left, 8px up
 	call ActS_SpawnRel
-	jr   c, L024D15
-	call L001E7C
-	ld   a, $7E
-	ld   bc, $08F8
+	jr   c, .nextMode
+	; As this actor visually faces forward and has symmetrical attacks, it never sets an explicit horizontal direction.
+	; This means it's internally always facing left, so calling the following alo makes the shot face/move left.
+	call ActS_SyncDirToSpawn
+	
+	; RIGHT SIDE
+	ld   a, ACT_NEWSHOTMANSHOTH
+	ld   bc, (LOW($08) << 8)|LOW(-$08) ; 8px right, 8px up
 	call ActS_SpawnRel
-	jr   c, L024D15
-	call L001E84
-L024D15:;X
+	jr   c, .nextMode
+	call ActS_SyncRevDirToSpawn ; Face right
+	
+.nextMode:
 	jp   ActS_IncRtnId
-L024D18:;I
+	
+; =============== Act_NewShotman_AfterSpawnH ===============
+; Returns to the main routine after the horizontal shots are all spawned.
+Act_NewShotman_AfterSpawnH:
+	; Use frames $00-$01, at 1/8 speed 
 	ld   c, $01
 	call ActS_Anim2
-	ld   a, $00
+	ld   a, ACTRTN_NEWSHOTMAN_INITMAIN
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024D22:;I
+	
+; =============== Act_NewShotman_AfterSpawnV ===============
+; Cooldown after spawning vertical shots.
+Act_NewShotman_AfterSpawnV:
+	; Use sprite $02 for 30 seconds (previously set in Act_NewShotman_InitMain)
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $3C
+	
+	; After the cooldown elapses, do the horizontal attack.
+	; Unlike when the horizontal attack starts on its own, the first shot is delayed by a second.
+	; (the ther two ones still delay by half a second)
+	ld   a, 60
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $03
+	ld   a, ACTRTN_NEWSHOTMAN_SPAWNH
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024D37:;I
+	
+; =============== Act_NeedlePress ===============
+; ID: ACT_NEEDLEPRESS
+; Retractable needle obstacle.
+Act_NeedlePress:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024D3A: db $42
-L024D3B: db $4D
-L024D3C: db $58
-L024D3D: db $4D
-L024D3E: db $65
-L024D3F: db $4D
-L024D40: db $6F
-L024D41: db $4D
-L024D42:;I
-	ld   b, $00
+	dw Act_NeedlePress_InitDelay
+	dw Act_NeedlePress_WaitCycle
+	dw Act_NeedlePress_InitMain
+	dw Act_NeedlePress_Main
+	DEF ACTRTN_NEEDLEPRESS_INITMAIN = $02
+
+; =============== Act_NeedlePress_InitDelay ===============
+Act_NeedlePress_InitDelay:
+	; The needle starts out hidden on a ceiling
+	ld   b, ACTCOLI_PASS
 	call ActS_SetColiType
+	; Adjust 1px down
 	ld   hl, hActCur+iActX
 	inc  [hl]
-	ld   a, [wActUnk_CF6D_TimerInit]
+	
+	;
+	; Alternate between cycle timings for every Needle Press that spawns (see Act_NeedlePress_WaitCycle)
+	;
+	ld   a, [wActNePrLastCycleTarget]	; Toggle 0 and 1
 	xor  $01
-	ld   [wActUnk_CF6D_TimerInit], a
-	ldh  [hActCur+iActTimer0C], a
+	ld   [wActNePrLastCycleTarget], a
+	ldh  [hActCur+iNePrCycleTarget], a	; Use new value as target
+	
 	jp   ActS_IncRtnId
-L024D58:;I
-	ld   a, [wGameTime]
+	
+; =============== Act_NeedlePress_WaitCycle ===============
+; Waits until it's the turn for the needle to extend downwards from the ceiling.
+Act_NeedlePress_WaitCycle:
+
+	;
+	; Wait until wGameTime % 2 == iNePrCycleTarget to extend the spike.
+	; This is mainly to avoid, after vertical transitions where multiple actors get spawned 
+	; in the same frame, to have multiple onscreen spikes use the same cycle.
+	;
+	ld   a, [wGameTime]					; B = wGameTime % 2 (current timer)
 	and  $01
 	ld   b, a
-	ldh  a, [hActCur+iActTimer0C]
-	cp   b
-	ret  nz
+	ldh  a, [hActCur+iNePrCycleTarget]	; A = Target second
+	cp   b								; Does it match with the current one?
+	ret  nz								; If not, keep waiting
+	
 	jp   ActS_IncRtnId
-L024D65:;I
+	
+; =============== Act_NeedlePress_InitMain ===============
+Act_NeedlePress_InitMain:
+	; Start from the first frame (reset cycle, start extending down)
 	xor  a
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iNePrAnimOff], a
+	; Delay for 12 frames before applying any changes
 	ld   a, $0C
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024D6F:;I
-	ldh  a, [hActCur+iAct0D]
-	ld   hl, $4DBF
+	
+; =============== Act_NeedlePress_Main ===============
+; Main animation routine for the Needle Press.
+; This is an involved process, because its animation involves the needle extending and retracting 
+; from the ceiling, altering the collision as needed.
+Act_NeedlePress_Main:
+
+	;
+	; Seek to the current entry of the frame table.
+	; This defines the properties of the current frame.
+	;
+	
+	; HL = Ptr to Act_NeedlePress_AnimTbl[iNePrAnimOff]
+	ldh  a, [hActCur+iNePrAnimOff]
+	ld   hl, Act_NeedlePress_AnimTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ld   a, [hl]
-	cp   $FF
-	jr   nz, L024D82
-	ld   a, $02
+	
+	;
+	; Check if we're pointing to the end terminator.
+	; If we are, reset the animation to the start by re-executing Act_NeedlePress_InitMain.
+	;
+	ld   a, [hl]							; A = byte0
+	cp   $FF								; End terminator reached?
+	jr   nz, .valOk							; If not, jump
+	ld   a, ACTRTN_NEEDLEPRESS_INITMAIN
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024D82:;R
+	
+.valOk:
+	;
+	; Wait for the timer to elapse before continuing.
+	; [POI] This should have been the first thing done in the subroutine, to avoid running the indexing code while waiting
+	;       and to prevent the last animation entry from being skipped (iNePrAnimOff will point to the end terminator).
+	;
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	;
+	; COLLISION BOX
+	;
+	; Map the sprite ID (byte0) to its vertical collision radius.
+	; It's not fixed to $0F since the spike is two blocks tall, while the ceiling it hangs from can be less than that.
+	;
+	; The horizontal one doesn't need to change, so it's always $03.
+	;
 	push hl
-	ld   a, [hl]
-	ld   hl, $4DD8
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ld   c, [hl]
-	ld   b, $03
-	call ActS_SetColiBox
+		; HL = Act_NeedlePress_ColiBoxVTbl[byte0]
+		ld   a, [hl]	 		; Read byte0, the sprite ID
+		ld   hl, Act_NeedlePress_ColiBoxVTbl
+		ld   b, $00
+		ld   c, a
+		add  hl, bc
+		ld   c, [hl]			; Read vert radius from entry
+		ld   b, $03				; Use fixed horz radius
+		call ActS_SetColiBox	; Update box
 	pop  hl
+	
+	;
+	; COLLISION TYPE
+	;
+	; While this actor generally reflects shots, there is a point where it's fully retracted.
+	; The sprite it uses during that time is $00, so save some CPU time by making it intangible there.
+	;
 	push hl
-	ld   b, $03
-	ld   a, [hl]
-	or   a
-	jr   nz, L024DA2
-	ld   b, $00
-L024DA2:;R
-	call ActS_SetColiType
+		ld   b, ACTCOLI_ENEMYREFLECT	; Reflect shots by default
+		ld   a, [hl]					; Read sprite ID [byte0]
+		or   a							; SpriteId != 0?
+		jr   nz, .setColi				; If so, jump (keep reflecting shots)
+		ld   b, ACTCOLI_PASS			; Otherwise, make intangible
+	.setColi:
+		call ActS_SetColiType
 	pop  hl
-	ldi  a, [hl]
-	sla  a
+	
+	;
+	; SPRITE ID
+	;
+	; Copy it almost as-is from byte0 to iActSprMap.
+	;
+	ldi  a, [hl]	; Read byte0, seek to byte1
+	sla  a			; >> 3 since iActSprMap's first 3 bits are for the animation timer
 	sla  a
 	sla  a
 	ldh  [hActCur+iActSprMap], a
-	ldh  a, [hActCur+iActY]
+	
+	;
+	; Y POSITION
+	;
+	; This needs to be adjusted due to the spike extending from the ceiling while actor origins are at the bottom.
+	; The animation table defines it as an offset relative to the current position.
+	;
+	ldh  a, [hActCur+iActY]	; iActY += byte1
 	add  [hl]
 	ldh  [hActCur+iActY], a
-	ldh  a, [hActCur+iAct0D]
-	add  $02
-	ldh  [hActCur+iAct0D], a
+	
+	; For next time, advance animation to next entry
+	ldh  a, [hActCur+iNePrAnimOff]
+	add  $02 ; 
+	ldh  [hActCur+iNePrAnimOff], a
+	
+	; Show current data for 12 frames
 	ld   a, $0C
 	ldh  [hActCur+iActTimer0C], a
 	ret
-L024DBF: db $00
-L024DC0: db $00
-L024DC1: db $00
-L024DC2: db $00
-L024DC3: db $00
-L024DC4: db $00
-L024DC5: db $01
-L024DC6: db $08
-L024DC7: db $02
-L024DC8: db $08
-L024DC9: db $03
-L024DCA: db $10
-L024DCB: db $03
-L024DCC: db $00
-L024DCD: db $03
-L024DCE: db $00
-L024DCF: db $02
-L024DD0: db $F0
-L024DD1: db $01
-L024DD2: db $F8
-L024DD3: db $00
-L024DD4: db $F8
-L024DD5: db $00
-L024DD6: db $00
-L024DD7: db $FF
-L024DD8: db $03
-L024DD9: db $03
-L024DDA: db $07
-L024DDB: db $0F
-L024DDC:;I
+	
+; =============== Act_NeedlePress_AnimTbl ===============
+; Defines the animation for extending and retracting the needle.
+; Each entry is two bytes long:
+; - 0: Sprite ID
+;      This is used for two other purposes:
+;      - As index to Act_NeedlePress_ColiBoxVTbl to get the vertical radius for the sprite
+;      - To determine the collision type (see Act_NeedlePress_Main)
+; - 1: Vertical offset compared to previous entry
+Act_NeedlePress_AnimTbl:
+	;  SPR  Y DIFF
+	db $00, +$00
+	db $00, +$00
+	db $00, +$00
+	db $01, +$08
+	db $02, +$08
+	db $03, +$10
+	db $03, +$00
+	db $03, -$00
+	db $02, -$10
+	db $01, -$08
+	db $00, -$08
+	db $00, -$00
+	db $FF ; Terminator, loop to start
+
+; =============== Act_NeedlePress_ColiBoxVTbl ===============
+; Maps each sprite to its respective vertical radius. (the horizontal one is fixed, so it's not here)
+Act_NeedlePress_ColiBoxVTbl: 
+	db $03 ; $00
+	db $03 ; $01
+	db $07 ; $02
+	db $0F ; $03
+
+; =============== Act_Yambow ===============
+; ID: ACT_YAMBOW
+; Mosquito enemy, travels in a rectangular path around the player before charging in.
+Act_Yambow:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024DDF: db $EF
-L024DE0: db $4D
-L024DE1: db $FE
-L024DE2: db $4D
-L024DE3: db $0F
-L024DE4: db $4E
-L024DE5: db $21
-L024DE6: db $4E
-L024DE7: db $36
-L024DE8: db $4E
-L024DE9: db $4E
-L024DEA: db $4E
-L024DEB: db $66
-L024DEC: db $4E
-L024DED: db $75
-L024DEE: db $4E
-L024DEF:;I
-	ld   bc, $0200
+	dw Act_Yambow_InitSpd
+	dw Act_Yambow_PlFar
+	dw Act_Yambow_MoveOppH0
+	dw Act_Yambow_MoveOppH1
+	dw Act_Yambow_WaitMoveD
+	dw Act_Yambow_MoveD
+	dw Act_Yambow_WaitCharge
+	dw Act_Yambow_Charge
+
+; =============== Act_Yambow_InitSpd ===============
+Act_Yambow_InitSpd:
+	; Set base movement speed, which won't be altered again.
+	; (but specific routines will avoid moving the player with it)
+	ld   bc, $0200		; 2px/frame horizontally
 	call ActS_SetSpeedX
-	ld   bc, $0280
+	ld   bc, $0280		; 2.5px/frame vertically
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L024DFE:;I
+	
+; =============== Act_Yambow_PlFar ===============
+; Waits for the player to get close.
+Act_Yambow_PlFar:
+	; Unlike the NES game, this enemy is neither invisibile nor intangible
+	; while the player is outside its trigger range.
+	
+	; Use frames $00-$01, at speed 1/4
+	; This is used all the time by this actor.
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Face the player while waiting
 	call ActS_FacePl
+	
+	; Trigger when the player gets within 3 blocks
 	call ActS_GetPlDistanceX
-	cp   $30
+	cp   BLOCK_H*3
 	ret  nc
 	jp   ActS_IncRtnId
-L024E0F:;I
+	
+; =============== Act_Yambow_MoveOppH0 ===============
+; First part of moving to the other side of the screen.
+; Moves the actor forward until it's on the same column as the player.
+; This is split in two because the checks go off the player distance, an absolute value.
+Act_Yambow_MoveOppH0:
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Move forward at 2px/frame
 	call ActS_ApplySpeedFwdX
-	call ActS_GetPlDistanceX
-	and  $F0
-	or   a
-	ret  nz
+	
+	; Wait until the enemy moves above the player (within 16 pixels from the player)
+	call ActS_GetPlDistanceX	; Get horz distance
+	and  $F0					; Check block ranges
+	or   a						; DiffX != $0x?
+	ret  nz						; If so, return
 	jp   ActS_IncRtnId
-L024E21:;I
+	
+; =============== Act_Yambow_MoveOppH1 ===============
+; Second part of moving to the other side of the screen.
+; Moves the actor away from the player, still moving forward.
+Act_Yambow_MoveOppH1:
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Move forward at 2px/frame
 	call ActS_ApplySpeedFwdX
+	
+	; Wait until the enemy moves 3 blocks away from the player (on the other side it moved from)
 	call ActS_GetPlDistanceX
-	cp   $30
+	cp   BLOCK_H*3
 	ret  c
-	ld   a, $1E
+	
+	; Wait for half a second after moving
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024E36:;I
+	
+; =============== Act_Yambow_WaitMoveD ===============
+; Waits before moving down and sets up downwards movement.
+Act_Yambow_WaitMoveD:
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Wait that half a second
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Hopefully face the player by doing this
 	call ActS_FlipH
+	
+	; Make the enemy move down
 	ldh  a, [hActCur+iActSprMap]
-	or   $40
+	or   ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
+	
 	jp   ActS_IncRtnId
-L024E4E:;I
+	
+; =============== Act_Yambow_MoveD ===============
+; Moves the actor down, until it's within 16px vertically from the player.
+Act_Yambow_MoveD:
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Move down at 2.5px/frame
 	call ActS_ApplySpeedFwdY
-	call ActS_GetPlDistanceY
-	and  $F0
+	
+	; Wait until the enemy moves within 16 pixels from the player
+	call ActS_GetPlDistanceY	; Get vert distance
+	and  $F0					; A /= $10
 	swap a
-	or   a
-	ret  nz
-	ld   a, $1E
+	or   a						; DiffBlkY != 0?
+	ret  nz						; If so, return
+	
+	; Wait half a second before charging
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024E66:;I
+	
+; =============== Act_Yambow_WaitCharge ===============
+Act_Yambow_WaitCharge:
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Wait that half a second
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
 	jp   ActS_IncRtnId
-L024E75:;I
+	
+; =============== Act_Yambow_Charge ===============
+Act_Yambow_Charge:
 	ld   c, $02
 	call ActS_Anim2
+	; Charge forward at 2px/frame
 	call ActS_ApplySpeedFwdX
 	ret
-L024E7E:;I
+
+; =============== Act_HariHarry ===============
+; ID: ACT_HARI
+; Hari Harry, a porcupine shooting needles that's invulnerable while rolling.
+Act_HariHarry:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024E81: db $93
-L024E82: db $4E
-L024E83: db $A5
-L024E84: db $4E
-L024E85: db $AF
-L024E86: db $4E
-L024E87: db $BE
-L024E88: db $4E
-L024E89: db $AF
-L024E8A: db $4E
-L024E8B: db $BE
-L024E8C: db $4E
-L024E8D: db $E8
-L024E8E: db $4E
-L024E8F: db $F7
-L024E90: db $4E
-L024E91: db $2A
-L024E92: db $4F
-L024E93:;I
-	ld   b, $02
+	dw Act_HariHarry_InitIdle
+	dw Act_HariHarry_Idle
+	dw Act_HariHarry_InitShoot
+	dw Act_HariHarry_Shoot
+	dw Act_HariHarry_InitShoot
+	dw Act_HariHarry_Shoot
+	dw Act_HariHarry_InitMove
+	dw Act_HariHarry_MoveH
+	dw Act_HariHarry_FallV
+	DEF ACTRTN_HARI_INITSHOOT = $02
+	DEF ACTRTN_HARI_MOVEH = $07
+
+; =============== Act_HariHarry_InitIdle ===============
+Act_HariHarry_InitIdle:
+	; The enemy is initially idle for two seconds, vulnerable to shots
+	ld   b, ACTCOLI_ENEMYHIT
 	call ActS_SetColiType
-	ld   bc, $0180
+	
+	ld   bc, $0180			; 1.5px/frame forward when moving
 	call ActS_SetSpeedX
-	ld   a, $78
+	
+	ld   a, 60*2			; Wait idle for 2 seconds
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024EA5:;I
+	
+; =============== Act_HariHarry_Idle ===============
+Act_HariHarry_Idle:
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	jp   ActS_IncRtnId
-L024EAF:;I
+	
+; =============== Act_HariHarry_InitShoot ===============
+; Prepare for shooting the needles.
+Act_HariHarry_InitShoot:
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
+	; Face the player in preparation for moving after shooting them
 	call ActS_FacePl
+	; Reset sprite to idle in case we got here after rolling
 	ld   a, $00
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
-L024EBE:;I
+	
+; =============== Act_HariHarry_Shoot ===============
+; Enemy shoots the needles.
+; This will happen twice on each cycle.
+Act_HariHarry_Shoot:
+	;
+	; Shoot the needles right in the middle of the shooting sprite range (see below)
+	;
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
-	cp   $18
-	jr   nz, L024ECD
+	cp   $18				; Timer == $18?
+	jr   nz, .chkAnim		; If not, skip
+	
 	push af
-	call L027CD8
+		call Act_Hari_SpawnShots
 	pop  af
-L024ECD:;R
+	
+.chkAnim:
+
+	;
+	; For the animation, alternate between the idle and shooting sprites every 16 frames.
+	; This will switch it 3 times effectively:
+	; $00-$0F -> Idle
+	; $10-$1F -> Shoot
+	; $20-$2F -> Idle
+	; $30 -> (Next mode)
+	;
+	srl  a	; A >>= 4 for 16-frame ranges
 	srl  a
 	srl  a
 	srl  a
-	srl  a
-	cp   $03
-	jr   z, L024EE0
-	and  $01
+	
+	cp   ($30 >> 4)		; iActTimer0C == $30?	
+	jr   z, .nextMode	; If so, next mode
+.tryAnimShoot:
+	and  $01			; Alternate between idle and shoot
 	ld   a, a
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ret
-L024EE0:;R
+.nextMode:
 	ld   a, $00
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	jp   ActS_IncRtnId
-L024EE8:;I
+	
+; =============== Act_HariHarry_InitMove ===============
+; Sets up rolling forward.
+Act_HariHarry_InitMove:
+	; Roll towards the player for 1.5 seconds, while invulnerable
 	ld   a, $5A
 	ldh  [hActCur+iActTimer0C], a
-	ld   b, $03
+	ld   b, ACTCOLI_ENEMYREFLECT
 	call ActS_SetColiType
 	call ActS_FacePl
+	
 	jp   ActS_IncRtnId
-L024EF7:;I
+	
+; =============== Act_HariHarry_MoveH ===============
+; Roll forwards.
+Act_HariHarry_MoveH:
+	; Use frames $02-$03 at 1/8 speed
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Wait for half a second before returning to shoot
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
-	jr   nz, L024F13
-	ld   b, $02
+	jr   nz, .move
+	
+.endRoll:
+	; Make vulnerable again when upright
+	ld   b, ACTCOLI_ENEMYHIT
 	call ActS_SetColiType
-	ld   a, $02
+	; Prepare to shoot once more
+	ld   a, ACTRTN_HARI_INITSHOOT
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024F13:;R
+	
+.move:
+	; Move forward, turning around when hitting a wall
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	
+	; If there's no ground below, start falling
 	call ActS_GetGroundColi
-	ld   a, [wPlColiGround]
+	ld   a, [wColiGround]
 	cp   $03
 	ret  nz
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
+	
 	jp   ActS_IncRtnId
-L024F2A:;I
+	
+; =============== Act_HariHarry_FallV ===============
+; Falls down in the air.
+; During this, the rolling timer does not tick down.
+Act_HariHarry_FallV:
+	; Use frames $02-$03 at 1/8 speed
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Keep moving down until we hit solid ground.
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $07
+	
+	; Return to rolling forwards
+	ld   a, ACTRTN_HARI_MOVEH
 	ldh  [hActCur+iActRtnId], a
-	ret
-L024F3D:;I
+	ret	
+	
+; =============== Act_HariHarryShot ===============
+; ID: ACT_HARISHOT
+; An individual needle fired by Act_HariHarry.
+; Spawned by Act_Hari_SpawnShots
+Act_HariHarryShot:
+	; Move in both directions, if any
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L024F44:;I
+	
+; =============== Act_Cannon ===============
+; ID: ACT_CANNON
+; A cannon firing balls in an arc.
+Act_Cannon:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L024F47: db $53
-L024F48: db $4F
-L024F49: db $5C
-L024F4A: db $4F
-L024F4B: db $70
-L024F4C: db $4F
-L024F4D: db $8D
-L024F4E: db $4F
-L024F4F: db $D8
-L024F50: db $4F
-L024F51: db $F0
-L024F52: db $4F
-L024F53:;I
+	dw Act_Cannon_Init
+	dw Act_Cannon_PlFar
+	dw Act_Cannon_Unshield
+	dw Act_Cannon_Shoot
+	dw Act_Cannon_Shield
+	dw Act_Cannon_Cooldown
+	DEF ACTRTN_CANNON_PLFAR = $01
+	
+; =============== Act_Cannon_Init ===============
+Act_Cannon_Init:
+	; Horizontally center between two blocks
 	ldh  a, [hActCur+iActX]
 	add  $08
 	ldh  [hActCur+iActX], a
 	jp   ActS_IncRtnId
-L024F5C:;I
+	
+; =============== Act_Cannon_PlFar ===============
+Act_Cannon_PlFar:
 	call ActS_FacePl
+	
+	; Activate when the player gets within four and half blocks
 	call ActS_GetPlDistanceX
 	cp   $48
 	ret  nc
-	ld   de, $0003
+	
+	; Set up the unshield animation.
+	; Use sprites $00-$03, showing each for 12 frames (1/12 speed)
+	ld   de, ($00 << 8)|$03
 	ld   c, $0C
-	call Act_Boss_InitIntro
+	call ActS_InitAnimRange
+	
+	; [POI] The cannon isn't set to be immediately vulnerable during the animation, which is both
+	;       misleading and also inconsistent with what the shielding anim does.
+	
 	jp   ActS_IncRtnId
-L024F70:;I
+	
+; =============== Act_Cannon_Unshield ===============
+Act_Cannon_Unshield:
 	call ActS_FacePl
-	call Act_Boss_PlayIntro
+	
+	; Wait until the unshield animation is done (24 frames)
+	call ActS_PlayAnimRange
 	ret  z
+	
+	; Use frame $03, for the exposed cannon
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
-	ld   b, $02
+	ld   [wActCurSprMapBaseId], a
+	
+	; The exposed cannon is vulnerable
+	ld   b, ACTCOLI_ENEMYHIT
 	call ActS_SetColiType
+	
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L024F8D:;I
+	
+; =============== Act_Cannon_Shoot ===============
+; Handles the shooting sequence.
+; The cannon shoots twice during the course of 80 frames, after which it shields itself again.
+Act_Cannon_Shoot:
 	call ActS_FacePl
+	
+	; Tick on the animation timer, then check where we are in the animation.
+	; The animation itself manually alternates between the two shooting sprites $03 and $02,
+	; the latter being for the slightly retracted cannon ready to shoot.
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
-	cp   $1E
-	jr   nc, L024FA0
+	
+	;
+	; $00-$1D -> Sprite $02
+	;
+	cp   $1E			; Timer >= $1E?
+	jr   nc, .chkSh0	; If so, jump
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ret
-L024FA0:;R
+	
+.chkSh0:
+	;
+	; $1E-$27 -> Sprite $02
+	;     $28 -> Shoot a ball
+	;
 	cp   $28
 	push af
-	call z, L024FFC
+		call z, Act_Cannon_SpawnShot
 	pop  af
-	jr   nc, L024FAF
+	jr   nc, .chkWait0
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ret
-L024FAF:;R
+	
+.chkWait0:
+	;
+	; $28-$45 -> Sprite $03
+	;
 	cp   $46
-	jr   nc, L024FB9
+	jr   nc, .chkSh1
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ret
-L024FB9:;R
+.chkSh1:
+	;
+	; $46-$49 -> Sprite $02
+	;     $50 -> Shoot a ball
+	;
 	cp   $50
 	push af
-	call z, L024FFC
+		call z, Act_Cannon_SpawnShot
 	pop  af
-	jr   nc, L024FC8
+	jr   nc, .nextMode
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ret
-L024FC8:;R
+.nextMode:
+	;
+	; $50 -> Sprite $02, start shield anim
+	;
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
-	ld   de, $0306
+	ld   [wActCurSprMapBaseId], a
+	
+	; Set up the shield animation.
+	; Use sprites $03-$06, at 1/12 speed
+	ld   de, ($03 << 8)|$06
 	ld   c, $0C
-	call Act_Boss_InitIntro
+	call ActS_InitAnimRange
+	
 	jp   ActS_IncRtnId
-L024FD8:;I
+	
+; =============== Act_Cannon_Shield ===============
+Act_Cannon_Shield:
 	call ActS_FacePl
-	call Act_Boss_PlayIntro
+	; Wait until the shield animation is done (24 frames)
+	call ActS_PlayAnimRange
 	ret  z
+	
+	; Make invulnerable after it's over
 	ld   a, $00
 	call ActS_SetSprMapId
-	ld   b, $03
+	
+	ld   b, ACTCOLI_ENEMYREFLECT
 	call ActS_SetColiType
-	ld   a, $3C
+	
+	; Cooldown of 1 second before checking the player getting near again
+	ld   a, 60
 	ldh  [hActCur+iActTimer0C], a
+	
 	jp   ActS_IncRtnId
-L024FF0:;I
+	
+; =============== Act_Cannon_Cooldown ===============
+Act_Cannon_Cooldown:
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $01
+	
+	ld   a, ACTRTN_CANNON_PLFAR
 	ldh  [hActCur+iActRtnId], a
 	ret
-L024FFC:;C
-	ld   bc, $F8FC
+	
+; =============== Act_Cannon_SpawnShot ===============
+Act_Cannon_SpawnShot:
+	; Prepare the call to ActS_SpawnArcShot.
+	; The cannonball should be thrown forwards, from the forward part of the cannon,
+	; so its position variea depending on which direction it's facing.
+	ld   bc, (LOW(-$08) << 8)|LOW(-$04)	; B = 8px left, C = 16px above
 	ldh  a, [hActCur+iActSprMap]
-	and  $80
-	jr   z, L025008
-	ld   bc, $08FC
-L025008:;R
-	ld   de, $022A
-	jp   L027C29
-L02500E:;I
+	and  ACTDIR_R					; Facing right? (also, A = Same direction as cannon)
+	jr   z, .spawnL					; If not, jump
+	ld   bc, (LOW($08) << 8)|LOW(-$04)	; B = 8px right, C = 16px above
+.spawnL:
+	ld   de, ($02 << 8)|ACT_CANNONSHOT ; D = 2px/frame up, E = Actor Id
+	jp   ActS_SpawnArcShot
+	
+; =============== Act_CannonShot ===============
+; ID: ACT_CANNONSHOT
+; A cannon firing balls in an arc.
+; Has identical code to Act_NewShotmanShotV.
+Act_CannonShot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025011: db $15
-L025012: db $50
-L025013: db $22
-L025014: db $50
-L025015:;I
+	dw Act_CannonShot_JumpU
+	dw Act_CannonShot_JumpD
+; =============== Act_CannonShot_JumpU ===============
+; Jump, pre-peak.
+Act_CannonShot_JumpU:
+	; [POI] Bounce on solid walls
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Apply gravity while moving up until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L025022:;I
+; =============== Act_CannonShot_JumpD ===============
+; Jump, post-peak.
+Act_CannonShot_JumpD:
+	; [POI] Bounce on solid walls
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Apply gravity while moving down until we hit the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	jp   L001E11
-L02502F:;I
+	; Despawn when touching the ground
+	jp   ActS_Explode
+
+; =============== Act_TellySpawner ===============
+; ID: ACT_TELLYSPAWN
+; Spawns Tellies every ~second at its location.
+Act_TellySpawner:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025032: db $38
-L025033: db $50
-L025034: db $3F
-L025035: db $50
-L025036: db $62
-L025037: db $50
-L025038:;I
+	dw Act_TellySpawner_Init
+	dw Act_TellySpawner_Spawn
+	dw Act_TellySpawner_Wait
+
+; =============== Act_TellySpawner_Init ===============
+; Sets the initial spawn delay.
+Act_TellySpawner_Init:
+	; Wait 32 frames before spawning the first one
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02503F:;I
+	
+; =============== Act_TellySpawner_Spawn ===============
+Act_TellySpawner_Spawn:
+	; Wait the 32 frames, whenever they come from
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	;--
+	; Try again 32 frames later...
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $4E
-	call L001E63
+	
+	; ...if there are more than 3 tellies onscreen
+	ld   a, ACT_TELLY
+	call ActS_CountById
 	ld   a, b
 	cp   $03
 	ret  nc
-	ld   a, $4E
+	;--
+	
+	; Checks passed, spawn the Telly at the spawner's location
+	ld   a, ACT_TELLY
 	ld   bc, $0000
 	call ActS_SpawnRel
+	
+	; Wait for a few seconds before spawning another one
 	ld   a, $FF
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025062:;I
+	
+; =============== Act_TellySpawner_Wait ===============
+Act_TellySpawner_Wait:
+	; Wait 255 frames
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Wait the usual additional 32 frames in Act_TellySpawner_Spawn
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_DecRtnId
-L025070:;I
+	
+; =============== Act_Lift ===============
+; ID: ACT_LIFT0, ACT_LIFT1, ACT_LIFT2 
+; Moving lifts in Crash Man's stage, with separate paths for each actor.
+Act_Lift:;I
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025073: db $7D
-L025074: db $50
-L025075: db $89
-L025076: db $50
-L025077: db $A8
-L025078: db $50
-L025079: db $E8
-L02507A: db $50
-L02507B: db $09
-L02507C: db $51
-L02507D:;I
-	ldh  a, [hActCur+iActId]
-	and  $7F
-	sub  $2C
-	ld   [w_CF5A_TblOffsetByAct], a
+	dw Act_Lift_InitPath
+	dw Act_Lift_InitPos
+	dw Act_Lift_NextSeg
+	dw Act_Lift_MoveH
+	dw Act_Lift_MoveV
+	DEF ACTRTN_LIFT_NEXTSEG = $02
+	DEF ACTRTN_LIFT_MOVEH = $03
+	DEF ACTRTN_LIFT_MOVEV = $04
+	DEF LIFT_SPEED = $0080
+
+; =============== Act_Lift_InitPath ===============
+Act_Lift_InitPath:
+	; Each actor ID has its own path assigned.
+	; wActLiftPathId and wActLiftPathSeg being global variables means having multiple lifts on-screen won't work properly.
+	ldh  a, [hActCur+iActId]	; wActLiftPathId = (iActId & $7F) - ACT_LIFT0
+	and  $FF^ACTF_PROC
+	sub  ACT_LIFT0
+	ld   [wActLiftPathId], a
+	
 	jp   ActS_IncRtnId
-L025089:;I
-	ldh  a, [hActCur+iActX]
+	
+; =============== Act_Lift_InitPos ===============
+Act_Lift_InitPos:
+	; Adjust the actor's position to make it stand on the rail
+	ldh  a, [hActCur+iActX]		; 5 pixels right
 	add  $05
 	ldh  [hActCur+iActX], a
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]		; 4 pixels up
 	sub  $04
 	ldh  [hActCur+iActY], a
+	
+	; Start from the first segment
 	xor  a
-	ld   [w_CF5B_TblOffsetSec], a
-	ld   bc, $0080
+	ld   [wActLiftPathSeg], a
+	
+	; Use slow movement speed of 0.5px/frame
+	ld   bc, LIFT_SPEED
 	call ActS_SetSpeedX
-	ld   bc, $0080
+	ld   bc, LIFT_SPEED
 	call ActS_SetSpeedY
+	
 	jp   ActS_IncRtnId
-L0250A8:;RI
-	ld   hl, $5118
-	ld   a, [w_CF5A_TblOffsetByAct]
+	
+; =============== Act_Lift_NextSeg ===============
+; Handles the next path segment.
+Act_Lift_NextSeg:
+	;
+	; Read the next path segnent from the nested tables.
+	; A = Act_Lift_PathPtrTbl[wActLiftPathId][wActLiftPathSeg]
+	;
+	
+	; Seek to the path table for this actor
+	ld   hl, Act_Lift_PathPtrTbl	; HL = Table base
+	ld   a, [wActLiftPathId]		; BC = wActLiftPathId * 2 (ptr table)
 	add  a
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ld   e, [hl]
+	add  hl, bc						; Offset it
+	ld   e, [hl]					; Read the pointer out to HL
 	inc  hl
 	ld   d, [hl]
-	ld   l, e
+	ld   l, e						; HL = Ptr to Act_Lift_Path*
 	ld   h, d
-	ld   a, [w_CF5B_TblOffsetSec]
+	; Seek to the current segment of this path
+	ld   a, [wActLiftPathSeg]		; BC = wActLiftPathSeg * 2 (2 byte entries)
 	add  a
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ldi  a, [hl]
-	cp   $FF
-	jr   nz, L0250CB
-	xor  a
-	ld   [w_CF5B_TblOffsetSec], a
-	jr   L0250A8
-L0250CB:;R
-	push af
-	and  $C0
-	ld   b, a
-	ldh  a, [hActCur+iActSprMap]
-	and  $3F
-	or   b
-	ldh  [hActCur+iActSprMap], a
-	ld   a, [hl]
-	ld   a, a
-	ldh  [hActCur+iActTimer0C], a
-	ld   hl, w_CF5B_TblOffsetSec
-	inc  [hl]
-	pop  af
-	rrca 
-	jp   c, ActS_IncRtnId
-	ld   a, $04
+	add  hl, bc						; Offset it
+	
+	; The path data ends with a single $FF terminator
+	ldi  a, [hl]					; Read byte0, seek to byte1
+	cp   $FF						; Is it the terminator?
+	jr   nz, .readSeg				; If not, jump
+.endSeg:
+	xor  a							; Otherwise, loop to the start
+	ld   [wActLiftPathSeg], a
+	jr   Act_Lift_NextSeg
+.readSeg:
+	push af ; Save byte0 AND flags
+		; byte0 - Apply the segment's movement directions
+		and  ACTDIR_R|ACTDIR_D			; B = New directions
+		ld   b, a
+		ldh  a, [hActCur+iActSprMap]	; A = iActSprMap
+		and  $FF^(ACTDIR_R|ACTDIR_D)	; Delete old directions
+		or   b							; Merge with new ones
+		ldh  [hActCur+iActSprMap], a
+		
+		; byte1 - How many frames the lift should move
+		ld   a, [hl]					; Read byte1
+		ld   a, a
+		ldh  [hActCur+iActTimer0C], a	; Write directly to iActTimer0C
+		
+		; Use the next segment next time
+		ld   hl, wActLiftPathSeg
+		inc  [hl]
+	pop  af ; A = byte0, C = A < $FF
+	
+	; Pick the correct movement routine depending on the direction we're moving to.
+	; This needs to be defined in a separate bit because ACTDIR_R and ACTDIR_D merely tell
+	; which directions the lift is facing, not where it moves.
+	rrca 						; Is bit0 set?
+	jp   c, ActS_IncRtnId 		; If so, jump (move horizontally) ACTRTN_LIFT_MOVEH
+	ld   a, ACTRTN_LIFT_MOVEV	; Otherwise, move vertically
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0250E8:;I
+	
+; =============== Act_Lift_MoveH ===============
+; Moves the lift horizontally.
+Act_Lift_MoveH:
+	; Move actor horizontally
 	call ActS_ApplySpeedFwdX
-	ld   a, [wActCurSlotPtr]
+	;--
+	; If the player is standing on the actor, make him move along with it.
+	; Not needed with vertical movement due to how the top-platform collision works at low speed.
+	ld   a, [wActCurSlotPtr]		; B = Current slot
 	ld   b, a
-	ld   a, [wActPlatColiSlotPtr]
-	cp   b
-	jr   nz, L0250FD
-	ldh  a, [hActCur+iActSprMap]
-	ld   bc, $0080
-	call Pl_Unk_SetSpeedByActDir
-L0250FD:;R
+	ld   a, [wActPlatColiSlotPtr]	; A = Slot the player is standing on
+	cp   b							; Do they match?
+	jr   nz, .tick					; If not, skip
+									; Otherwise...
+	ldh  a, [hActCur+iActSprMap]	; Move the same direction as the lift
+	ld   bc, LIFT_SPEED				; With the same speed
+	call Pl_SetSpeedByActDir
+	;--
+	
+.tick:
+	; Do the above for the specified amount of frames
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $02
+	; Handle the next segment when done
+	ld   a, ACTRTN_LIFT_NEXTSEG
 	ldh  [hActCur+iActRtnId], a
 	ret
-L025109:;I
+	
+; =============== Act_Lift_MoveV ===============
+; Moves the lift vertically.
+Act_Lift_MoveV:
+	; Move vertically for the specified amount of frames
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $02
+	; Handle the next segment when done
+	ld   a, ACTRTN_LIFT_NEXTSEG
 	ldh  [hActCur+iActRtnId], a
 	ret
-L025118: db $1E
-L025119: db $51
-L02511A: db $27
-L02511B: db $51
-L02511C: db $44
-L02511D: db $51
-L02511E: db $40
-L02511F: db $40
-L025120: db $01
-L025121: db $E0
-L025122: db $00
-L025123: db $40
-L025124: db $81
-L025125: db $E0
-L025126: db $FF
-L025127: db $40
-L025128: db $80
-L025129: db $01
-L02512A: db $80
-L02512B: db $00
-L02512C: db $20
-L02512D: db $81
-L02512E: db $40
-L02512F: db $00
-L025130: db $20
-L025131: db $81
-L025132: db $20
-L025133: db $00
-L025134: db $20
-L025135: db $01
-L025136: db $40
-L025137: db $40
-L025138: db $20
-L025139: db $01
-L02513A: db $60
-L02513B: db $00
-L02513C: db $20
-L02513D: db $81
-L02513E: db $40
-L02513F: db $00
-L025140: db $20
-L025141: db $81
-L025142: db $80
-L025143: db $FF
-L025144: db $40
-L025145: db $A0
-L025146: db $01
-L025147: db $C0
-L025148: db $00
-L025149: db $20
-L02514A: db $81
-L02514B: db $A0
-L02514C: db $00
-L02514D: db $60
-L02514E: db $01
-L02514F: db $20
-L025150: db $40
-L025151: db $40
-L025152: db $01
-L025153: db $60
-L025154: db $00
-L025155: db $10
-L025156: db $81
-L025157: db $40
-L025158: db $00
-L025159: db $10
-L02515A: db $01
-L02515B: db $40
-L02515C: db $00
-L02515D: db $10
-L02515E: db $81
-L02515F: db $40
-L025160: db $00
-L025161: db $10
-L025162: db $01
-L025163: db $60
-L025164: db $00
-L025165: db $20
-L025166: db $81
-L025167: db $C0
-L025168: db $FF
-L025169:;I
+	
+; =============== Act_Lift_PathPtrTbl ===============
+; Maps each lift actor with its own path data.
+Act_Lift_PathPtrTbl: 
+	dw Act_Lift_Path0 ; ACT_LIFT0
+	dw Act_Lift_Path1 ; ACT_LIFT1
+	dw Act_Lift_Path2 ; ACT_LIFT2
+	
+	DEF LIFT_MV_V = $00 ; Move vertically
+	DEF LIFT_MV_H = $01 ; Move horizontally
+
+; =============== Act_Lift_Path0 ===============
+Act_Lift_Path0:
+	;    MV DIR   MV AXIS, TIME (at 0.5/frame, it's BLOCK_H/V * 2)
+	db ACTDIR_D|LIFT_MV_V, $40 ; 2   blocks
+	db ACTDIR_L|LIFT_MV_H, $E0 ; 7   blocks
+	db ACTDIR_U|LIFT_MV_V, $40 ; 2   blocks
+	db ACTDIR_R|LIFT_MV_H, $E0 ; 7   blocks
+	db $FF
+; =============== Act_Lift_Path1 ===============
+Act_Lift_Path1:
+	db ACTDIR_D|LIFT_MV_V, $80 ; 4   blocks
+	db ACTDIR_L|LIFT_MV_H, $80 ; 4   blocks
+	db ACTDIR_U|LIFT_MV_V, $20 ; 1   block
+	db ACTDIR_R|LIFT_MV_H, $40 ; 2   blocks
+	db ACTDIR_U|LIFT_MV_V, $20 ; 1   block
+	db ACTDIR_R|LIFT_MV_H, $20 ; 1   block
+	db ACTDIR_U|LIFT_MV_V, $20 ; 1   block
+	db ACTDIR_L|LIFT_MV_H, $40 ; 2   blocks
+	db ACTDIR_D|LIFT_MV_V, $20 ; 1   block
+	db ACTDIR_L|LIFT_MV_H, $60 ; 3   blocks
+	db ACTDIR_U|LIFT_MV_V, $20 ; 1   block
+	db ACTDIR_R|LIFT_MV_H, $40 ; 2   blocks
+	db ACTDIR_U|LIFT_MV_V, $20 ; 1   block
+	db ACTDIR_R|LIFT_MV_H, $80 ; 4   blocks
+	db $FF
+; =============== Act_Lift_Path2 ===============
+Act_Lift_Path2:
+	db ACTDIR_D|LIFT_MV_V, $A0 ; 5   blocks
+	db ACTDIR_L|LIFT_MV_H, $C0 ; 6   blocks
+	db ACTDIR_U|LIFT_MV_V, $20 ; 1   block
+	db ACTDIR_R|LIFT_MV_H, $A0 ; 5   blocks
+	db ACTDIR_U|LIFT_MV_V, $60 ; 3   blocks
+	db ACTDIR_L|LIFT_MV_H, $20 ; 1   block
+	db ACTDIR_D|LIFT_MV_V, $40 ; 2   blocks
+	db ACTDIR_L|LIFT_MV_H, $60 ; 3   blocks
+	db ACTDIR_U|LIFT_MV_V, $10 ; 0.5 blocks
+	db ACTDIR_R|LIFT_MV_H, $40 ; 2   blocks
+	db ACTDIR_U|LIFT_MV_V, $10 ; 0.5 blocks
+	db ACTDIR_L|LIFT_MV_H, $40 ; 2   blocks
+	db ACTDIR_U|LIFT_MV_V, $10 ; 0.5 blocks
+	db ACTDIR_R|LIFT_MV_H, $40 ; 2   blocks
+	db ACTDIR_U|LIFT_MV_V, $10 ; 0.5 blocks
+	db ACTDIR_L|LIFT_MV_H, $60 ; 3   blocks
+	db ACTDIR_U|LIFT_MV_V, $20 ; 1   block
+	db ACTDIR_R|LIFT_MV_H, $C0 ; 6   blocks
+	db $FF
+
+; =============== Act_BlockyHead ===============
+; ID: ACT_BLOCKYHEAD
+; Tower of blocks made up of four section.
+; This is the head part, the second block in the tower, which usually controls other child sections.
+Act_BlockyHead:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02516C: db $78
-L02516D: db $51
-L02516E: db $C9
-L02516F: db $51
-L025170: db $01
-L025171: db $52
-L025172: db $0C
-L025173: db $52
-L025174: db $6E
-L025175: db $52
-L025176: db $85
-L025177: db $52
-L025178:;I
+	dw Act_BlockyHead_Init
+	dw Act_BlockyHead_Idle0
+	dw Act_BlockyHead_FallV
+	dw Act_BlockyHead_Ground
+	dw Act_BlockyHead_WaitRise
+	dw Act_BlockyHead_Idle1
+	 
+; =============== Act_BlockyHead_Init ===============
+Act_BlockyHead_Init:
+	; Move forward at 0.25px/frame
 	ld   bc, $0040
 	call ActS_SetSpeedX
+	
+	:
+	; Set the block-specific properties, which are required for all of the four blocks.
+	; BLOCK 2/4
+	;
+	
+	;
+	; The individual blocks (both head and body) move back and forth,
+	; even ones start moving right, while odd one start moving left.
+	;
+	; The head is the second block, so it starts moving right.
+	; bit4 determines the direction (if set, it moves right) and the lower bits are the timer.
 	ld   a, $18
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iBlockyWaveTimer], a
+	
+	; This keeps track of the block's position relative to the master, which allows reusing the same
+	; movement code between head and body parts (Act_Blocky_MoveMain).
+	; Since we *are* the head block, that will be zero here.
 	xor  a
-	ldh  [hActCur+iAct0E], a
-	ld   a, $30
-	ld   bc, $00F0
+	ldh  [hActCur+iBlockyRelY], a
+	
+	;
+	; Spawn the other body parts, which are separate actors.
+	; Note that there are two actor types for the body parts, one used before the head is hit once,
+	; which is thrown on signal, the other after it gets rebuilt, which explodes on signal.
+	;
+	; [POI] Them being separate actors, especially when they move back and forth, means it's possible
+	;       to offscreen individual sections of the tower, but that can't be fixed without making it
+	;       possible for actors to opt out of getting offscreened.
+	;
+	;       Also, the code below doesn't check if the individual sections couldn't spawn, so care
+	;       must be taken when placing it.
+	;
+	
+	; BLOCK 1/4
+	ld   a, ACT_BLOCKYBODY
+	ld   bc, ($00 << 8)|LOW(-$10) ; 16px up
 	call ActS_SpawnRel
-	ld   de, $000D
+	ld   de, iBlockyWaveTimer
 	add  hl, de
-	ld   [hl], $08
+	ld   [hl], $08 ; iBlockyWaveTimer | Move left
 	inc  hl
-	ld   [hl], $F0
-	ld   a, $30
-	ld   bc, $0010
+	ld   [hl], -$10 ; iBlockyRelY | Needs to be consistent with what was passed to ActS_SpawnRel
+	
+	; BLOCK 3/4
+	ld   a, ACT_BLOCKYBODY
+	ld   bc, ($00 << 8)|LOW($10) ; 16px down
 	call ActS_SpawnRel
-	ld   de, $000D
+	ld   de, iBlockyWaveTimer
 	add  hl, de
-	ld   [hl], $08
+	ld   [hl], $08 ; iBlockyWaveTimer | Move left
 	inc  hl
-	ld   [hl], $10
-	ld   a, $30
-	ld   bc, $0020
+	ld   [hl], $10 ; iBlockyRelY
+	
+	; BLOCK 4/4
+	ld   a, ACT_BLOCKYBODY
+	ld   bc, ($00 << 8)|LOW($20) ; 32px down
 	call ActS_SpawnRel
-	ld   de, $000D
+	ld   de, iBlockyWaveTimer
 	add  hl, de
-	ld   [hl], $18
+	ld   [hl], $18 ; iBlockyWaveTimer | Move right
 	inc  hl
-	ld   [hl], $20
-	ld   hl, $CCD0
+	ld   [hl], $20 ; iBlockyRelY
+	
+	
+	; Initialize global variables used for communication between head and body.
+	; Side effect of doing this is that you can't have more than one Blocky on-screen.
+	ld   hl, wActBlockyMode
 	xor  a
+	; Signal out to Act_BlockyBody idle mode
+	ldi  [hl], a 				; wActBlockyMode = BLOCKY_IDLE0
+	; Will be used later for Act_BlockyRise
+	ldi  [hl], a 				; wActBlockyRiseDone
+	; Initialize the base head position from iActY, which *all*	blocks use to keep themselves in sync
+	; (For the most part, iActY won't be used directly)
+	ldh  a, [hActCur+iActY]		; wActBlockyHeadY = iActY
 	ldi  [hl], a
-	ldi  [hl], a
-	ldh  a, [hActCur+iActY]
-	ldi  [hl], a
-	ld   b, $02
+	
+	; The head is vulnerable immediately
+	ld   b, ACTCOLI_ENEMYHIT
 	call ActS_SetColiType
+	
 	jp   ActS_IncRtnId
-L0251C9:;I
-	ldh  a, [hActCur+iAct0D]
-	add  $08
-	and  $7C
-	sub  $01
+	
+; =============== Act_BlockyHead_Idle0 ===============
+; Main idle code before the enemy is hit once.
+; This mainly moves the enemy forwards.
+Act_BlockyHead_Idle0:
+	
+	;
+	; Handle blinking animation
+	; Uses frames $00-$01 with the following timing:
+	;
+	ldh  a, [hActCur+iBlockyWaveTimer]
+	add  $08			; Shift timing by 8
+	and  %01111100		; This mask zeroes out ranges $80-$83 and $00-$03, making them use the closed eyes
+	sub  $01			; If the result was 0, set carry flag
 	ld   a, $00
-	adc  a
-	ld   [wActCurSprMapRelId], a
-	call L0252CF
-	call L0252A2
+	adc  a				; Push carry into result, alternating between $00 and $01
+	ld   [wActCurSprMapBaseId], a
+	
+	; Fall off empty blocks, if any, while moving forwards, bringing the body parts down with it.
+	call Act_BlockyHead_ChkGround
+	call Act_Blocky_MoveMain
+	
+	;
+	; If hit by the player, fall to the ground while launching the body blocks forward.
+	; Any hit from a weapon that doesn't clink will bring the health below the threshold.
+	;
 	call ActS_GetHealth
-	cp   $11
-	ret  nc
-	ld   hl, $CCD0
+	cp   $11					; Health >= $11?
+	ret  nc						; If so, wait
+	
+	; Signal out to throw the blocks
+	ld   hl, wActBlockyMode		; wActBlockyMode = BLOCKYBODY_THROW
 	inc  [hl]
-	inc  hl
+	; Not necessary, already done
+	inc  hl ; wActBlockyRiseDone
 	ld   [hl], $00
+	; Set shocked eyes (until the body blocks despawn)
 	ld   a, $01
 	call ActS_SetSprMapId
-	ld   b, $03
+	; Make invulnerable until the tower recomposes itself
+	ld   b, ACTCOLI_ENEMYREFLECT
 	call ActS_SetColiType
+	; Set the actor to be one hit from death
 	ld   b, $11
 	call ActS_SetHealth
+	
+	; Prepare for falling to the ground
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
-L025201:;I
+	
+; =============== Act_BlockyHead_FallV ===============
+; Head falling to the ground.
+Act_BlockyHead_FallV:
+	; Wait for the head to fall to the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	; Set initial check delay (see below)
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02520C:;I
+	
+; =============== Act_BlockyHead_Ground ===============
+; Head on the ground, waiting to rebuild itself.
+Act_BlockyHead_Ground:
+	
+	;--
+	;
+	; The body parts, once they hit the ground, bounce a bit, then finally despawning when they hit the ground again.
+	; Wait until all of them have despawned before starting to rebuild the tower. 
+	; These checks are made every 16 frames to save time.
+	;
+	
+	; Wait for those 16 frames
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Set a new delay in case the check below fails
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $30
-	call L001E63
+	; If any body parts are still active, wait
+	ld   a, ACT_BLOCKYBODY
+	call ActS_CountById
 	ld   a, b
 	and  a
 	ret  nz
-	ld   a, $18
-	ldh  [hActCur+iAct0D], a
+	;--
+	
+	;
+	; Spawn the rising body blocks (Act_BlockyRise), which once finish rising they will 
+	; start moving forward themselves, identically to Act_BlockyBody.
+	; This is similar to what was done in Act_BlockyHead_Init, except the rising blocks
+	; come from the bottom of the screen.
+	;
+	
+	; BLOCK 2/4 (Head)
+	; This is reset like in Act_BlockyHead_Init.
+	ld   a, $18							; Start moving right
+	ldh  [hActCur+iBlockyWaveTimer], a
+	xor  a								; Head is base part
+	ldh  [hActCur+iBlockyRelY], a
+
+	; BLOCK 1/4
+	; All other body blocks follow this template.
+	ld   a, ACT_BLOCKYRISE
+	; Use the head's position (currently on the ground) as reference point.
+	ld   bc, $0000						
+	call ActS_SpawnRel
+	; Immediately replace the Y position to point off-screen below.
+	; The positions chosen among the three blocks make a 3-block tower with no gaps inbetween.
+	ld   de, iActY 								; DE = $07
+	add  hl, de									; Seek to iActY
+	ld   [hl], OBJ_OFFSET_Y+SCREEN_V+($10*0)	; Offscreen below
+	; Set custom properties, identical to those in Act_BlockyHead_Init.
+	dec  de										; DE = 06
+	add  hl, de									; Seek to iActY+$06 = iBlockyWaveTimer
+	ld   [hl], $08 ; iBlockyWaveTimer
+	inc  hl
+	ld   [hl], -$10 ; iBlockyRelY 
+	
+	; BLOCK 3/4
+	ld   a, ACT_BLOCKYRISE
+	ld   bc, $0000
+	call ActS_SpawnRel
+	ld   de, iActY
+	add  hl, de
+	ld   [hl], OBJ_OFFSET_Y+SCREEN_V+($10*1)
+	dec  de
+	add  hl, de
+	ld   [hl], $08 ; iBlockyWaveTimer | Move left
+	inc  hl
+	ld   [hl], $10 ; iBlockyRelY
+	
+	; BLOCK 4/4
+	ld   a, ACT_BLOCKYRISE
+	ld   bc, $0000
+	call ActS_SpawnRel
+	ld   de, iActY
+	add  hl, de
+	ld   [hl], OBJ_OFFSET_Y+SCREEN_V+($10*2)
+	dec  de
+	add  hl, de
+	ld   [hl], $18 ; iBlockyWaveTimer | Move right
+	inc  hl
+	ld   [hl], $20 ; iBlockyRelY
+	
+	ld   hl, wActBlockyMode
 	xor  a
-	ldh  [hActCur+iAct0E], a
-	ld   a, $31
-	ld   bc, $0000
-	call ActS_SpawnRel
-	ld   de, $0007
-	add  hl, de
-	ld   [hl], $A0
-	dec  de
-	add  hl, de
-	ld   [hl], $08
-	inc  hl
-	ld   [hl], $F0
-	ld   a, $31
-	ld   bc, $0000
-	call ActS_SpawnRel
-	ld   de, $0007
-	add  hl, de
-	ld   [hl], $B0
-	dec  de
-	add  hl, de
-	ld   [hl], $08
-	inc  hl
-	ld   [hl], $10
-	ld   a, $31
-	ld   bc, $0000
-	call ActS_SpawnRel
-	ld   de, $0007
-	add  hl, de
-	ld   [hl], $C0
-	dec  de
-	add  hl, de
-	ld   [hl], $18
-	inc  hl
-	ld   [hl], $20
-	ld   hl, $CCD0
-	xor  a
-	ldi  [hl], a
-	ld   [hl], a
+	; The new block types spawned have their own communication sequence
+	ldi  [hl], a ; wActBlockyMode = BLOCKYRISE_REBUILD
+	; Not necessary, it's already 0
+	ld   [hl], a ; wActBlockyRiseDone
 	jp   ActS_IncRtnId
-L02526E:;I
-	ld   a, [$CCD1]
+	
+; =============== Act_BlockyHead_WaitRise ===============
+; Waiting for the blocks to rise up, then sets up movement.
+Act_BlockyHead_WaitRise:
+	; Wait until all Act_BlockyRise have finished moving.
+	; Note that they always finish doing so on the same frame, so we'll read either $00 or $03
+	ld   a, [wActBlockyRiseDone]
 	cp   $03
 	ret  nz
+	
+	; Set normal eye sprite
 	ld   a, $00
 	call ActS_SetSprMapId
-	ld   b, $02
+	; Make head vulnerable again
+	ld   b, ACTCOLI_ENEMYHIT
 	call ActS_SetColiType
-	ld   hl, $CCD0
-	inc  [hl]
+	; Signal to the body parts that normal movement is enabled.
+	; This will cause them to move forward in sync.
+	ld   hl, wActBlockyMode
+	inc  [hl]				; wActBlockyMode = BLOCKYRISE_IDLE1
+	
 	jp   ActS_IncRtnId
-L025285:;I
-	ldh  a, [hActCur+iAct0D]
+	
+; =============== Act_BlockyHead_Idle1 ===============
+; Main idle code after the enemy is hit once.
+; The actor explodes if hit again on the head.
+Act_BlockyHead_Idle1:
+	;--
+	; Handle blinking animation, identically to Act_BlockyHead_Idle0
+	ldh  a, [hActCur+iBlockyWaveTimer]
 	add  $08
 	and  $7C
 	sub  $01
 	ld   a, $00
 	adc  a
-	ld   [wActCurSprMapRelId], a
-	call L0252CF
-	call L0252A2
-	call L001E03
+	ld   [wActCurSprMapBaseId], a
+	;--
+	
+	; Fall off empty blocks, if any, while moving forwards, bringing the body parts down with it
+	call Act_BlockyHead_ChkGround
+	call Act_Blocky_MoveMain
+	
+	; If hit another time, make the actor explode
+	call ActS_ChkExplodeNoChild
 	ret  nc
-	ld   hl, $CCD0
+	; And signal that out to the body parts
+	ld   hl, wActBlockyMode		; wActBlockyMode = BLOCKY_DEAD
 	inc  [hl]
 	ret
-L0252A2:;C
-	ld   a, [$CCD2]
-	ld   hl, hActCur+iAct0E
-	add  [hl]
+	
+; =============== Act_Blocky_MoveMain ===============
+; Handles normal block movement, used for both the head and body parts.
+; The code being shared means it needs to account for their different positions.
+Act_Blocky_MoveMain:
+
+	;
+	; Y POSITION
+	;
+	; The blocks don't typically move vertically, but they can fall off platforms.
+	; To ensure the body parts are always kept in sync, the Y position is regenerated
+	; based on the head's position:
+	;
+	; iActY = wActBlockyHeadY + iAct0E 
+	;
+	ld   a, [wActBlockyHeadY]		; A = Base Y pos of head
+	ld   hl, hActCur+iBlockyRelY	; HL = Ptr to actor's Y offset (relative to the head)
+	add  [hl]						; Add both to get the final value
 	ldh  [hActCur+iActY], a
+	
+	;
+	; X POSITION
+	;
+	; This is a bit more involved, as it is influenced by two factors:
+	; - Normal forward movement
+	; - The wave pattern
+	;
+	
+	;
+	; First, move forward at its normal 0.25px/frame speed
+	;
 	call ActS_ApplySpeedFwdX
-	ldh  a, [hActCur+iAct0D]
-	and  $10
+	
+	;
+	; Then, move horizontally depending on the wave pattern location.
+	;
+	; In practice, alternate every 16 frames between moving left and right at 0.5px/frame.
+	; This movement is applied directly to the horizontal position, which avoids having to adjust the speed.
+	;
+
+	; HL = (iBlockyWaveTimer / 16) % 2
+	;      The result will either be $0100 or $0000.
+	;      If it's $0100, the base movement speed of -0.5px (left) will become 0.5px (right).
+	ldh  a, [hActCur+iBlockyWaveTimer]
+	and  $10			; A = iBlockyWaveTimer & $10
+	rrca 				; A >>= 4
 	rrca 
 	rrca 
 	rrca 
-	rrca 
-	ld   h, a
+	ld   h, a			; HL = A
 	ld   l, $00
-	ld   de, $FF80
-	add  hl, de
-	ldh  a, [hActCur+iActXSub]
+	
+	ld   de, -$0080		; Get base 0.5px/frame left
+	add  hl, de			; Make it move right, if the timer agrees
+	
+	; iActX += HL
+	ldh  a, [hActCur+iActXSub]	; DE = Current speed
 	ld   e, a
 	ldh  a, [hActCur+iActX]
 	ld   d, a
-	add  hl, de
-	ld   a, l
+	add  hl, de					; Add new one
+	ld   a, l					; Save back
 	ldh  [hActCur+iActXSub], a
 	ld   a, h
 	ldh  [hActCur+iActX], a
-	ld   hl, hActCur+iAct0D
+	
+	; Advance the wave timer
+	ld   hl, hActCur+iBlockyWaveTimer
 	inc  [hl]
 	ret
-L0252CF:;C
-	ldh  a, [hActCur+iActX]
+	
+; =============== Act_BlockyHead_ChkGround ===============
+; Checks if the actor is touching the solid ground, and if so, makes it tall.
+; This check only needs to be made by the head part, so it's tailored for that.
+Act_BlockyHead_ChkGround:
+
+	; LEFT CORNER
+	ldh  a, [hActCur+iActX]	; X Target: ActX - $07 (left)
 	sub  $07
 	ld   [wTargetRelX], a
-	ldh  a, [hActCur+iActY]
-	add  $20
+	
+	; [BUG] The head block is the 2nd of the 4 blocks from the top, so 2 body blocks are below.
+	;       As blocky's sections are are $10 pixels tall, that makes for the $20... which is off by one,
+	;       so the actor sinks 1 pixel into the ground for what's worth.
+	ldh  a, [hActCur+iActY]	; Y Target: ActX + $20 (ground - 1)
+	add  BLOCK_V*2         
 	ld   [wTargetRelY], a
 	call Lvl_GetBlockId
 	ret  nc
-	ldh  a, [hActCur+iActX]
+	
+	; RIGHT CORNER
+	ldh  a, [hActCur+iActX]	; X Target: ActX + $07 (right)
 	add  $07
 	ld   [wTargetRelX], a
 	call Lvl_GetBlockId
 	ret  nc
-	ld   hl, $CCD2
+	
+	; If we got here, there is no ground below, so fall at 2px/frame downwards by directly affecting the Y position.
+	; Even though it's falling 2px at a time, it can't sink into the ground this way as that's a multiple of the block height.
+	ld   hl, wActBlockyHeadY	; wActBlockyHeadY += $02
 	inc  [hl]
 	inc  [hl]
 	ret
-L0252F2:;I
+	
+; =============== Act_BlockyBody ===============
+; ID: ACT_BLOCKYBODY
+; Invulnerable body section of Blocky, before the rebuild.
+Act_BlockyBody:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0252F5: db $FF
-L0252F6: db $52
-L0252F7: db $08
-L0252F8: db $53
-L0252F9: db $35
-L0252FA: db $53
-L0252FB: db $3F
-L0252FC: db $53
-L0252FD: db $5E
-L0252FE: db $53
-L0252FF:;I
+	dw Act_BlockyBody_Init
+	dw Act_BlockyBody_Idle
+	dw Act_BlockyBody_JumpU
+	dw Act_BlockyBody_JumpD
+	dw Act_BlockyBody_Explode
+
+; =============== Act_BlockyBody_Init ===============
+Act_BlockyBody_Init:
+	; Move forward at 0.25px/frame, the same speed as the head
 	ld   bc, $0040
 	call ActS_SetSpeedX
 	jp   ActS_IncRtnId
-L025308:;I
-	call L0252A2
-	ld   a, [$CCD0]
-	and  a
-	ret  z
+	
+; =============== Act_BlockyBody_Idle ===============
+Act_BlockyBody_Idle:
+	; Continue moving horizontally, like the head part
+	call Act_Blocky_MoveMain
+	
+	;
+	; Throw the blocks when we're signaled to.
+	;
+	
+	; Wait for the signal first
+	ld   a, [wActBlockyMode]
+	and  a						; wActBlockyMode == BLOCKYBODY_IDLE0?
+	ret  z						; If so, return
+	
 	xor  a
-	ldh  [hActCur+iAct0F], a
-	ldh  a, [hActCur+iAct0E]
-	add  $10
-	rrca 
-	rrca 
-	ld   hl, $5361
-	ld   b, $00
+	ldh  [hActCur+iBlockyGroundBounce], a
+	
+	;
+	; Each block in the tower is thrown in a different arc, and the speed values
+	; are read from a table indexed by block ID.
+	;
+	; The block ID can be easily determined through the relative Y position to the head block,
+	; which is unique for each and always a multiple of $10.
+	; The topmost block has a negative -$10 value since it's above the head block, so that
+	; needs to be counterbalanced:
+	; BlockId = (iBlockyRelY + $10) / $10
+	;
+	; Each table entry is 4 bytes long (iActSpdXSub-iActSpdY) so:
+	; Offset = (iBlockyRelY + $10) / $10 * $04
+	;        = (iBlockyRelY + $10) / $04
+	;
+	ldh  a, [hActCur+iBlockyRelY]	
+	add  $10						; Account for topmost block being -$10
+	rrca 							; / $04
+	rrca 							; ""
+	ld   hl, Act_BlockyBody_ThrowSpdTbl	; HL = Table base
+	ld   b, $00						; BC = Offset
 	ld   c, a
-	add  hl, bc
+	add  hl, bc						; Seek to entry
+	; Copy the four speed values from the entry to the actor 
 	ld   de, hActCur+iActSpdXSub
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
+	REPT 4
+		ldi  a, [hl]
+		ld   [de], a
+		inc  de
+	ENDR
+	
+	; Throw the blocks in the direction of the player
 	call ActS_FacePl
+	
 	jp   ActS_IncRtnId
-L025335:;I
+	
+
+; =============== Act_BlockyBody_JumpU ===============
+; Jump, pre-peak.
+Act_BlockyBody_JumpU:
+	; Move forward
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving up until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L02533F:;I
+	
+; =============== Act_BlockyBody_JumpD ===============
+; Jump, post-peak.
+Act_BlockyBody_JumpD:
+	; Move forward
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving down until we hit the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ldh  a, [hActCur+iAct0F]
-	and  a
-	jp   nz, ActS_IncRtnId
-	inc  a
-	ldh  [hActCur+iAct0F], a
-	ld   bc, $0000
+	
+	;
+	; When the blocks hit the ground the first time, make them jump directly up.
+	; This second jump is handled by returning to Act_BlockyBody_JumpU with different speed values.
+	;
+	
+	ldh  a, [hActCur+iBlockyGroundBounce]
+	and  a					; Already bounced on the ground once?
+	jp   nz, ActS_IncRtnId	; If so, explode
+	inc  a					; Otherwise, set up the bounce
+	ldh  [hActCur+iBlockyGroundBounce], a
+	
+	ld   bc, $0000			; No horizontal speed
 	call ActS_SetSpeedX
-	ld   bc, $0200
+	ld   bc, $0200			; 2px/frame up
 	call ActS_SetSpeedY
-	jp   ActS_DecRtnId
-L02535E:;I
-	jp   L001E11
-L025361: db $80
-L025362: db $02
-L025363: db $00
-L025364: db $03
-L025365: db $00;X
-L025366: db $00;X
-L025367: db $00;X
-L025368: db $00;X
-L025369: db $00
-L02536A: db $02
-L02536B: db $80
-L02536C: db $02
-L02536D: db $80
-L02536E: db $01
-L02536F: db $80
-L025370: db $01
-L025371:;I
+	jp   ActS_DecRtnId		; Return to handling the pre-peak jump
+	
+; =============== Act_BlockyBody_Explode ===============
+Act_BlockyBody_Explode:
+	jp   ActS_Explode
+	
+; =============== Act_BlockyBody_ThrowSpdTbl ===============
+; Table of speed values for each separate block, indexed by block number. (iBlockyRelY / $10) + $10
+Act_BlockyBody_ThrowSpdTbl:
+	;      X      Y
+	dw $0280, $0300 ; 1/4
+	dw $0000, $0000 ; 2/4 ; Unused dummy entry for the head block
+	dw $0200, $0280 ; 3/4
+	dw $0180, $0180 ; 4/4
+
+; =============== Act_BlockyRise ===============
+; ID: ACT_BLOCKYRISE
+; Invulnerable body section of Blocky, after the rebuild.
+Act_BlockyRise:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025374: db $7C
-L025375: db $53
-L025376: db $95
-L025377: db $53
-L025378: db $A6
-L025379: db $53
-L02537A: db $AE
-L02537B: db $53
-L02537C:;I
+	dw Act_BlockyRise_Init
+	dw Act_BlockyRise_Rise
+	dw Act_BlockyRise_WaitMove
+	dw Act_BlockyRise_Move
+
+; =============== Act_BlockyRise_Init ===============
+Act_BlockyRise_Init:
+	; Rising blocks can't be moving down
 	ldh  a, [hActCur+iActSprMap]
-	and  $BF
+	and  $FF^ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
-	ld   bc, $0040
+	
+	ld   bc, $0040			; Same 0.25px/frame forward speed as the other blocks
 	call ActS_SetSpeedX
-	ld   bc, $0200
+	ld   bc, $0200			; 2px/frame rising speed
 	call ActS_SetSpeedY
-	ld   a, $20
+	ld   a, $20				; Rise for 32 frames
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025395:;I
+	
+; =============== Act_BlockyRise_Rise ===============
+Act_BlockyRise_Rise:
+	; Rise up for those 32 frames
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   hl, $CCD1
+	
+	;
+	; Signal that the block has risen up.
+	; The head part is looping at Act_BlockyHead_WaitRise, waiting for all three to have done so.
+	; When that's done, forward movement will start, which is signaled to us by having 
+	; wActBlockyMode set to BLOCKYRISE_IDLE1.
+	;
+	ld   hl, wActBlockyRiseDone
 	inc  [hl]
+	
 	jp   ActS_IncRtnId
-L0253A6:;I
-	ld   a, [$CCD0]
-	and  a
-	ret  z
+	
+; =============== Act_BlockyRise_WaitMove ===============
+; Waits for the head part to have entered the second moving phase.
+Act_BlockyRise_WaitMove:
+	; Wait for movement
+	ld   a, [wActBlockyMode]
+	and  a				; wActBlockyMode == BLOCKYRISE_REBUILD?
+	ret  z				; If so, return
+						; Otherwise, it's at BLOCKYRISE_IDLE1, start moving
 	jp   ActS_IncRtnId
-L0253AE:;I
-	call L0252A2
-	ld   a, [$CCD0]
-	cp   $02
+	
+; =============== Act_BlockyRise_Move ===============
+Act_BlockyRise_Move:
+	; Move forward the normal way
+	call Act_Blocky_MoveMain
+	
+	; If the head part got hit (a second time) instadespawn the actor.
+	ld   a, [wActBlockyMode]
+	cp   BLOCKYRISE_DEAD
 	ret  nz
 	xor  a
 	ldh  [hActCur+iActId], a
 	ret
-L0253BB:;I
+	
+; =============== Act_Pipi ===============
+; ID: ACT_PIPI
+; A bird that drops eggs.
+; Only spawned by Act_PipiSpawner, which takes care of spawning it from the correct side.
+Act_Pipi:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0253BE: db $C4
-L0253BF: db $53
-L0253C0: db $CF
-L0253C1: db $53
-L0253C2: db $F4
-L0253C3: db $53
-L0253C4:;I
+	dw Act_Pipi_InitWait
+	dw Act_Pipi_Wait
+	dw Act_Pipi_Move
+
+; =============== Act_Pipi_InitWait ===============
+Act_Pipi_InitWait:
+	; Save an original copy of the offscreen X position here (see Act_Pipi_Wait)
 	ldh  a, [hActCur+iActX]
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iPipiSpawnX], a
+	
+	; Wait 64 frames before coming from the side of the screen
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0253CF:;I
-	ldh  a, [hActCur+iAct0D]
+	
+; =============== Act_Pipi_Wait ===============
+; Waits offscreen.
+Act_Pipi_Wait:
+
+	; Force the bird to stay offscreen, in case we're scrolling the screen (ie: Air Man's stage)
+	ldh  a, [hActCur+iPipiSpawnX]
 	ldh  [hActCur+iActX], a
+	
+	; Wait for 64 frames 
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+
+	; [BUG] This is forgetting to call ActS_ChkExplodeNoChild.
+	;       This causes the death handler to be delayed until it gets to the next mode,
+	;       which sounds odd when you can hear something getting hit multiple times offscreen.
+	
+	
+	; Face the player, as that's not done by the spawner
 	call ActS_FacePl
+	
+	; Move 0.75px/frame towards the player
 	ld   bc, $00C0
 	call ActS_SetSpeedX
-	ld   a, $33
-	ld   bc, $0008
+	
+	; Spawn the egg right below the actor
+	ld   a, ACT_EGG
+	ld   bc, $0008		; 8px below bird
 	call ActS_SpawnRel
+	; Keep track of the actor slot containing the egg
 	ld   a, l
-	ldh  [hActCur+iAct0E], a
+	ldh  [hActCur+iPipiEggSlotPtr_Low], a
 	ld   a, h
-	ldh  [hActCur+iAct0F], a
+	ldh  [hActCur+iPipiEggSlotPtr_High], a
+	
 	jp   ActS_IncRtnId
-L0253F4:;I
+	
+; =============== Act_Pipi_Move ===============
+; Moves horizontally in a straight line, until it gets offscreened the other side.
+Act_Pipi_Move:
+	; Use frames $00-$01 at 1/8 speed
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Move horizontally 
 	call ActS_ApplySpeedFwdX
-	call L001E03
-	ret  nc
-	ld   a, $33
-	call L001E63
+	
+	; When the actor's health goes below the threshold, destroy it and notify the egg.
+	; This lets the egg decide whether it should be destroyed automatically.
+	call ActS_ChkExplodeNoChild		; Handle death
+	ret  nc							; Did it happen? If not, return
+	
+	ld   a, ACT_EGG
+	call ActS_CountById
 	ld   a, b
-	and  a
-	ret  z
-	ldh  a, [hActCur+iAct0E]
-	add  $0D
+	and  a							; Any eggs onscreen?
+	ret  z							; If not, return
+	
+	; Seek HL to the egg's iEggBirdDead
+	ldh  a, [hActCur+iPipiEggSlotPtr_Low]	
+	add  iEggBirdDead
 	ld   l, a
-	ldh  a, [hActCur+iAct0F]
+	ldh  a, [hActCur+iPipiEggSlotPtr_High]
 	ld   h, a
-	ld   [hl], $FF
+	ld   [hl], $FF					; Flag as dead
 	ret
-L025413:;I
+	
+; =============== Act_Egg ===============
+; ID: ACT_EGG
+; Egg carried/dropped by Pipi.
+Act_Egg:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025416: db $1E
-L025417: db $54
-L025418: db $3D
-L025419: db $54
-L02541A: db $50
-L02541B: db $54
-L02541C: db $62
-L02541D: db $54
-L02541E:;I
+	dw Act_Egg_Init
+	dw Act_Egg_MoveH
+	dw Act_Egg_MoveHChkDrop
+	dw Act_Egg_FallV
+
+; =============== Act_Egg_Init ===============
+Act_Egg_Init:
+	; Move towards the player (same direction as the bird)
 	call ActS_FacePl
+	
+	; Move at the same speed as the bird (0.75px/frame)
 	ld   bc, $00C0
 	call ActS_SetSpeedX
+	
+	; When dropped, start falling at 0.75px/frame too
 	ld   bc, $00C0
 	call ActS_SetSpeedY
 	ldh  a, [hActCur+iActSprMap]
-	or   $40
+	or   ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
+	
 	xor  a
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iEggBirdDead], a
+	
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02543D:;I
+	
+; =============== Act_Egg_MoveH ===============
+; Egg carried by the bird. Move horizontally, don't drop.
+; Gives a ~1 second window after it gets spawned where the Egg can't drop.
+; This prevents the egg from being dropped into walls at the side of 
+; the screen, if any are there.
+Act_Egg_MoveH:
+	; Move the egg to sync itself with the bird.
+	
 	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
-	jp   z, ActS_IncRtnId
-	ldh  a, [hActCur+iAct0D]
+	jp   z, ActS_IncRtnId			; Timer elapsed? If so, jump
+	
+	; If the bird has died, also destroy the egg since it's still being carried.
+	ldh  a, [hActCur+iEggBirdDead]
 	and  a
 	ret  z
-	jp   L001E11
-L025450:;I
+	jp   ActS_Explode
+	
+; =============== Act_Egg_MoveHChkDrop ===============
+; Egg carried by the bird. Move horizontally, check for drop.
+Act_Egg_MoveHChkDrop:
+	; Move horizontally until the egg gets within 3 blocks of the player.
 	call ActS_ApplySpeedFwdX
 	call ActS_GetPlDistanceX
-	cp   $30
-	jp   c, ActS_IncRtnId
-	ldh  a, [hActCur+iAct0D]
+	cp   $30					; Distance < $30?
+	jp   c, ActS_IncRtnId		; If so, jump
+	
+	; If the bird has died, also destroy the egg since it's still being carried.
+	ldh  a, [hActCur+iEggBirdDead]
 	and  a
 	ret  z
-	jp   L001E11
-L025462:;I
+	jp   ActS_Explode
+	
+; =============== Act_Egg_FallV ===============
+; Egg was dropped by the bird.
+; From this point, shooting the bird won't affect the egg.
+Act_Egg_FallV:
+	; Apply gravity at 0.75px/frame
 	call ActS_ApplySpeedFwdYColi
+	
+	; If the egg fell offscreen, despawn it
 	ldh  a, [hActCur+iActY]
-	cp   $9C
-	jp   nc, L0254A2
+	cp   SCREEN_GAME_V+OBJ_OFFSET_Y+$0C
+	jp   nc, .despawn
+	
+	;
+	; Wait until it hits a solid block.
+	; When that happens, explode and spawn six small birds.
+	;
 	call Lvl_GetBlockId
 	ret  c
-	ld   de, $54A6
-	ld   b, $06
-L025475:;R
-	push bc
-	push de
-	ld   a, $34
-	ld   bc, $0000
-	call ActS_SpawnRel
-	pop  de
-	inc  hl
-	inc  hl
-	ld   a, [hl]
-	and  $3F
-	ld   [hl], a
-	ld   a, $06
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ld   a, [de]
-	ld   [hl], a
-	inc  hl
-	inc  de
-	ld   a, [de]
-	ld   [hl], a
-	inc  hl
-	inc  de
-	ld   a, [de]
-	ld   [hl], a
-	inc  hl
-	inc  de
-	ld   a, [de]
-	ld   [hl], a
-	inc  de
-	pop  bc
-	dec  b
-	jr   nz, L025475
-	jp   L001E11
-L0254A2:;J
+	
+	ld   de, Act_Egg_CopipiSpreadTbl	; HL = Properties
+	ld   b, $06				; B = Actors left
+.loop:
+	push bc ; Save remaining birds
+	
+		;
+		; Spawn the bird exactly at the egg's position.
+		;
+		
+		; HL = Ptr to Act_Copipi's slot
+		push de
+			ld   a, ACT_COPIPI
+			ld   bc, $0000
+			call ActS_SpawnRel
+		pop  de
+		
+		inc  hl ; iActRtnId
+		inc  hl ; iActSprMap
+		
+		; Reset their directions.
+		; Doing this makes the speed defined in Act_Egg_CopipiSpreadTbl a bit misleading 
+		; (ie: negative h speed moves right), so it's not clear why it's like this.
+		ld   a, [hl]
+		and  $FF^(ACTDIR_R|ACTDIR_D)
+		ld   [hl], a
+		
+		;
+		; Each bird has its own *initial* movement speed, used exclusively to show them
+		; spreading out from the egg in a formation.
+		; 
+		; Copy the speed properties from the table.
+		;
+		
+		; Seek to iActSpdXSub
+		ld   a, iActSpdXSub-iActSprMap
+		ld   b, $00
+		ld   c, a
+		add  hl, bc
+		
+		ld   a, [de]	; iActSpdXSub = byte0
+		ld   [hl], a
+		inc  hl
+		inc  de
+		ld   a, [de]	; iActSpdX = byte1
+		ld   [hl], a
+		inc  hl
+		inc  de
+		ld   a, [de]	; iActSpdYSub = byte2
+		ld   [hl], a
+		inc  hl
+		inc  de
+		ld   a, [de]	; iActSpdY = byte3
+		ld   [hl], a
+		inc  de			; Seek to byte0 of next entry
+	pop  bc 		; Get remaining birds to spawn
+	dec  b			; Have all spawned?
+	jr   nz, .loop	; If not, loop
+	; Finally, visibly explode
+	jp   ActS_Explode
+.despawn:
 	xor  a
 	ldh  [hActCur+iActId], a
 	ret
-L0254A6: db $00
-L0254A7: db $00
-L0254A8: db $01
-L0254A9: db $FF
-L0254AA: db $4C
-L0254AB: db $FF
-L0254AC: db $B4
-L0254AD: db $00
-L0254AE: db $01
-L0254AF: db $FF
-L0254B0: db $00
-L0254B1: db $00
-L0254B2: db $00
-L0254B3: db $00
-L0254B4: db $FF
-L0254B5: db $00
-L0254B6: db $FF
-L0254B7: db $00
-L0254B8: db $00
-L0254B9: db $00
-L0254BA: db $B4
-L0254BB: db $00
-L0254BC: db $B4
-L0254BD: db $00
-L0254BE:;I
+	
+; =============== Act_Egg_CopipiSpreadTbl ===============
+; Initial Speed for each spawned Copipi.
+; Note that due to the bird's direction being forced into UP/LEFT, signs work the other way around.
+Act_Egg_CopipiSpreadTbl:
+	;       X       Y
+	dw +$0000, -$00FF ; $00 ;                       ~1px/frame down
+	dw -$00B4, +$00B4 ; $01 ; ~0.7px/frame right, ~0.7px/frame up 
+	dw -$00FF, +$0000 ; $02 ;   ~1px/frame right
+	dw +$0000, +$00FF ; $03 ;                       ~1px/frame up
+	dw +$00FF, +$0000 ; $04 ;   ~1px/frame left
+	dw +$00B4, +$00B4 ; $05 ; ~0.7px/frame left,  ~0.7px/frame up 
+
+; =============== Act_Copipi ===============
+; ID: ACT_COPIPI
+; Small bird that spawns from an egg.
+Act_Copipi:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0254C1: db $C7
-L0254C2: db $54
-L0254C3: db $CE
-L0254C4: db $54
-L0254C5: db $E6
-L0254C6: db $54
-L0254C7:;I
+	dw Act_Copipi_InitSpread
+	dw Act_Copipi_Spread
+	dw Act_Copipi_Fly
+
+; =============== Act_Copipi_InitSpread ===============
+Act_Copipi_InitSpread:
+	; How long the birds should spread out
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0254CE:;I
+	
+; =============== Act_Copipi_Spread ===============
+; Animates the small bird spreading out from the egg's origin.
+Act_Copipi_Spread:
+	; Use frames $00-$01 at 1/8 speed
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Move from the egg into the initial formation
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
+	
+	; Wait for those 32 frames...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Once that's all done, target the player's position at the time of the check.
 	call ActS_AngleToPl
 	jp   ActS_IncRtnId
-L0254E6:;I
+	
+; =============== Act_Copipi_Fly ===============
+Act_Copipi_Fly:
+	; Use frames $00-$01 at 1/8 speed
 	ld   c, $01
 	call ActS_Anim2
+	; Move hopefully towards the player
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L0254F2:;I
+	
+; =============== Act_Shotman ===============
+; ID: ACT_SHOTMAN
+; Fires shots in an high or low arc.
+Act_Shotman:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0254F5: db $FF
-L0254F6: db $54
-L0254F7: db $0F
-L0254F8: db $55
-L0254F9: db $40
-L0254FA: db $55
-L0254FB: db $53
-L0254FC: db $55
-L0254FD: db $84
-L0254FE: db $55
-L0254FF:;I
+	dw Act_Shotman_Init
+	dw Act_Shotman_ShotLow
+	dw Act_Shotman_WaitShotHi
+	dw Act_Shotman_ShotHi
+	dw Act_Shotman_InitShotLow
+	DEF ACTRTN_SHOTMAN_SHOTLOW = $01
+; =============== Act_Shotman_Init ===============
+; Sets up the initial low arc pattern.
+Act_Shotman_Init:
+	; Use sprite $00 (low arc)
 	ld   a, $00
 	call ActS_SetSprMapId
+	
+	; After six shots, switch to the high arc
 	ld   a, $06
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iShotmanShotsLeft], a
+	
+	; Start the shooting sequence almost immediately, without any long delay like how it is between arcs.
+	; Still wait the usual 32 frame cooldown, normally used between shots
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02550F:;I
+	
+; =============== Act_Shotman_ShotLow ===============
+; Fire long shots in a low arc.
+Act_Shotman_ShotLow:
+	; Wait for the cooldown to elapse first
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $7F
-	ld   bc, $F4F8
+	
+	; Then spawn the shot
+	ld   a, ACT_SHOTMANSHOT
+	ld   bc, (LOW(-$0C) << 8)|LOW(-$08) ; 12px left, 8px up
 	call ActS_SpawnRel
-	ld   de, $0300
-	ld   bc, $0200
-	call nc, L025599
+	ld   de, $0300 ; 3px/frame forward
+	ld   bc, $0200 ; 2px/frame up
+	call nc, Act_Shotman_SetShotSpeed
+	
+	; Set cooldown of 32 frames before the next shot
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, hActCur+iAct0D
-	dec  [hl]
-	ret  nz
+	
+	; If all six shots have been fired, delay for a bit and switch to an higher arc
+	ld   hl, hActCur+iShotmanShotsLeft
+	dec  [hl]				; ShotsLeft--
+	ret  nz					; ShotsLeft != 0? If so, return
+	
+	; Fire six high arc shots
 	ld   a, $06
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iShotmanShotsLeft], a
+	; Use sprite $01 (transition to other arc)
 	ld   a, $01
 	call ActS_SetSprMapId
+	; Show the transition sprite for 8 frames.
+	; This means the next shot comes out in 32+8 = 40 frames
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025540:;I
+	
+; =============== Act_Shotman_InitShowHi ===============
+Act_Shotman_WaitShotHi:
+	; Wait until the transition timer elapses
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Use sprite $02 (high arc)
 	ld   a, $02
 	call ActS_SetSprMapId
+	; Normal 32 frame cooldown
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025553:;I
+	
+; =============== Act_Shotman_ShotHi ===============
+; Fire near shots in a high arc.
+; See also: Act_Shotman_ShotLow
+Act_Shotman_ShotHi:
+	; Wait for the cooldown to elapse first
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $7F
-	ld   bc, $F4F4
+	
+	; Then spawn the shot
+	ld   a, ACT_SHOTMANSHOT
+	ld   bc, (LOW(-$0C) << 8)|LOW(-$0C) ; 12px left, 12px up
 	call ActS_SpawnRel
-	ld   de, $0080
-	ld   bc, $0380
-	call nc, L025599
+	ld   de, $0080 ; 0.5px/frame forward
+	ld   bc, $0380 ; 3.5px/frame up
+	call nc, Act_Shotman_SetShotSpeed
+	
+	; Set cooldown of 32 frames before the next shot
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, hActCur+iAct0D
-	dec  [hl]
-	ret  nz
+	
+	; If all six shots have been fired, delay for a bit and switch back to the lower arc
+	ld   hl, hActCur+iShotmanShotsLeft
+	dec  [hl]				; ShotsLeft--
+	ret  nz					; ShotsLeft != 0? If so, return
+	
+	; Fire six low arc shots
 	ld   a, $06
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iShotmanShotsLeft], a
+	; Use sprite $01 (transition to other arc)
 	ld   a, $01
 	call ActS_SetSprMapId
+	; Show the transition sprite for 8 frames.
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025584:;I
+
+; =============== Act_Shotman_InitShotLow ===============
+Act_Shotman_InitShotLow:
+	; Wait until the transition timer elapses
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Use sprite $02 (low arc)
 	ld   a, $00
 	call ActS_SetSprMapId
+	; Normal 32 frame cooldown
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $01
+	ld   a, ACTRTN_SHOTMAN_SHOTLOW
 	ldh  [hActCur+iActRtnId], a
 	ret
-L025599:;C
+	
+; =============== Act_Shotman_SetShotSpeed ===============
+; Sets the newly spawned shot's arc.
+; IN
+; - HL: Ptr to spawned shot slot
+; - DE: Horizontal speed
+; - BC: Vertical speed
+Act_Shotman_SetShotSpeed:
+	; Seek HL to iActSpdXSub
 	ld   a, l
-	add  $08
+	add  iActSpdXSub
 	ld   l, a
-	ld   [hl], e
+	; Write the properties over
+	ld   [hl], e ; iActSpdXSub
 	inc  hl
-	ld   [hl], d
+	ld   [hl], d ; iActSpdX
 	inc  hl
-	ld   [hl], c
+	ld   [hl], c ; iActSpdYSub
 	inc  hl
-	ld   [hl], b
+	ld   [hl], b ; iActSpdY
 	ret
-L0255A5:;I
+	
+; =============== Act_FlyBoy ===============
+; ID: ACT_FLYBOY
+; An easy to miss propeller enemy that homes in the player.
+; Spawned by Act_FlyBoySpawner, never part of the actor layout.
+Act_FlyBoy:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0255A8: db $B2
-L0255A9: db $55
-L0255AA: db $C5
-L0255AB: db $55
-L0255AC: db $D3
-L0255AD: db $55
-L0255AE: db $EC
-L0255AF: db $55
-L0255B0: db $16
-L0255B1: db $56
-L0255B2:;I
-	ld   a, $00
+	dw Act_FlyBoy_Init
+	dw Act_FlyBoy_JumpD
+	dw Act_FlyBoy_Ground
+	dw Act_FlyBoy_LiftOff
+	dw Act_FlyBoy_JumpU
+	DEF ACTRTN_FLYBOY_JUMPD = $01
+
+; =============== Act_FlyBoy_Init ===============
+Act_FlyBoy_Init:
+	ld   a, $00				; Use normal sprite	
 	call ActS_SetSprMapId
-	ld   bc, $0040
+	ld   bc, $0040			; 0.25px/frame speed
 	call ActS_SetSpeedX
+	
+	; Prepare for falling down, as these enemies are spawned in the air
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
-L0255C5:;I
+	
+; =============== Act_FlyBoy_JumpD ===============
+; Jump arc, post-peak.
+Act_FlyBoy_JumpD:
+	; (No animation, use sprite $00 while moving down)
+	
+	; Handle jump arc until touching the ground
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	; Wait 32 frames on the ground
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0255D3:;I
+	
+; =============== Act_FlyBoy_Ground ===============
+; Grounded.
+Act_FlyBoy_Ground:
+	; While on the ground and also a bit after, the enemy tries to propel itself up.
+	; This animation will play until after the next jump's peak.
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Wait for it...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   bc, $0040
+	
+	; After 32 frames, start slowly moving up for around 3 seconds
+	ld   bc, $0040			; 0.25px/frame up
 	call ActS_SetSpeedY
-	ld   a, $C0
+	ld   a, $C0				; ~3 seconds
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0255EC:;I
+	
+; =============== Act_FlyBoy_LiftOff ===============
+; Slowly moving up.
+Act_FlyBoy_LiftOff:
+	; Continue with the propelling animation
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Move slowly 0.25px/frame up for 3 seconds
 	call ActS_ApplySpeedFwdYColi
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	;
+	; Set up the jump arc for precisely targeting the player:
+	; H Speed: (PlDistance * 4)*subpixels*/frame
+	; V Speed: 2px/frame
+	;
 	call ActS_FacePl
+	
 	call ActS_GetPlDistanceX
 	ld   c, a
 	ld   b, $00
 	call ActS_SetSpeedX
+	call ActS_DoubleSpd	
 	call ActS_DoubleSpd
-	call ActS_DoubleSpd
+	
 	ld   bc, $0200
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L025616:;I
+	
+; =============== Act_FlyBoy_JumpU ===============
+; Jump arc, pre-peak.
+Act_FlyBoy_JumpU:
+	; Use flying animation ($00-$01) at 1/8 speed
+	; This is only used when moving up.
 	ld   c, $01
 	call ActS_Anim2
+	; Handle the jump arc until we reach the peak
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedUpYColi
 	ret  c
-	ld   a, $01
+	; Start moving down then
+	ld   a, ACTRTN_FLYBOY_JUMPD
 	ldh  [hActCur+iActRtnId], a
 	ret
-L025627:;I
+	
+; =============== Act_FlyBoySpawner ===============
+; ID: ACT_FLYBOYSPAWN
+; Fly Boy spawner.
+Act_FlyBoySpawner:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02562A: db $2E
-L02562B: db $56
-L02562C: db $35
-L02562D: db $56
-L02562E:;I
+	dw Act_FlyBoySpawner_Init
+	dw Act_FlyBoySpawner_Main
+
+; =============== Act_FlyBoySpawner_Init ===============
+Act_FlyBoySpawner_Init:
+	; Wait ~3 seconds before spawning one in.
+	; This is way too shot, making it easy to miss them in the only place they are used.
 	ld   a, $C0
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025635:;I
+	
+; =============== Act_FlyBoySpawner_Main ===============
+Act_FlyBoySpawner_Main:
+	; Wait until the delay elapses before spawning another one
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Set the same very long delay
 	ld   a, $C0
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $36
-	call L001E63
+	
+	; Max 2 Fly Boys on screen, otherwise try again after 3 seconds
+	ld   a, ACT_FLYBOY
+	call ActS_CountById
 	ld   a, b
 	cp   $02
 	jp   nc, ActS_DecRtnId
-	ld   a, $36
+	
+	; Spawn directly on top of the spawner.
+	; The spawner is set around the top of the screen, making these enemies fall in.
+	ld   a, ACT_FLYBOY
 	ld   bc, $0000
-	call ActS_SpawnRel
-	ret  c
+	call ActS_SpawnRel	; HL = Ptr to spawned Fly Boy
+	ret  c				; Did it spawn? If not, return
+	
+	; Not necessary, this is already done by the Fly Boy's init code
 	ld   a, l
-	add  $06
+	add  iActYSub
 	ld   l, a
 	xor  a
-	ldi  [hl], a
-	ld   [hl], a
+	ldi  [hl], a ; iActYSub
+	ld   [hl], a ; iActY
 	ret
-L02565C:;I
+	
+; =============== Act_Springer ===============
+; ID: ACT_SPRINGER
+; Springy enemy that travels on the ground, speeding up when the player is at its vertical position.
+Act_Springer:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02565F: db $6D
-L025660: db $56
-L025661: db $81
-L025662: db $56
-L025663: db $A3
-L025664: db $56
-L025665: db $AC
-L025666: db $56
-L025667: db $CE
-L025668: db $56
-L025669: db $D7
-L02566A: db $56
-L02566B: db $E2
-L02566C: db $56
-L02566D:;I
+	dw Act_Springer_Init
+	dw Act_Springer_MoveSlow
+	dw Act_Springer_TurnSlow
+	dw Act_Springer_MoveFast
+	dw Act_Springer_TurnFast
+	dw Act_Springer_InitSpring
+	dw Act_Springer_Spring
+	DEF ACTRTN_SPRINGER_MOVESLOW = $01
+	DEF ACTRTN_SPRINGER_MOVEFAST = $03
+	DEF ACTRTN_SPRINGER_INITSPRING = $05
+
+; =============== Act_Springer_Init ===============
+Act_Springer_Init:
 	ld   a, $00
 	call ActS_SetSprMapId
+	
+	; Always start moving to the left at 0.25px/frame
 	ldh  a, [hActCur+iActSprMap]
-	and  $7F
+	and  $FF^ACTDIR_R
 	ldh  [hActCur+iActSprMap], a
 	ld   bc, $0040
 	call ActS_SetSpeedX
+	
 	jp   ActS_IncRtnId
-L025681:;I
-	call L025709
-	jp   c, L025700
+	
+; =============== Act_Springer_MoveSlow ===============
+; Horizontal movement, slow speed.
+Act_Springer_MoveSlow:
+	; When the player gets close, spring out
+	call Act_Springer_IsPlNear
+	jp   c, Act_Springer_SwitchToSpring
+	
+	; Move forward, turning when a solid block is ahead
 	call ActS_ApplySpeedFwdXColi
 	jp   nc, ActS_IncRtnId
+	; Also turn if there's no ground ahead
 	call ActS_GetBlockIdFwdGround
 	jp   c, ActS_IncRtnId
+	
+	; If the player is at the same vertical position than us, switch to moving fast
 	call ActS_GetPlDistanceY
-	and  a
-	ret  nz
-	ld   bc, $0200
+	and  a						; DistanceY != 0?
+	ret  nz						; If so, return
+	ld   bc, $0200				; Otherwise, move fast at 2px/frame
 	call ActS_SetSpeedX
-	ld   a, $03
+	ld   a, ACTRTN_SPRINGER_MOVEFAST
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0256A3:;I
+	
+; =============== Act_Springer_TurnSlow ===============
+Act_Springer_TurnSlow:
+	; Turn horizontally
 	ldh  a, [hActCur+iActSprMap]
-	xor  $80
+	xor  ACTDIR_R
 	ldh  [hActCur+iActSprMap], a
+	; Loop back to Act_Springer_MoveSlow
 	jp   ActS_DecRtnId
-L0256AC:;I
-	call L025709
-	jp   c, L025700
+	
+; =============== Act_Springer_MoveFast ===============
+; Horizontal movement, fast speed.
+; This is identical to Act_Springer_MoveSlow, minus the check at the end.
+Act_Springer_MoveFast:
+	; When the player gets close, spring out
+	call Act_Springer_IsPlNear
+	jp   c, Act_Springer_SwitchToSpring
+	
+	; Move forward, turning when a solid block is ahead
 	call ActS_ApplySpeedFwdXColi
 	jp   nc, ActS_IncRtnId
+	; Also turn if there's no ground ahead
 	call ActS_GetBlockIdFwdGround
 	jp   c, ActS_IncRtnId
+	
+	; If the player is no longer at the same vertical position than us, switch to moving slow
 	call ActS_GetPlDistanceY
-	and  a
-	ret  z
-	ld   bc, $0040
+	and  a						; DistanceY == 0?
+	ret  z						; If so, return
+	ld   bc, $0040				; Otherwise, move slow at 0.25px/frame
 	call ActS_SetSpeedX
-	ld   a, $01
+	ld   a, ACTRTN_SPRINGER_MOVESLOW
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0256CE:;I
+	
+; =============== Act_Springer_TurnFast ===============
+; Identical to Act_Springer_TurnSlow.
+Act_Springer_TurnFast:
 	ldh  a, [hActCur+iActSprMap]
-	xor  $80
+	xor  ACTDIR_R
 	ldh  [hActCur+iActSprMap], a
 	jp   ActS_DecRtnId
-L0256D7:;I
-	ld   a, $20
-	ldh  [hActCur+iAct0E], a
-	ld   a, $08
+	
+; =============== Act_Springer_InitSpring ===============
+; Sets up the spring out effect, shown when the player gets close.
+Act_Springer_InitSpring:
+	; Spring out for 32 * 8 frames in total
+	ld   a, $20	; 32 frames of animation (looped from the 4th)
+	ldh  [hActCur+iSpringerAnimTimer], a
+	ld   a, $08	; Each sprite shown for 8 frames
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0256E2:;I
-	ldh  a, [hActCur+iAct0E]
+	
+; =============== Act_Springer_Spring ===============
+Act_Springer_Spring:
+
+	; Do the animation cycle for the jack-o-box spring effect.
+	; Even though it may not look like, the actor's collision box stays the same.
+	
+	; Uses frames $01-$04...
+	ldh  a, [hActCur+iSpringerAnimTimer]
 	and  $03
 	inc  a
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; ...at 1/8 speed
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $08
+	ld   a, $08	
 	ldh  [hActCur+iActTimer0C], a
-	ldh  a, [hActCur+iAct0E]
-	dec  a
-	ldh  [hActCur+iAct0E], a
-	ret  nz
-	ldh  a, [hActCur+iAct0F]
+	
+	; If we've gone through the entire animation (all 32 frames), return to whatever we were doing before.
+	; If the player is still nearby, it will instantly return to this routine, making the effect seem continuous.
+	ldh  a, [hActCur+iSpringerAnimTimer]
+	dec  a									; Timer--
+	ldh  [hActCur+iSpringerAnimTimer], a	; Timer == 0?
+	ret  nz									; If not, return
+	ldh  a, [hActCur+iSpringerRtnBak]		; Otherwise, restore timer
 	ldh  [hActCur+iActRtnId], a
 	ret
-L025700:;J
+	
+; =============== Act_Springer_SwitchToSpring ===============
+; Makes the enemy spring out, interrupting whatever routine the enemy was in.
+Act_Springer_SwitchToSpring:
+	; Keep track for restoring it later
 	ldh  a, [hActCur+iActRtnId]
-	ldh  [hActCur+iAct0F], a
-	ld   a, $05
+	ldh  [hActCur+iSpringerRtnBak], a
+	
+	ld   a, ACTRTN_SPRINGER_INITSPRING
 	ldh  [hActCur+iActRtnId], a
 	ret
-L025709:;C
+	
+; =============== Act_Springer_IsPlNear ===============
+; Checks if the player is near.
+; OUT
+; - C Flag: If set, the player is near
+Act_Springer_IsPlNear:
 	call ActS_GetPlDistanceX
-	cp   $07
-	ret  nc
-	call ActS_GetPlDistanceY
-	cp   $07
-	ret
-L025715:;I
+	cp   $07					; Player within 7 pixels horizontally?
+	ret  nc						; If not, return (C Flag = No)
+	call ActS_GetPlDistanceY	
+	cp   $07					; Player within 7 pixels vertically?
+	ret							; C Flag = It is
+	
+; =============== Act_PieroBotGear ===============
+; ID: ACT_PIEROGEAR
+; Pierobot's Gear, what actually spawns Pierobot.
+Act_PieroBotGear:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025718: db $24
-L025719: db $57
-L02571A: db $33
-L02571B: db $57
-L02571C: db $6C
-L02571D: db $57
-L02571E: db $8C
-L02571F: db $57
-L025720: db $A2
-L025721: db $57
-L025722: db $C5
-L025723: db $57
-L025724:;I
+	dw Act_PieroBotGear_Init
+	dw Act_PieroBotGear_AirNoBot
+	dw Act_PieroBotGear_AirBot
+	dw Act_PieroBotGear_FallV
+	dw Act_PieroBotGear_MoveH
+	dw Act_PieroBotGear_TurnH
+	
+	
+	DEF PIEROGEAR_FV EQU $17 ; Gear high, for relative positioning
+	DEF ACTRTN_PIEROBOT_ONGEAR = $03
+	DEF ACTRTN_PIEROBOT_GEARGONE = $04
+
+; =============== Act_PieroBotGear_Init ===============
+Act_PieroBotGear_Init:
+	; For animating the cog, use frames $00-$01, at 1/8 speed.
+	; This will be consistently done every routine.
 	ld   c, $01
 	call ActS_Anim2
+	
 	xor  a
-	ldh  [hActCur+iAct0F], a
+	ldh  [hActCur+iPieroGearBotDead], a
+	
+	; Set Pierobot spawn delay
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025733:;I
+	
+; =============== Act_PieroBotGear_AirNoBot ===============
+; Gear in the air, no Pierobot.
+Act_PieroBotGear_AirNoBot:
+	;
+	; Wait for ~1 second animating the gear by itself.
+	; Note this doesn't call Act_PieroBotGear_ChkCommon, making it impossible to actually destroy
+	; the gear due to the +$10 offset. iPieroGearBotDead would need to be initially set to $FF for
+	; that to work, since it hasn't spawned yet.
+	;
 	ld   c, $01
 	call ActS_Anim2
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $3A
-	ld   bc, $00F0
+	
+	;
+	; Spawn Pierobot and set its properties up.
+	; Once that's done, the two actors will have a 2-way link enabling to pass each other state.
+	; Unlike other actors, no global variables are involved, since more can be onscreen at once.
+	;
+	ld   a, ACT_PIEROBOT
+	ld   bc, ($00 << 8)|LOW(-$10) ; Basically $0000 because the Y position gets overwritten later
 	call ActS_SpawnRel
+	
+	;
+	; The first thing Pierobot will do is falling on top of the gear from offscreen.
+	; To do so, its Y position needs to be reset to $00.
+	;
 	ld   a, l
-	ldh  [hActCur+iAct0E], a
-	add  $07
+	ldh  [hActCur+iPieroGearBotSlotPtr], a		; Also save the slot pointer for the bot, as part of the link
+	add  iActY
 	ld   l, a
+	;--
+	; [POI] Pointless, will be overwritten soon.
 	ld   a, h
-	ldh  [hActCur+iAct0F], a
+	ldh  [hActCur+iPieroGearBotDead], a
+	;--
 	xor  a
-	ld   [hl], a
-	ld   a, $06
+	ld   [hl], a ; iActY = $00
+	
+	;
+	; Pierobot does not check for actor collision with the gear, as that would be slow.
+	; Instead, calculate the target Y position where it should stop moving,
+	; which is much faster and more accurate, given proper collision heights:
+	; iPieroBotTargetY = iActY - $17
+	;
+	ld   a, iPieroBotTargetY-iActY		; Seek to iPieroBotTargetY
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ldh  a, [hActCur+iActY]
-	sub  $17
-	ldi  [hl], a
+	ldh  a, [hActCur+iActY]				; Get gear's y position (bottom)
+	sub  PIEROGEAR_FV					; -= height (top)
+	ldi  [hl], a						; Set as target pos
+	
+	; Just as we know the bot's slot pointer, it should know ours.
+	; This enables it to determine if the gear still exists, and if so, drop down.
 	ld   a, [wActCurSlotPtr]
-	ldi  [hl], a
+	ldi  [hl], a ; iPieroBotGearSlotPtr
+	
+	;--
+	; [POI] This is never written to again, see its only use.
 	xor  a
-	ld   [hl], a
-	ldh  [hActCur+iAct0F], a
+	ld   [hl], a ; iPieroBot0F
+	;--
+	
+	; The bot also notifies us when it dies
+	ldh  [hActCur+iPieroGearBotDead], a
+	
+	; Set next delay 
 	ld   a, $80
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02576C:;I
-	call L0257D4
+	
+; =============== Act_PieroBotGear_AirBot ===============
+; Gear in the air, Pierobot jumping on it.
+Act_PieroBotGear_AirBot:
+	; Wait for ~2 seconds before dropping the gear.
+	call Act_PieroBotGear_ChkCommon
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ldh  a, [hActCur+iAct0F]
+	
+	; Pierobot is currently jumping on the gear, notify him to also drop.
+	; This is perfectly timed with the end of one of Pierobot's jumps, making
+	; it look like that jump caused the gear to fall off.
+	
+	; If he has died already, don't bother (but still make the gear drop)
+	ldh  a, [hActCur+iPieroGearBotDead]
 	and  a
 	jp   nz, ActS_IncRtnId
-	ldh  a, [hActCur+iAct0E]
+	
+	; Set the bot's routine
+	ldh  a, [hActCur+iPieroGearBotSlotPtr]
 	ld   l, a
-	ld   h, $CD
-	inc  hl
-	ld   [hl], $03
+	ld   h, HIGH(wAct)
+	inc  hl ; iActRtnId
+	ld   [hl], ACTRTN_PIEROBOT_ONGEAR
+	
+	; This should have been done before checking for iPieroGearBotDead
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
+	
 	jp   ActS_IncRtnId
-L02578C:;I
-	call L0257D4
-	call L0257EB
+	
+; =============== Act_PieroBotGear_FallV ===============
+; Drop the gear until it touches the ground.
+Act_PieroBotGear_FallV:
+	call Act_PieroBotGear_ChkCommon
+	call Act_PieroBotGear_ChkOffscreenV
+	
+	; Apply gravity until we touch a solid block, then roll towards the player at 0.75px/frame
 	call ActS_ApplySpeedDownYColi
 	ret  c
 	call ActS_FacePl
 	ld   bc, $00C0
 	call ActS_SetSpeedX
+	
 	jp   ActS_IncRtnId
-L0257A2:;I
-	call L0257D4
-	call ActS_ApplySpeedFwdXColi
-	jp   nc, ActS_IncRtnId
+	
+; =============== Act_PieroBotGear_MoveH ===============
+; Gear rolls forward.
+Act_PieroBotGear_MoveH:
+	call Act_PieroBotGear_ChkCommon
+	
+	;
+	; Move forward at 0.75px/frame, turn around if a solid wall is ahead
+	;
+	call ActS_ApplySpeedFwdXColi	; Solid wall hit?
+	jp   nc, ActS_IncRtnId			; If so, advance to Act_PieroBotGear_TurnH
+	
+	;
+	; If there's no ground below, start falling 
+	;
 	call ActS_GetGroundColi
-	ld   a, [wPlColiGround]
-	cp   $03
-	ret  nz
+	ld   a, [wColiGround]
+	cp   %11					; No ground below on either block?
+	ret  nz						; If not, return
+								; Otherwise...
+								
+	; Give an extra push of 1 pixels forward
 	ld   bc, $0100
 	call ActS_SetSpeedX
 	call ActS_ApplySpeedFwdXColi
+	
+	; Prepare gravity for falling down
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
-	jp   ActS_DecRtnId
-L0257C5:;I
-	call L0257D4
-	call L0257F2
+	
+	jp   ActS_DecRtnId			; Return back to Act_PieroBotGear_FallV
+	
+; =============== Act_PieroBotGear_TurnH ===============
+; Makes the gear turn horizontally.
+Act_PieroBotGear_TurnH:
+	call Act_PieroBotGear_ChkCommon
+	call Act_PieroBotGear_ChkOffscreenH
+	
 	ldh  a, [hActCur+iActSprMap]
-	xor  $80
+	xor  ACTDIR_R
 	ldh  [hActCur+iActSprMap], a
+	
 	jp   ActS_DecRtnId
-L0257D4:;C
+	
+; =============== Act_PieroBotGear_ChkCommon ===============
+; Performs common actions on each routine.
+Act_PieroBotGear_ChkCommon:
+	; Animate the gear as normal
 	ld   c, $01
 	call ActS_Anim2
-	call L001E03
-	ret  nc
+	
+	;
+	; When the gear explodes, notify Pierobot that we've died.
+	; This will make the latter fall off the screen, as his "ground" was taken away.
+	;
+	call ActS_ChkExplodeNoChild		; Handle death
+	ret  nc							; Gear exploded? If not, return
+	
+	; As the gear died, no more of that actor code should run when we return.
+	; We're inside a subroutine though, so pop out the return value to return directly to ActS_Do.
 	pop  hl
-	ldh  a, [hActCur+iAct0F]
+	
+	; Don't notify Pierobot if he died already
+	ldh  a, [hActCur+iPieroGearBotDead]
 	and  a
 	ret  nz
-	ldh  a, [hActCur+iAct0E]
+	
+	; Otherwise, make Pierobot fall down by directly adjusting his routine
+	ldh  a, [hActCur+iPieroGearBotSlotPtr]
 	ld   l, a
-	ld   h, $CD
-	inc  hl
-	ld   [hl], $04
+	ld   h, HIGH(wAct)
+	inc  hl ; iActRtnId
+	ld   [hl], ACTRTN_PIEROBOT_GEARGONE
 	ret
-L0257EB:;C
+	
+; =============== Act_PieroBotGear_ChkOffscreenV ===============
+; Checks the gear went offscreen to the bottom.
+; Because of the two way link, this actor needs to perform the check manually
+; to make sure Pierobot gets despawned if the gear moves offscreen.
+Act_PieroBotGear_ChkOffscreenV:
 	ldh  a, [hActCur+iActY]
-	cp   $9A
-	ret  c
-L0257F0: db $18;X
-L0257F1: db $05;X
-L0257F2:;C
+	cp   SCREEN_GAME_V+OBJ_OFFSET_Y+$0A		; iActY < $9A?
+	ret  c									; If so, return
+	jr   Act_PieroBotGear_Explode
+	
+; =============== Act_PieroBotGear_ChkOffscreenH ===============
+; Like above, but with the horizontal position.
+Act_PieroBotGear_ChkOffscreenH:
 	ldh  a, [hActCur+iActX]
-	cp   $B0
-	ret  c
-	call L001E11
+	cp   SCREEN_GAME_H+OBJ_OFFSET_X+$08		; iActY < $B0?
+	ret  c									; If so, return
+	; Fall-through
+	
+; =============== Act_PieroBotGear_Explode ===============
+; Makes the gear explode, despawning Pierobot if he hasn't died already.
+Act_PieroBotGear_Explode:
+	; Visually explode the gear
+	call ActS_Explode
+	; Force return to the actor loop when returning.
 	pop  hl
-	ldh  a, [hActCur+iAct0F]
-	and  a
-	ret  nz
-	ldh  a, [hActCur+iAct0E]
-	ld   l, a
-	ld   h, $CD
-	ld   [hl], $00
+	
+	; If Pierobot hasn't died yet, instantly despawn it.
+	ldh  a, [hActCur+iPieroGearBotDead]
+	and  a									; Died yet?
+	ret  nz									; If so, return
+	ldh  a, [hActCur+iPieroGearBotSlotPtr]
+	ld   l, a								; Seek HL to the bot's iActId
+	ld   h, HIGH(wAct)
+	ld   [hl], $00 ; iActId					; Despawn
 	ret
-L025807:;I
+	
+; =============== Act_PieroBot ===============
+; ID: ACT_PIEROBOT
+; Jester, hopping on the gear and rolling on it.
+Act_PieroBot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02580A: db $16
-L02580B: db $58
-L02580C: db $21
-L02580D: db $58
-L02580E: db $38
-L02580F: db $58
-L025810: db $42
-L025811: db $58
-L025812: db $56
-L025813: db $58
-L025814: db $61
-L025815: db $58
-L025816:;I
-	call L025868
+	dw Act_PieroBot_Init
+	dw Act_PieroBot_JumpD
+	dw Act_PieroBot_JumpU
+	dw Act_PieroBot_OnGear
+	dw Act_PieroBot_InitGearGone
+	dw Act_PieroBot_GearGone
+
+; =============== Act_PieroBot_Init ===============
+Act_PieroBot_Init:
+	call Act_PieroBot_ChkCommon
+	; Initialize gravity
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
-L025821:;I
-	call L025868
+	
+; =============== Act_PieroBot_JumpD ===============
+; Part of the jumping loop, post-peak.
+; This comes first because we first drop from offscreen.
+; Pierobot will continuously jump on the gear until the gear forces our routine to Act_PieroBot_OnGear.
+Act_PieroBot_JumpD:
+	call Act_PieroBot_ChkCommon
+	
+	;
+	; Apply gravity while moving down until we reach the target Y position (top of the gear)
+	;
 	call ActS_ApplySpeedDownY
-	ldh  a, [hActCur+iAct0D]
-	ld   hl, hActCur+iActY
-	cp   [hl]
-	ret  nc
-	ld   [hl], a
-	ld   bc, $0200
+	ldh  a, [hActCur+iPieroBotTargetY]	; A = GearY
+	ld   hl, hActCur+iActY				; HL = Ptr to BotY
+	cp   [hl]							; GearY >= BotY?
+	ret  nc								; If so, return (we're still above the gear)
+	ld   [hl], a						; Otherwise, align to target
+	ld   bc, $0200						; And set up jump at 2px/frame
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L025838:;I
-	call L025868
+	
+; =============== Act_PieroBot ===============
+; Part of the jumping loop, pre-peak.
+Act_PieroBot_JumpU:
+	call Act_PieroBot_ChkCommon
+	; Apply gravity while moving up until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_DecRtnId
-L025842:;I
-	call L025868
-	ldh  a, [hActCur+iAct0E]
-	add  $05
+	
+; =============== Act_PieroBot_OnGear ===============
+; Main routine, rolling on the gear.
+Act_PieroBot_OnGear:
+	call Act_PieroBot_ChkCommon
+	
+	;
+	; Force Pierobot to stay on top of the gear, perfectly centered on it.
+	; This is the routine run when the gear rolls, execution will stay indefinitely
+	; here until said gear dies, which forces our routine to Act_PieroBot_InitGearGone.
+	;
+	
+	; HL = Ptr to gear's X position
+	ldh  a, [hActCur+iPieroBotGearSlotPtr]
+	add  iActX
 	ld   l, a
-	ld   h, $CD
+	ld   h, HIGH(wAct)
+	
+	; X Position = Gear X (center)
 	ldi  a, [hl]
 	ldh  [hActCur+iActX], a
-	inc  hl
-	ld   a, [hl]
-	sub  $17
-	ldh  [hActCur+iActY], a
+	inc  hl ; iActY
+	
+	; Y Position = Gear Y - $17 (top)
+	ld   a, [hl]				; Get gear's iActY
+	sub  PIEROGEAR_FV			; Move to top of gear
+	ldh  [hActCur+iActY], a		; Stand on that
 	ret
-L025856:;I
-	call L025868
+	
+; =============== Act_PieroBot_InitGearGone ===============
+; Sets up vertical gravity after the gear dies.
+Act_PieroBot_InitGearGone:
+	call Act_PieroBot_ChkCommon
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
-L025861:;I
-	call L025868
+	
+; =============== Act_PieroBot_GearGone ===============
+Act_PieroBot_GearGone:
+	; When the gear is gone, make Pierobot fall off until he gets offscreened below.
+	; Don't even let solid blocks stop his movement.
+	call Act_PieroBot_ChkCommon
 	call ActS_ApplySpeedDownY
 	ret
-L025868:;C
+	
+; =============== Act_PieroBot_ChkCommon ===============
+; Performs common actions on each routine.
+; See also: Act_PieroBotGear_ChkCommon
+Act_PieroBot_ChkCommon:
+	; Animate hopping, use frames $00-$01 at 1/8 speed
 	ld   c, $01
 	call ActS_Anim2
-	call L001E03
-	ret  nc
+	
+	;
+	; When Pierobot explodes, notify the gear that we've died.
+	; This prevents the gear from attempting to notify a despawned actor.
+	;
+	call ActS_ChkExplodeNoChild		; Handle death
+	ret  nc							; Gear exploded? If not, return
+	
+	; Return to actor loop
 	pop  bc
-	ldh  a, [hActCur+iAct0F]
+	
+	;--
+	; [POI] iPieroBot0F is always zero, and the check is a copy/paste from Act_PieroBotGear_ChkCommon.
+	ldh  a, [hActCur+iPieroBot0F]
 	and  a
 	ret  nz
-	ldh  a, [hActCur+iAct0E]
-	add  $0F
+	;--
+	
+	; Notify the gear
+	ldh  a, [hActCur+iPieroBotGearSlotPtr]	; Seek HL to the gear's iPieroGearBotDead
+	add  iPieroGearBotDead
 	ld   l, a
-	ld   h, $CD
-	ld   [hl], $FF
+	ld   h, HIGH(wAct)
+	ld   [hl], $FF							; Flag with nonzero value
 	ret
-L025880:;I
+	
+; =============== Act_Mole ===============
+; ID: ACT_MOLE
+; Small enemy that drills into the ground vertically.
+; Spawned by Act_MoleSpawner.
+Act_Mole:;I
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025883: db $91
-L025884: db $58
-L025885: db $BB
-L025886: db $58
-L025887: db $C3
-L025888: db $58
-L025889: db $D1
-L02588A: db $58
-L02588B: db $E0
-L02588C: db $58
-L02588D: db $EF
-L02588E: db $58
-L02588F: db $FD
-L025890: db $58
-L025891:;I
-	call Rand
-	ld   l, a
+	dw L025891
+	dw Act_Mole_DigBorder
+	dw Act_Mole_DigSolid0
+	dw Act_Mole_DigOut
+	dw Act_Mole_DigAir
+	dw Act_Mole_DigIn
+	dw Act_Mole_DigSolid1
+
+; =============== Act_Mole_Init ===============
+L025891:
+	;
+	; Randomize the horizontal position of the mole.
+	; The spawner has already randomized the vertical position but not the horizontal
+	; once, since for the latter not all positions are accepted.
+	;
+	; This means that, currently, its X position is the same as the spawner's.
+	; Offset that by a random value:
+	; iActX += (Rand() * 5 / 16 - 2) * 16
+	;
+	
+	call Rand	; Rand() will be a "subpixel" value
+	ld   l, a	; HL = DE = Rand()
 	ld   e, a
 	xor  a
 	ld   h, a
 	ld   d, a
-	add  hl, hl
-	add  hl, hl
-	add  hl, de
-	ld   a, h
+	add  hl, hl	; HL *= 2 (*2)
+	add  hl, hl	; HL *= 2 (*4)
+	add  hl, de ; HL += DE (*5)
+	ld   a, h	; A = H - 2
 	sub  $02
-	add  a
-	add  a
-	add  a
-	add  a
-	ld   hl, hActCur+iActX
-	add  [hl]
-	ld   [hl], a
+	add  a		; A *= 2 (*2)
+	add  a		; A *= 2 (*4)
+	add  a		; A *= 2 (*8)
+	add  a		; A *= 2 (*16)
+	
+	ld   hl, hActCur+iActX	; HL = Ptr to iActX
+	add  [hl]				; Add it to the offset
+	ld   [hl], a			; Save back
+	
+	; If the mole would spawn too close to the player, try again next time.
+	; When that happens, this can make the mole visibly move around.
 	call ActS_GetPlDistanceX
 	cp   $10
 	ret  c
+	
+	; Otherwise, we can start moving fast, 2px/frame (see below)
 	ld   bc, $0200
 	call ActS_SetSpeedY
+	
 	ld   a, $02
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0258BB:;I
-	call L025901
-	and  a
-	ret  nz
+	
+; =============== Act_Mole_DigBorder ===============
+; First in a series of *sequential* routines that handle movement.
+;
+; It goes like this:
+; - Dig fast through the empty border area
+; - Dig fast through the ground
+; - Slowly dig out of the ground
+; - Move a bit faster when out
+; - Slowly dig into the ground
+; - Dig fast through the ground, into the offscreen
+;
+; As these are sequential, it can only handle the presence of a single tunnel,
+; if there were a second one it'd be treated like solid ground.
+Act_Mole_DigBorder:
+	; Move at 2px/frame when not fully inside a block after spawning.
+	; This is mainly here to account for the offscreen area being treated as blank space,
+	; which would cause the second mode to end earlier than intended.
+	call Act_Mole_ChkCommon
+	and  a					; A == 0? (U solid, D solid)
+	ret  nz					; If not, wait
 	jp   ActS_IncRtnId
-L0258C3:;I
-	call L025901
-	and  a
-	ret  z
+	
+; =============== Act_Mole_DigSolid0 ===============
+Act_Mole_DigSolid0:
+	; Move at 2px/frame when inside a solid block, until we find an empty one either up or down
+	call Act_Mole_ChkCommon
+	and  a					; A == 0? (U solid, D solid)
+	ret  z					; If so, wait
+
 	ld   bc, $0020
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L0258D1:;I
-	call L025901
-	cp   $03
-	ret  nz
+	
+; =============== Act_Mole_DigOut ===============
+Act_Mole_DigOut:
+	; Move at 0.125px/frame when digging out of the ground, until we're fully outside
+	call Act_Mole_ChkCommon
+	cp   %11				; A == 3? (U blank, D blank)
+	ret  nz					; If not, wait
+	
 	ld   bc, $0080
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L0258E0:;I
-	call L025901
-	cp   $03
-	ret  z
+	
+; =============== Act_Mole_DigAir ===============
+Act_Mole_DigAir:
+	; Move at 0.5px/frame when moving in the air, until we find a solid block above or below
+	call Act_Mole_ChkCommon
+	cp   %11				; A == 3? (U blank, D blank)
+	ret  z					; If so, wait
+	
 	ld   bc, $0020
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L0258EF:;I
-	call L025901
-	and  a
-	ret  nz
+	
+; =============== Act_Mole_DigIn ===============
+Act_Mole_DigIn:
+	; Move at 0.125px/frame when digging into the ground, until we're fully inside
+	call Act_Mole_ChkCommon
+	and  a					; A == 0? (U solid, D solid)
+	ret  nz					; If not, wait
+
 	ld   bc, $0200
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L0258FD:;I
+	
+; =============== Act_Mole_DigSolid1 ===============
+Act_Mole_DigSolid1:
+	; Move at 2px/frame when inside a solid block, until we get offscreened
 	call ActS_ApplySpeedFwdY
 	ret
-L025901:;C
-	ldh  a, [hActCur+iAct0D]
-	ld   [wActCurSprMapRelId], a
+	
+; =============== Act_Mole_ChkCommon ===============
+; Performs common actions when moving.
+; OUT
+; - A: Collision Flags
+;      ------UD
+;      U - If set, the block above is not solid
+;      D - If set, the block below is not solid
+; - Z Flag: If set, the animation has advanced
+Act_Mole_ChkCommon:
+	; Set base sprite for animation (digging up or down)
+	ldh  a, [hActCur+iMoleSprMapBaseId]
+	ld   [wActCurSprMapBaseId], a
+	
+	; Move vertically by the specified speed
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActX]
+	
+	;--
+	;
+	; Check for collision on both the top and bottom of the actor's bounding box,
+	; storing the result into A.
+	;
+	
+	; BOTTOM SENSOR
+	ldh  a, [hActCur+iActX]	; X Sensor: ActX (center)
 	ld   [wTargetRelX], a
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]	; Y Sensor: ActY (bottom)
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
+	call Lvl_GetBlockId		; C Flag = Is empty?
 	ld   a, $00
-	adc  a
-	ld   b, a
-	ld   a, [wTargetRelY]
+	adc  a					; Store the result to bit0
+	ld   b, a				; Put here for later
+	
+	; TOP SENSOR
+	ld   a, [wTargetRelY]	; Y Sensor: ActY - $0E (top)
 	sub  $0E
 	ld   [wTargetRelY], a
 	push bc
-	call Lvl_GetBlockId
-	ld   a, $00
-	adc  a
-	add  a
+		call Lvl_GetBlockId	; C Flag = Is empty?
+		ld   a, $00
+		adc  a				; Store the result to bit0
+		add  a				; >>1 to bit1
 	pop  bc
-	add  b
+	add  b					; Merge with other check
+	;--
+	
+	;
+	; Handle the animation manually, at 1/2 speed.
+	;
 	ld   hl, hActCur+iActTimer0C
-	dec  [hl]
-	ret  nz
+	dec  [hl]				; Animation timer elapsed?
+	ret  nz					; If not, return
 	push af
-	ldh  a, [hActCur+iAct0D]
-	xor  $01
-	ldh  [hActCur+iAct0D], a
-	ld   [hl], $02
+		; There are two animations, one for digging up, the other for digging down.
+		; Both are made of 2 sprites, so flip bit0 to alternate between them.
+		ldh  a, [hActCur+iMoleSprMapBaseId]
+		xor  $01
+		ldh  [hActCur+iMoleSprMapBaseId], a
+		; Flip again after 2 frames
+		ld   [hl], $02		; iActTimer0C = $02
 	pop  af
 	ret
-L02593C:;I
+	
+; =============== Act_MoleSpawner ===============
+; ID: ACT_MOLESPAWN
+; Spawns moles and sets some of their safe properties.
+Act_MoleSpawner:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02593F: db $43
-L025940: db $59
-L025941: db $6E
-L025942: db $59
-L025943:;I
-	ld   a, $3B
+	dw Act_MoleSpawner_Spawn
+	dw Act_MoleSpawner_Wait
+
+; =============== Act_MoleSpawner_Spawn ===============
+Act_MoleSpawner_Spawn:
+	; Immediately spawn a mole, without even checking if it could spawn.
+	ld   a, ACT_MOLE
 	ld   bc, $0000
 	call ActS_SpawnRel
+	
+	; ~2 second delay before spawning another mole
 	ld   a, $80
 	ldh  [hActCur+iActTimer0C], a
-	inc  hl
-	inc  hl
-	call Rand
-	and  $40
+	;--
+	
+	inc  hl ; iActRtnId
+	inc  hl ; iActSprMap
+	
+	;
+	; The mole is currently directly on top of the spawner.
+	;
+	; The horizontal position can't be changed here since we may have to
+	; re-roll the dice in the next frame, in case we roll a position too close
+	; to the player, which is not convenient to do inside the spawner.
+	;
+	; There are no such issues with randomizing the vertical position here, so do that.
+	;
+	
+	; Randomize the vertical direction, without any mungling.
+	call Rand		; A = Rand()
+	and  ACTDIR_D	; Only keep the vertical direction flag (bit6)
 	ld   b, a
-	xor  [hl]
-	ld   [hl], a
-	ld   de, $0005
-	add  hl, de
-	ld   a, b
-	add  a
-	xor  $80
-	ld   b, a
-	add  $18
-	ld   [hl], a
-	add  hl, de
-	inc  hl
-	ld   a, b
-	rlca 
-	rlca 
-	ld   [hl], a
+		xor  [hl]		; This does nothing, iActRtnId is always 0 here
+		ld   [hl], a	; Save udated directions
+		
+		;
+		; The direction should also affect the mole's Y position, as:
+		; - Moles that move up (ACTDIR_D clear, $00) should spawn on the bottom ($98)
+		; - Those that move down (ACTDIR_D set, $40) should spawn on the top ($18)
+		;
+		; The Y position we want is quite close to the direction value we have 
+		; (<< 1, then invert bit7, then offset by $18)
+		;
+		ld   de, iActY-iActSprMap	; Seek to Y position
+		add  hl, de
+	ld   a, b		; B = Vertical direction
+	add  a			; << 1, to shift bit6 into bit7
+	xor  (ACTDIR_D << 1) ; Invert that bit 7
+	ld   b, a		; Save raw Y pos
+		; Shift the spawning lines 24px below.
+		; This avoids spawning the top ones off-screen and the bottom ones too high up.
+		add  $18		; Y += $18 
+		ld   [hl], a	; Save to iActY
+		
+		;
+		; The mole uses two different animations depending on which direction it's travelling.
+		; Both are made of 2 sprites, so toggle them through bit1.
+		; $00-$01 => When digging down
+		; $02-$03 => When digging up
+		;
+		add  hl, de 	; iActTimer0C-iActY
+		inc  hl 		; iMoleSprMapBaseId
+	ld   a, b		; Get base $00-$80 position
+	rlca 			; bit7 to bit0
+	rlca 			; bit0 to bit1
+	ld   [hl], a	; Save to iMoleSprMapBaseId
 	jp   ActS_IncRtnId
-L02596E:;I
+	
+; =============== Act_MoleSpawner_Wait ===============
+Act_MoleSpawner_Wait:
+	; Wait those ~2 seconds before spawning another mole
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	jp   ActS_DecRtnId
-L025978:;I
+	
+; =============== Act_Press ===============
+; ID: ACT_PRESS
+; Metallic press that drops down when the player gets close.
+Act_Press:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02597B: db $85
-L02597C: db $59
-L02597D: db $97
-L02597E: db $59
-L02597F: db $A0
-L025980: db $59
-L025981: db $B3
-L025982: db $59
-L025983: db $C4
-L025984: db $59
-L025985:;I
+	dw Act_Press_Init
+	dw Act_Press_WaitPl
+	dw Act_Press_FallV
+	dw Act_Press_MoveU
+	dw Act_Press_Cooldown
+	DEF ACTRTN_PRESS_WAITPL = $01
+
+; =============== Act_Press_Init ===============
+Act_Press_Init:
+	; Place between two blocks
 	ldh  a, [hActCur+iActX]
 	add  $08
 	ldh  [hActCur+iActX], a
+	
+	; Keep track of the spawn position as its target.
+	; After the press falls down, it will slowly move back up to that point.
 	ldh  a, [hActCur+iActY]
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iPressSpawnY], a
+	
+	; Initialize gravity for later
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
-L025997:;I
+	
+; =============== Act_Press_WaitPl ===============
+Act_Press_WaitPl:
+	; Waits until the player gets within 2 blocks to drop
 	call ActS_GetPlDistanceX
-	cp   $20
+	cp   BLOCK_H*2
 	ret  nc
 	jp   ActS_IncRtnId
-L0259A0:;I
+	
+; =============== Act_Press_FallV ===============
+Act_Press_FallV:
+	; Apply gravity until we land on a solid block
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	
+	; Start slowly moving up at 0.25px/frame
 	ld   bc, $0040
 	call ActS_SetSpeedY
+	; Clear ACTDIR_D to move up
 	ldh  a, [hActCur+iActSprMap]
-	and  $BF
+	and  $FF^ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
 	jp   ActS_IncRtnId
-L0259B3:;I
-	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActY]
+	
+; =============== Act_Press_MoveU ===============
+Act_Press_MoveU:
+	; Slowly move up until we reach the original spawn position
+	call ActS_ApplySpeedFwdY		; Move up
+	ldh  a, [hActCur+iActY]			; B = ActY
 	ld   b, a
-	ldh  a, [hActCur+iAct0D]
-	cp   b
-	ret  nz
+	ldh  a, [hActCur+iPressSpawnY]	; A = TargetY
+	cp   b							; ActY == TargetY?
+	ret  nz							; If not, return
+	
+	; Wait 1.5 seconds before dropping again, that's enough for the player to pass through
 	ld   a, $5A
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0259C4:;I
+	
+; =============== Act_Press_Cooldown ===============
+Act_Press_Cooldown:
+	; After waiting for that...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $01
+	; Return to waiting for the player to get here
+	ld   a, ACTRTN_PRESS_WAITPL
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0259D0:;I
+	
+; =============== Act_Robbit ===============
+; ID: ACT_ROBBIT
+; Hopping rabbit throwing carrots at the player.
+Act_Robbit:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0259D3: db $DD
-L0259D4: db $59
-L0259D5: db $F4
-L0259D6: db $59
-L0259D7: db $FE
-L0259D8: db $59
-L0259D9: db $15
-L0259DA: db $5A
-L0259DB: db $33
-L0259DC: db $5A
-L0259DD:;I
-	call ActS_FacePl
-	ld   bc, $0100
+	dw Act_Robbit_InitJump
+	dw Act_Robbit_JumpU
+	dw Act_Robbit_JumpD
+	dw Act_Robbit_Ground
+	dw Act_Robbit_Cooldown
+	DEF ACTRTN_ROBBIT_INITJUMP = $00
+	
+; =============== Act_Robbit_InitJump ===============
+Act_Robbit_InitJump:
+	call ActS_FacePl		; Jump towards the player
+	ld   bc, $0100			; 1px/frame forward
 	call ActS_SetSpeedX
-	ld   bc, $0240
+	ld   bc, $0240			; 2.25px/frame up
 	call ActS_SetSpeedY
-	ld   a, $01
+	ld   a, $01				; Use jumping sprite
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
-L0259F4:;I
+	
+; =============== Act_Robbit_JumpU ===============
+; Jump, pre-peak.
+Act_Robbit_JumpU:
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedUpYColi
 	ret  c
+	; Reached the peak, start moving down
 	jp   ActS_IncRtnId
-L0259FE:;I
+	
+; =============== Act_Robbit_JumpD ===============
+; Jump, post-peak.
+Act_Robbit_JumpD:
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $03
-	ldh  [hActCur+iAct0D], a
-	ld   a, $00
+	; We landed on ground.
+	
+	ld   a, $03						; Fire 3 carrots at the player
+	ldh  [hActCur+iRobbitCarrotsLeft], a
+	
+	ld   a, $00						; Use standing sprite
 	call ActS_SetSprMapId
-	ld   a, $40
+	ld   a, $40						; ~1 second delay between shots, and at the start
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025A15:;I
+	
+; =============== Act_Robbit_Ground ===============
+Act_Robbit_Ground:
+	; Wait for cooldown before shooting
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Face the player every time we're about to shoot
 	call ActS_FacePl
-	ld   a, $3F
+	
+	ld   a, ACT_CARROT
 	ld   bc, $0000
 	call ActS_SpawnRel
-	ld   hl, hActCur+iAct0D
-	dec  [hl]
-	ld   a, $40
+	
+	ld   hl, hActCur+iRobbitCarrotsLeft
+	dec  [hl]							; # Ran out of carrots?
+	ld   a, $40							; Cooldown of ~1 sec after shooting
 	ldh  [hActCur+iActTimer0C], a
-	ret  nz
-	jp   ActS_IncRtnId
-L025A33:;I
+	ret  nz								; # If not, return
+	jp   ActS_IncRtnId					; # Otherwise, wait that second before jumping
+	
+; =============== Act_Robbit_Cooldown ===============
+Act_Robbit_Cooldown:
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $00
+	ld   a, ACTRTN_ROBBIT_INITJUMP
 	ldh  [hActCur+iActRtnId], a
 	ret
-L025A3F:;I
+	
+; =============== Act_RobbitCarrot ===============
+; ID: ACT_CARROT
+; Carrot thrown by Act_Robbit, moves in a line.
+Act_RobbitCarrot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025A42: db $46
-L025A43: db $5A
-L025A44: db $4C
-L025A45: db $5A
-L025A46:;I
+	dw Act_RobbitCarrot_Init
+	dw Act_RobbitCarrot_Move
+
+; =============== Act_RobbitCarrot_Init ===============
+Act_RobbitCarrot_Init:
+	; Set up the carrot's speed to target the player's current position.
 	call ActS_AngleToPl
 	jp   ActS_IncRtnId
-L025A4C:;I
+	
+; =============== Act_RobbitCarrot_Move ===============
+Act_RobbitCarrot_Move:
+	; Keep targeting that old player position.
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L025A53:;I
+	
+; =============== Act_Cook ===============
+; ID: ACT_COOK
+; Running chicken, spawned by Act_CookSpawner.
+Act_Cook:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025A56: db $5E
-L025A57: db $5A
-L025A58: db $70
-L025A59: db $5A
-L025A5A: db $9B
-L025A5B: db $5A
-L025A5C: db $B4
-L025A5D: db $5A
-L025A5E:;I
-	ld   bc, $0120
+	dw Act_Cook_Init
+	dw Act_Cook_Run
+	dw Act_Cook_JumpD
+	dw Act_Cook_JumpU
+	DEF ACTRTN_COOK_JUMPU = $03
+	
+; =============== Act_Cook_Init ===============
+Act_Cook_Init:
+	ld   bc, $0120				; Run 1.125px/frame forwards
 	call ActS_SetSpeedX
-	xor  a
+	xor  a						; Init gravity
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
-	ld   a, $20
+	; Jump after around half a second
+	ld   a, $20					
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025A70:;I
+	
+; =============== Act_Cook_Run ===============
+Act_Cook_Run:
+	; Animate run cycle ($00-$03, at 1/8 speed)
 	ld   c, $01
 	call ActS_Anim4
+	; Run forward
 	call ActS_ApplySpeedFwdX
+	; If there's no ground below, fall down
 	call ActS_GetGroundColi
-	ld   a, [wPlColiGround]
-	cp   $03
+	ld   a, [wColiGround]
+	cp   %11
 	jp   z, ActS_IncRtnId
+	
+	; Wait half a second before triggering a jump
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ldh  a, [hActCur+iActSprMap]
-	and  $C0
+	
+	ldh  a, [hActCur+iActSprMap]	; Reset frame and timer
+	and  ACTDIR_R|ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
-	ld   bc, $0300
+	
+	ld   bc, $0300					; Start jump at 3px/frame
 	call ActS_SetSpeedY
-	ld   a, $03
+	
+	ld   a, ACTRTN_COOK_JUMPU
 	ldh  [hActCur+iActRtnId], a
 	ret
-L025A9B:;I
+	
+; =============== Act_Cook_JumpD ===============
+; Jump, post-peak.
+Act_Cook_JumpD:
+	; Force jumping sprite $01
 	ldh  a, [hActCur+iActSprMap]
-	and  $C0
+	and  ACTDIR_R|ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
 	ld   a, $01
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Continue moving forward while jumping
 	call ActS_ApplySpeedFwdX
+	; Move down until we touch solid ground, then return to running on the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	; Jump after around half a second of running
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_DecRtnId
-L025AB4:;I
+	
+; =============== Act_Cook_JumpU ===============
+; Jump, pre-peak.
+Act_Cook_JumpU:
+	; Force jumping sprite $01
 	ldh  a, [hActCur+iActSprMap]
-	and  $C0
+	and  ACTDIR_R|ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
 	ld   a, $01
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Continue moving forward while jumping
 	call ActS_ApplySpeedFwdX
+	; Move up until we reach the peak of the jump, then go back to Act_Cook_JumpD
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_DecRtnId
-L025AC9:;I
+	
+; =============== Act_CookSpawner ===============
+; ID: ACT_COOKSPAWN
+; Spawns running chickens.
+Act_CookSpawner:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025ACC: db $D0
-L025ACD: db $5A
-L025ACE: db $F2
-L025ACF: db $5A
-L025AD0:;I
+	dw Act_CookSpawner_Spawn
+	dw Act_CookSpawner_Wait
+
+; =============== Act_CookSpawner_Spawn ===============
+; Tries to immediately spawn a chicken on the right side of the screen.
+; There is a cooldown of ~1 second, but that only applies if the actor could spawn,
+; if that fails it will retry every frame.
+Act_CookSpawner_Spawn:
+	; Set the ~1 sec cooldown, only applied on success
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $40
-	call L001E63
+	
+	; If there's a chicken running around already, don't spawn a second one
+	ld   a, ACT_COOK
+	call ActS_CountById
 	ld   a, b
 	and  a
 	jp   nz, ActS_IncRtnId
-	ld   a, $40
+	
+	; Spawn the chicken exclusively from the right side of the screen, close to the despawn range.
+	ld   a, ACT_COOK
 	ld   bc, $0000
-	call ActS_SpawnRel
-	jp   c, ActS_IncRtnId
-	ld   a, l
-	add  $05
+	call ActS_SpawnRel		; Spawn directly on the spawner
+	jp   c, ActS_IncRtnId	; Could it spawn? If not, don't spawn
+	
+	ld   a, l				; Seek to X position
+	add  iActX
 	ld   l, a
-	ld   [hl], $B0
+	ld   [hl],  SCREEN_GAME_H+OBJ_OFFSET_X+$08	; Point to off-screen right ($B0)
+	
+	; Spawned successfully, wait ~1 sec 
 	jp   ActS_IncRtnId
-L025AF2:;I
+	
+; =============== Act_CookSpawner_Wait ===============
+; Cooldown after spawning one.
+Act_CookSpawner_Wait:
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	jp   ActS_DecRtnId
-L025AFC:;I
+
+; =============== Act_Batton ===============
+; ID: ACT_BATTON
+; Bat enemy that homes in on the player, and hangs invulnerable on ceilings.
+Act_Batton:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025AFF: db $0D
-L025B00: db $5B
-L025B01: db $14
-L025B02: db $5B
-L025B03: db $26
-L025B04: db $5B
-L025B05: db $54
-L025B06: db $5B
-L025B07: db $7A
-L025B08: db $5B
-L025B09: db $8D
-L025B0A: db $5B
-L025B0B: db $BC
-L025B0C: db $5B
-L025B0D:;I
-	ld   a, $F0
+	dw Act_Batton_InitCeil
+	dw Act_Batton_Ceil
+	dw Act_Batton_ToFlight
+	dw Act_Batton_Fly
+	dw Act_Batton_InitFlyU
+	dw Act_Batton_FlyU
+	dw Act_Batton_InitCeil2
+	DEF ACTRTN_BATTON_INITCEIL = $00
+	
+; =============== Act_Batton_InitCeil ===============
+Act_Batton_InitCeil:
+	; Wait 4 seconds on the ceiling, invulnerable
+	ld   a, 60*4
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025B14:;I
+	
+; =============== Act_Batton_Ceil ===============
+Act_Batton_Ceil:
+	; Wait for it...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; The transition to flight anim starts with sprite $01 (and ends at $04)
 	ld   a, $01
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iBattonFlySprMapId], a
+	; Show the transition sprite for 8 frames (the bat is still invulnerable)
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025B26:;I
-	ldh  a, [hActCur+iAct0D]
-	ld   [wActCurSprMapRelId], a
+	
+; =============== Act_Batton_ToFlight ===============
+Act_Batton_ToFlight:
+	;--
+	;
+	; Handle the ceiling-to-flight animation.
+	; When it ends, start flying immediately.
+	;
+	
+	; Display the previously set transition sprite
+	ldh  a, [hActCur+iBattonFlySprMapId]
+	ld   [wActCurSprMapBaseId], a
+	
+	; Wait those 8 frames, and then...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $08
+	
+	ld   a, $08								; Reset the anim timer
 	ldh  [hActCur+iActTimer0C], a
-	ldh  a, [hActCur+iAct0D]
+	
+	ldh  a, [hActCur+iBattonFlySprMapId]	; Advance through the animation
 	inc  a
-	ldh  [hActCur+iAct0D], a
-	cp   $05
-	ret  nz
+	ldh  [hActCur+iBattonFlySprMapId], a
+	cp   $05				; Went past the last transition sprite?
+	ret  nz					; If not, return (continue looping)
+							; Otherwise, prepare flight mode
+	;--
+	
+	; Target the player at half speed
 	call ActS_AngleToPl
 	call ActS_HalfSpdSub
-	ld   b, $02
+	
+	; Make vulnerable
+	ld   b, ACTCOLI_ENEMYHIT
 	call ActS_SetColiType
+	
+	; Advance the flight animation cycle every 8 frames (1/8 speed)
 	ld   a, $08
-	ldh  [hActCur+iAct0E], a
+	ldh  [hActCur+iBattonFlyAnimTimer], a
+	
+	; To save time, only re-check the player's position every 16 frames
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
+	
 	jp   ActS_IncRtnId
-L025B54:;I
-	call L025BC6
+	
+; =============== Act_Batton_Fly ===============
+Act_Batton_Fly:
+	; Animate flight
+	call Act_Batton_AnimFlight
+	; Move towards the player
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
-	ld   a, [wActHurtSlotPtr]
+	
+	; If the player got hit by the bat, start moving straight up
+	ld   a, [wActHurtSlotPtr]	; B = Actor slot that hurt the player
 	ld   b, a
-	ld   a, [wActCurSlotPtr]
-	cp   b
-	jp   z, ActS_IncRtnId
+	ld   a, [wActCurSlotPtr]	; A = Current actor slot
+	cp   b						; Do they match?
+	jp   z, ActS_IncRtnId		; If so, advance to Act_Batton_InitFlyU
+	
+	; Otherwise, adjust the target speed every 16 frames.
+	; This is often enough to smoothly home in towards the player, but not too often
+	; that we waste time every frame (especially with multiple bats on screen)
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	call ActS_AngleToPl
-	call ActS_HalfSpdSub
-	ld   a, $10
+	
+	call ActS_AngleToPl			; Target the player at half speed
+	call ActS_HalfSpdSub		; still at half speed
+	ld   a, $10					; Perform next update 16 frames later
 	ldh  [hActCur+iActTimer0C], a
 	ret
-L025B7A:;I
+	
+; =============== Act_Batton_InitFlyU ===============
+Act_Batton_InitFlyU:
+	; Fly straight up at 0.5px/frame, which is faster than the normal movement
 	ldh  a, [hActCur+iActSprMap]
-	and  $BF
+	and  $FF^ACTDIR_D				; Clear down flag, to move up
 	ldh  [hActCur+iActSprMap], a
 	ld   bc, $0080
 	call ActS_SetSpeedY
+	
+	; Reset flight anim cycle
 	ld   a, $08
-	ldh  [hActCur+iAct0E], a
+	ldh  [hActCur+iBattonFlyAnimTimer], a
+	
 	jp   ActS_IncRtnId
-L025B8D:;I
-	call L025BC6
-	call ActS_ApplySpeedFwdYColi
-	jp   nc, ActS_IncRtnId
-	ldh  a, [hActCur+iActY]
+	
+; =============== Act_Batton_FlyU ===============
+Act_Batton_FlyU:
+	; Animate flight
+	call Act_Batton_AnimFlight
+	
+	;
+	; Fly up until we either reach a solid block, the top of the room, or the white leaves.
+	; When we do so, immediately start clinging without any transition animation.
+	;
+	call ActS_ApplySpeedFwdYColi	; Move upwards at 0.5px/frame
+	; SOLID CHECK
+	jp   nc, ActS_IncRtnId			; Solid block above? If so, start clinging
+	
+	; SCREEN TOP CHECK
+	ldh  a, [hActCur+iActY]		; Y Sensor: ActY - $08 (low)
 	sub  $08
 	ld   [wTargetRelY], a
-	and  $F0
-	cp   $10
-	jp   z, ActS_IncRtnId
-	ldh  a, [hActCur+iActX]
+	and  $F0					; Check row ranges
+	cp   $10					; In 2nd row? (A >= $10 && A <= $1F)
+	jp   z, ActS_IncRtnId		; If so, start clinging
+	
+	; WHITE LEAF BLOCK CHECK
+	; These are otherwise empty blocks the player can pass through, which only make sense on Wood Man's stage.
+	ldh  a, [hActCur+iActX]		; X Sensor: ActX (center)
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	cp   $03
+	call Lvl_GetBlockId			; A = Block ID at that location
+	cp   BLOCKID_WLEAF			; Check the three blocks...
 	jp   z, ActS_IncRtnId
-	cp   $04
+	cp   BLOCKID_WLEAFL
 	jp   z, ActS_IncRtnId
-	cp   $05
+	cp   BLOCKID_WLEAFR
 	jp   z, ActS_IncRtnId
+	
+	; If all checks failed, keep moving up
 	ret
-L025BBC:;I
-	ld   b, $03
+	
+; =============== Act_Batton_InitCeil2 ===============
+; Performs pre-cling cleanup Act_Batton_InitCeil didn't need to do when it spawned.
+Act_Batton_InitCeil2:
+	; Make invulnerable
+	ld   b, ACTCOLI_ENEMYREFLECT
 	call ActS_SetColiType
-	ld   a, $00
+	; Init the rest of the clinging bit
+	ld   a, ACTRTN_BATTON_INITCEIL
 	ldh  [hActCur+iActRtnId], a
 	ret
-L025BC6:;C
-	ldh  a, [hActCur+iAct0D]
-	ld   [wActCurSprMapRelId], a
-	ld   hl, hActCur+iAct0E
-	dec  [hl]
-	ret  nz
-	ld   [hl], $08
-	ldh  a, [hActCur+iAct0D]
+	
+; =============== Act_Batton_AnimFlight ===============
+; Handles the flight animation.
+; This uses sprites $05-$07 at 1/8 speed-
+Act_Batton_AnimFlight:
+	ldh  a, [hActCur+iBattonFlySprMapId]	; Set current sprite
+	ld   [wActCurSprMapBaseId], a
+	
+	ld   hl, hActCur+iBattonFlyAnimTimer
+	dec  [hl]								; Timer--, has it elapsed?
+	ret  nz									; If not, return
+	ld   [hl], $08							; Set next delay
+	ldh  a, [hActCur+iBattonFlySprMapId]	; Advance animation
 	inc  a
-	ldh  [hActCur+iAct0D], a
-	cp   $08
-	ret  nz
-	ld   a, $05
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iBattonFlySprMapId], a
+	cp   $08								; Went past the last sprite?
+	ret  nz									; If not, return
+	ld   a, $05								; Otherwise, wrap around
+	ldh  [hActCur+iBattonFlySprMapId], a
 	ret
-L025BDF:;I
+	
+; =============== Act_Friender ===============
+; ID: ACT_FRIENDER
+; Giant dog miniboss in Wood Man's stage.
+Act_Friender:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025BE2: db $EE
-L025BE3: db $5B
-L025BE4: db $F8
-L025BE5: db $5B
-L025BE6: db $16
-L025BE7: db $5C
-L025BE8: db $29
-L025BE9: db $5C
-L025BEA: db $47
-L025BEB: db $5C
-L025BEC: db $59
-L025BED: db $5C
-L025BEE:;I
-	call L027E4C
+	dw Act_Friender_Init
+	dw Act_Friender_PreFire
+	dw Act_Friender_Fire
+	dw Act_Friender_FireCooldown
+	dw Act_Friende_WaitNoAnim
+	dw Act_Friender_WaitAnim
+	DEF ACTRTN_FRIENDER_PREFIRE = $01
+	
+; =============== Act_Friender_Init ===============
+Act_Friender_Init:
+	; Draw the tilemap for the miniboss.
+	call Act_BGBoss_ReqDraw
+	
+	; Wait for 16 frames before firing
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025BF8:;I
-	call L027E61
+	
+; =============== Act_Friender_PreFire ===============
+; Waits for a bit before determining the amount of shots to fire.
+Act_Friender_PreFire:
+	; Return if dead
+	call Act_Friender_ChkExplode
 	ret  c
+	
+	; Wait for it...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Use sprite with open mouth, as that's where the flame shot comes from
 	ld   a, $02
 	call ActS_SetSprMapId
-	call Rand
+	
+	;--
+	; [POI] Randomize the amount of indivudual flames spawned.
+	;       Would have spawned anywhere between 3 and 6 of them...
+	call Rand	; A = Rand() % 4 + 3
 	and  $03
 	add  $03
+	; ...but we're discarding the result for an hardcoded amount!
+	; Presumably because higher values run up against the sprite limit.
 	ld   a, $04
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iFrienderShotsLeft], a
+	;--
+	
 	jp   ActS_IncRtnId
-L025C16:;I
-	call L027E61
+	
+; =============== Act_Friender_Fire ===============
+; Fires a single flame shot.
+Act_Friender_Fire:
+	call Act_Friender_ChkExplode
 	ret  c
-	ld   a, $44
-	ld   bc, $F000
+	
+	ld   a, ACT_FLAME
+	ld   bc, (LOW(-$10)<<8)|$00		; 10px left
 	call ActS_SpawnRel
+	
+	; Delay the next shot by 4 frames
 	ld   a, $04
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025C29:;I
-	call L027E61
+	
+; =============== Act_Friender_FireCooldown ===============
+; Handles cooldown between shots, determines if there are more to fire.
+Act_Friender_FireCooldown:
+	call Act_Friender_ChkExplode
 	ret  c
+	; Cooldown between shots..
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   hl, hActCur+iAct0D
+	
+	; If there are still shots left, go back to Act_Friender_Fire
+	ld   hl, hActCur+iFrienderShotsLeft
 	dec  [hl]
 	jp   nz, ActS_DecRtnId
+	
+	; Otherwise, stop shooting for a while.
+	
+	; Display sprite $00 for 16 frames
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025C47:;I
-	call L027E61
+	
+; =============== Act_Friende_WaitNoAnim ===============
+; Idle, no animation.
+Act_Friende_WaitNoAnim:
+	call Act_Friender_ChkExplode
 	ret  c
+	
+	; Wait for those 16 frames...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Display the leg animation for 32 frames
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
+	
 	jp   ActS_IncRtnId
-L025C59:;I
-	call L027E61
+	
+; =============== Act_Friender_WaitAnim ===============
+; Idle, leg animation.
+Act_Friender_WaitAnim:
+	call Act_Friender_ChkExplode
 	ret  c
+	
+	; Leg animation, use frames $00-$01 at 1/8 speed
+	; When that stops (we go back to Act_Friender_PreFire) that's the tell that the enemy is about to fire again.
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Wait for those 32 frames...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Return to Act_Friender_PreFire, waiting 16 more frames before shooting
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $01
+	ld   a, ACTRTN_FRIENDER_PREFIRE
 	ldh  [hActCur+iActRtnId], a
 	ret
-L025C72:;I
+	
+; =============== Act_FrienderFlame ===============
+; ID: ACT_FLAME
+; Flame projectile fired by Friender.
+Act_FrienderFlame:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025C75: db $79
-L025C76: db $5C
-L025C77: db $8E
-L025C78: db $5C
-L025C79:;I
+	dw Act_FrienderFlame_Init
+	dw Act_FrienderFlame_Move
+
+; =============== Act_FrienderFlame_Init ===============
+Act_FrienderFlame_Init:
+	; Set the shot's initial movement speed
 	ldh  a, [hActCur+iActSprMap]
-	or   $40
+	or   ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
-	ld   bc, $01C0
+	ld   bc, $01C0			; 1.75px/frame forward
 	call ActS_SetSpeedX
-	ld   bc, $0300
+	ld   bc, $0300			; 3px/frame down (ACTDIR_D set)
 	call ActS_SetSpeedY
+	
 	jp   ActS_IncRtnId
-L025C8E:;I
+	
+; =============== Act_FrienderFlame_Move ===============
+Act_FrienderFlame_Move:
+	; Apply the movement speed in an arc.
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActSpdYSub]
+	
+	; Apply upwards gravity at 0.125px/frame
+	ldh  a, [hActCur+iActSpdYSub]	; HL = iActSpdY*
 	ld   l, a
 	ldh  a, [hActCur+iActSpdY]
 	ld   h, a
-	ld   de, $FFE0
+	ld   de, -$20					; Move $20 subpixels up
 	add  hl, de
-	ld   a, l
+	ld   a, l						; Save back
 	ldh  [hActCur+iActSpdYSub], a
 	ld   a, h
 	ldh  [hActCur+iActSpdY], a
 	ret
-L025CA5:;I
+	
+; =============== Act_GoblinHorn ===============
+; ID: ACT_GOBLINHORN
+; Retractable horns that only show up when the player is standing on the goblin platform.
+; Spawned by Act_Goblin.
+Act_GoblinHorn:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025CA8: db $B0
-L025CA9: db $5C
-L025CAA: db $C2
-L025CAB: db $5C
-L025CAC: db $D3
-L025CAD: db $5C
-L025CAE: db $EC
-L025CAF: db $5C
-L025CB0:;I
+	dw Act_GoblinHorn_Init
+	dw Act_GoblinHorn_MoveU
+	dw Act_GoblinHorn_Idle
+	dw Act_GoblinHorn_MoveD
+
+; =============== Act_GoblinHorn_Init ===============
+Act_GoblinHorn_Init:
+	; Move up at 0.125px/frame
 	ld   hl, hActCur+iActSprMap
-	res  6, [hl]
+	res  ACTDIRB_D, [hl]
 	ld   bc, $0020
 	call ActS_SetSpeedY
+	; Move for ~1 second 
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025CC2:;I
+	
+; =============== Act_GoblinHorn_MoveU ===============
+; Horn emerges from the top of the platform.
+Act_GoblinHorn_MoveU:
+	; Move up at 0.125px/frame for that ~1 second (total movement: 1 block)
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Wait for ~1 second
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025CD3:;I
+	
+; =============== Act_GoblinHorn_Idle ===============
+; Horn is idle
+Act_GoblinHorn_Idle:
+	; Wait for it
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Move down at 0.5px/frame
 	ld   hl, hActCur+iActSprMap
-	set  6, [hl]
+	set  ACTDIRB_D, [hl]
 	ld   bc, $0080
 	call ActS_SetSpeedY
+	
+	; Move for 16 frames 
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025CEC:;I
+	
+; =============== Act_GoblinHorn_MoveD ===============
+; Horn retracts, then despawns.
+Act_GoblinHorn_MoveD:
+	; Move down at 0.5px/frame for 16 frames (total movement: half a block)
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; After that, despawn the horn.
 	xor  a
 	ldh  [hActCur+iActId], a
 	ret
-L025CFA:;I
+	
+; =============== Act_Goblin ===============
+; ID: ACT_GOBLIN
+; Makes a goblin platform show up at the location it's placed on, and spawns any of its child objects.
+; The only part of the goblin placed in the actor layout.
+Act_Goblin:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025CFD: db $03
-L025CFE: db $5D
-L025CFF: db $1F
-L025D00: db $5D
-L025D01: db $59
-L025D02: db $5D
-L025D03:;I
+	dw Act_Goblin_WaitPl
+	dw Act_Goblin_SpawnPuchi
+	dw Act_Goblin_SpawnHorns
+
+; =============== Act_Goblin_WaitPl ===============
+Act_Goblin_WaitPl:
+	; Don't interfere with level scrolling, since showing the body involves writing event data
 	ld   a, [wLvlScrollEvMode]
 	and  a
 	ret  nz
+	
+	; Don't do anything until the player gets within 4 blocks, which is far enough to not let
+	; the player get inside the area where the Goblin is drawn.
 	call ActS_GetPlDistanceX
-	cp   $40
+	cp   BLOCK_H*4
 	ret  nc
-	call L027E6D
+	
+	; Draw the Goblin and write its blocks to the level layout
+	call Act_Goblin_ShowBody
+	
+	; First Petit Goblin spawns on the left
 	xor  a
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iGoblinPuchiDir], a
+	
+	;
+	; Set the initial delays for spawning Petit Goblins and making the horns rise, respectively.
+	; These are shorter than the normal delays used from the 2nd, which *especially* affect the latter.
+	;
+	; Unlike most other delays, these are *concurrent*.
+	; From this point onward, every frame the actor will alternate between checking to spawn the Petit Goblins
+	; and checking to spawn the horns on the side. Any check that fails will switch to the other routine and return.
+	; That is the reason two separate timers are at play here.
+	;
+	
+	; Wait 16 frames before doing the spawn checks (normal delay is ~1 second)
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
+	
+	; 16 frames are significantly shorter than the normal delay of ~2 seconds (as it needs to wait for the spikes)
+	; which is set from the 2nd time onwards.
+	;
+	; That leaves a very little window to safely jump on the platform without getting hit without stopping,
+	; especially considering how far the goblin's spawn check reaches.
 	ld   a, $10
-	ldh  [hActCur+iAct0E], a
+	ldh  [hActCur+iGoblinRiseDelay], a
+	
+	; From this point onward, alternate between spawning Petit Goblins and raising/spawning horns.
 	jp   ActS_IncRtnId
-L025D1F:;I
+	
+; =============== Act_Goblin_SpawnPuchi ===============
+Act_Goblin_SpawnPuchi:
+
+	; Wait before trying to spawn them.
 	ldh  a, [hActCur+iActTimer0C]
-	sub  $01
+	sub  $01						; Timer--
 	ldh  [hActCur+iActTimer0C], a
-	jp   nz, ActS_IncRtnId
+	jp   nz, ActS_IncRtnId			; Timer > 0? If so, switch
+	
+	; From the 2nd time onwards, delay spawns by ~1 second
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
+	
+	; If the player isn't within 2 blocks, switch routines.
+	; This maps to the player being in the horizontal range of the Goblin platform.
 	call ActS_GetPlDistanceX
-	cp   $20
-	jp   nc, ActS_IncRtnId
-	ld   a, $47
-	call L001E63
+	cp   BLOCK_H*2				; DiffX >= $20?
+	jp   nc, ActS_IncRtnId		; If so, switch
+	
+	; If there are already 3 on screen, don't spawn more
+	ld   a, ACT_PUCHIGOBLIN
+	call ActS_CountById
 	ld   a, b
-	cp   $03
-	jp   nc, ActS_IncRtnId
-	ld   a, $47
-	ld   bc, $00FE
+	cp   $03					; Count >= $03?
+	jp   nc, ActS_IncRtnId		; If so, switch
+	
+	; Otherwise, spawn the Petit Goblin.
+	; It will spawn directly on the center of the platform, so it will need to move horizontally out by itself.
+	ld   a, ACT_PUCHIGOBLIN
+	ld   bc, ($00 << 8)|LOW(-$02)	; 2px up
 	call ActS_SpawnRel
 	jp   c, ActS_IncRtnId
-	inc  hl
-	inc  hl
-	ldh  a, [hActCur+iAct0D]
-	xor  [hl]
-	ld   [hl], a
-	ldh  a, [hActCur+iAct0D]
-	xor  $80
-	ldh  [hActCur+iAct0D], a
+	
+	; Altenate between making the Petit Goblin exit on the left and right sides
+	inc  hl ; iActRtnId
+	inc  hl ; iActSprMap
+	
+	ldh  a, [hActCur+iGoblinPuchiDir]	; Get our direction
+	xor  [hl]							; Merge with iActSprMap (Could have been "or  [hl]", iActSprMap is 0)
+	ld   [hl], a						; Save back to iActSprMap
+	ldh  a, [hActCur+iGoblinPuchiDir]	; Flip spawn dir for next time
+	xor  ACTDIR_R
+	ldh  [hActCur+iGoblinPuchiDir], a
 	jp   ActS_IncRtnId
-L025D59:;I
-	ld   hl, hActCur+iAct0E
+	
+; =============== Act_Goblin_SpawnHorns ===============
+Act_Goblin_SpawnHorns:
+
+	; Wait before trying to spawn them.
+	ld   hl, hActCur+iGoblinRiseDelay
 	dec  [hl]
 	jp   nz, ActS_DecRtnId
-	ld   [hl], $80
+	
+	; From the 2nd time onwards, delay spawns by ~2 seconds
+	ld   [hl], $80 ; iGoblinRiseDelay
+	
+	; Don't spawn the horns when the head origin is offscreen, as they'd risk wrapping around.
 	ldh  a, [hActCur+iActX]
-	cp   $B0
+	cp   SCREEN_GAME_H+OBJ_OFFSET_X+$08
 	ret  nc
-	ld   a, $45
-	ld   bc, $EEE8
-	call ActS_SpawnRel
-	jp   c, ActS_DecRtnId
-	ld   de, $0005
+	
+	; LEFT HORN
+	ld   a, ACT_GOBLINHORN
+	ld   bc, (LOW(-$12) << 8)|LOW(-$18) ; 18px left, 24px up
+	call ActS_SpawnRel			; Could it spawn?
+	jp   c, ActS_DecRtnId		; If not, go back to Act_Goblin_SpawnPuchi
+	
+	;
+	; There's a bug that shifts actors by 1 pixel when they're being scrolled to the right.
+	; Normally actors should be spawned on horizontal pixel $08, the bug makes them spawn on $07.
+	;
+	; That's bad, as the actor's position is supposed to be consistent with the solid blocks, but
+	; instead of just fixing the bug in Pl_MoveR, this actor opted to work around it with unfortunate code.
+	;
+	; This actor assumes the Goblin to be on the bugged $07 position.
+	; The horn is 18px to the left of the Goblin, when converted to absolute, we land into
+	; (7 - 18) % 8 = -3
+	;
+	; Meaning the horn is meant to be 3px to the left the 8x8 tile's left edge.
+	; aka 5px to the right.
+	;
+	ld   de, iActX		; HL = Actor's X position
 	add  hl, de
-	ldh  a, [hScrollX]
-	and  $07
-	ld   b, a
-	add  [hl]
-	and  $F8
-	sub  b
-	add  $05
-	ld   [hl], a
-	ld   a, $45
-	ld   bc, $14E8
+	ldh  a, [hScrollX]	
+	and  $07			; A = Updated tile scroll offset (pixels)
+	ld   b, a			;
+	add  [hl]			; Add the actor's X pos
+	and  $F8			; Align to tile boundary.
+	sub  b				; After aligning, remove the scroll pos we added. This is the start of the tile.
+	add  $05			; Add those 5 pixels
+	ld   [hl], a		; Save to iActX
+
+	
+	; RIGHT HORN
+	ld   a, ACT_GOBLINHORN
+	ld   bc, (LOW($14) << 8)|LOW(-$18) ; 20px right, 24px up
 	call ActS_SpawnRel
 	jp   c, ActS_DecRtnId
-	ld   de, $0005
+	; See above, but with 3px to the right
+	; (20 - 7) % 8 = 3
+	ld   de, iActX
 	add  hl, de
 	ldh  a, [hScrollX]
 	and  $07
@@ -4512,446 +6956,708 @@ L025D59:;I
 	sub  b
 	add  $03
 	ld   [hl], a
+	
 	jp   ActS_DecRtnId
-L025DA0:;I
+	
+; =============== Act_PuchiGoblin ===============
+; ID: ACT_PUCHIGOBLIN
+; Petit Goblin, the small flying enemies that spawn from the goblin head.
+; Spawned by Act_Goblin.
+Act_PuchiGoblin:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025DA3: db $AB
-L025DA4: db $5D
-L025DA5: db $C1
-L025DA6: db $5D
-L025DA7: db $DD
-L025DA8: db $5D
-L025DA9: db $FC
-L025DAA: db $5D
-L025DAB:;I
+	dw Act_PuchiGoblin_Init
+	dw Act_PuchiGoblin_MoveOutH
+	dw Act_PuchiGoblin_MoveU
+	dw Act_PuchiGoblin_TrackPl
+
+; =============== Act_PuchiGoblin_Init ===============
+Act_PuchiGoblin_Init:
+	; Instantly move a block away.
+	; Why this wasn't done by the spawner directly?
 	ld   bc, $1000
 	call ActS_SetSpeedX
 	call ActS_ApplySpeedFwdX
+	
+	; Move out 0.25px/frame from the side of the Goblin
 	ld   bc, $0040
 	call ActS_SetSpeedX
+	
+	; Do that for $40 frames; by the end it will have moved another block
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
+	
 	jp   ActS_IncRtnId
-L025DC1:;I
+	
+; =============== Act_PuchiGoblin_MoveOutH ===============
+Act_PuchiGoblin_MoveOutH:
+	; Use frames $00-$01 for animating the flight
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Move forward for those $40 frames
 	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Start moving 1.25px/frame up for 32 frames (40px)
 	ld   bc, $0140
 	call ActS_SetSpeedY
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
+	
 	jp   ActS_IncRtnId
-L025DDD:;I
+	
+; =============== Act_PuchiGoblin_MoveU ===============
+Act_PuchiGoblin_MoveU:
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Move up for those 32 frames
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; From this point, track the player's position every 16 frames
 	call ActS_AngleToPl
+	call ActS_HalfSpdSub	; Move at 1/4th of the speed
 	call ActS_HalfSpdSub
-	call ActS_HalfSpdSub
-	ld   a, $10
+	
+	ld   a, $10				; Next tracking in
 	ldh  [hActCur+iActTimer0C], a
+	
 	jp   ActS_IncRtnId
-L025DFC:;I
+	
+; =============== Act_PuchiGoblin_TrackPl ===============
+Act_PuchiGoblin_TrackPl:
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Move towards the snapshop of the player position
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
+	
+	; Wait those 16 frames
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Take a new snapshot
 	call ActS_AngleToPl
 	call ActS_HalfSpdSub
 	call ActS_HalfSpdSub
+	; Take the next one after 16 frames
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	ret
-L025E1C:;I
+	
+; =============== Act_ScwormBase ===============
+; ID: ACT_SCWORMBASE
+; Small chute on the ground, lobs shots at the player.
+Act_ScwormBase:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025E1F: db $23
-L025E20: db $5E
-L025E21: db $2A
-L025E22: db $5E
-L025E23:;I
+	dw Act_ScwormBase_Init
+	dw Act_ScwormBase_Shot
+	
+; =============== Act_ScwormBase_Init ===============
+Act_ScwormBase_Init:
+	; ~1 second cooldown between shots
 	ld   a, $30
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025E2A:;I
+	
+; =============== Act_ScwormBase_Shot ===============
+Act_ScwormBase_Shot:
+	; Handle the cooldown
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $30
+	ld   a, $30						; Reset cooldown timer for next time
 	ldh  [hActCur+iActTimer0C], a
+	
 	call ActS_GetPlDistanceX
-	cp   $40
-	ret  nc
-	ld   a, $49
-	ld   bc, $00F8
+	cp   BLOCK_H*4					; Is the player within 4 blocks?
+	ret  nc							; If not, return
+	
+	ld   a, ACT_SCWORMSHOT
+	ld   bc, ($00 << 8)|LOW(-$08) 	; Spawn shot 8px up
 	call ActS_SpawnRel
 	ret
-L025E44:;I
+	
+; =============== Act_ScwormShot ===============
+; ID: ACT_SCWORMSHOT
+; Pipe shot lobbed by Act_ScwormBase.
+Act_ScwormShot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025E47: db $51
-L025E48: db $5E
-L025E49: db $5C
-L025E4A: db $5E
-L025E4B: db $85
-L025E4C: db $5E
-L025E4D: db $92
-L025E4E: db $5E
-L025E4F: db $A3
-L025E50: db $5E
-L025E51:;I
-	ld   de, $0002
+	dw Act_ScwormShot_Init
+	dw Act_ScwormShot_MoveOut
+	dw Act_ScwormShot_JumpU
+	dw Act_ScwormShot_JumpD
+	dw Act_ScwormShot_Ground
+
+; =============== Act_ScwormShot_Init ===============
+Act_ScwormShot_Init:
+	; Set up animation for coming out of the tube.
+	; This needs its own non-looping animation mainly since the spawner is too thin to clip the normal-sized shot.
+	; Use sprites $00-$02 at 1/8 speed
+	ld   de, ($00 << 8)|$02
 	ld   c, $08
-	call Act_Boss_InitIntro
+	call ActS_InitAnimRange
+	
 	jp   ActS_IncRtnId
-L025E5C:;I
-	call Act_Boss_PlayIntro
+	
+; =============== Act_ScwormShot_MoveOut ===============
+Act_ScwormShot_MoveOut:
+	; Wait until the animation has finished
+	call ActS_PlayAnimRange
 	ret  z
-	call ActS_FacePl
-	call ActS_GetPlDistanceX
-	ld   l, a
+	
+	;
+	; Then set up the jump towards the player.
+	;
+	
+	; HORIZONTAL SPEED
+	; SpdX = ((DiffX * 4) + (Rand() % $10)) / $10
+	call ActS_FacePl			; Towards the player
+	call ActS_GetPlDistanceX	; A = DiffX
+	ld   l, a					; HL = A
 	ld   h, $00
-	add  hl, hl
-	add  hl, hl
+	add  hl, hl					; HL *= 2 (*2)
+	add  hl, hl					; HL *= 2 (*4)
 	push hl
-	call Rand
+		call Rand				; A = Rand()
 	pop  hl
-	and  $0F
-	ld   e, a
+	and  $0F					; A %= $10
+	ld   e, a					; DE = A
 	ld   d, $00
-	add  hl, de
-	ld   a, l
+	add  hl, de					; HL += DE
+	ld   a, l					; Save finalized speed
 	ldh  [hActCur+iActSpdXSub], a
 	ld   a, h
 	ldh  [hActCur+iActSpdX], a
-	ld   bc, $0300
+	
+	; VERTICAL SPEED
+	ld   bc, $0300			; Fixed 3px/frame
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L025E85:;I
-	call L025EB0
+	
+; =============== Act_ScwormShot_JumpU ===============
+; Jump, pre-peak.
+Act_ScwormShot_JumpU:
+	call Act_ScwormShot_Anim
+	; Move forward during the jump, stopping if there's a solid wall in the way
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving up until we reach the peak, including hitting the ceiling
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L025E92:;I
-	call L025EB0
+	
+; =============== Act_ScwormShot_JumpD ===============
+; Jump, post-peak.
+Act_ScwormShot_JumpD:
+	call Act_ScwormShot_Anim
+	; Move forward during the jump, stopping if there's a solid wall in the way
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving down until we hit the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	; Stay on the ground for ~1 second
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025EA3:;I
-	call L025EB0
+	
+; =============== Act_ScwormShot_Ground ===============
+Act_ScwormShot_Ground:
+	; Wait ~1 second animating on the ground
+	call Act_ScwormShot_Anim
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	jp   L001E11
-L025EB0:;C
-	ldh  a, [hTimer]
-	rrca 
-	rrca 
-	rrca 
-	and  $01
-	add  $02
-	ld   [wActCurSprMapRelId], a
+	; After that, despawn with a small explosion
+	jp   ActS_Explode
+	
+; =============== Act_ScwormShot_Anim ===============
+; Handles the animation cycle for the pipe.
+; Uses frames $02-$03 at 1/8 speed
+Act_ScwormShot_Anim:
+	ldh  a, [hTimer]	; Get global timer
+	rrca		; /2
+	rrca		; /4
+	rrca		; /8
+	and  $01	; Animation is 2 frames long
+	add  $02	; From $02
+	ld   [wActCurSprMapBaseId], a
 	ret
-L025EBD:;I
+	
+; =============== Act_Matasaburo ===============
+; ID: ACT_MATASABURO
+; Large enemy that blows the player away.
+Act_Matasaburo:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025EC0: db $C6
-L025EC1: db $5E
-L025EC2: db $CD
-L025EC3: db $5E
-L025EC4: db $F5
-L025EC5: db $5E
-L025EC6:;I
+	dw Act_Matasaburo_Init
+	dw Act_Matasaburo_Blow0
+	dw Act_Matasaburo_Blow1
+
+; =============== Act_Matasaburo_Init ===============
+Act_Matasaburo_Init:
+	; Stay in the next routine for ~1 second 
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025ECD:;I
+	
+; =============== Act_Matasaburo_Blow0 ===============
+Act_Matasaburo_Blow0:
+	;
+	; Try to blow the player to backwards.
+	;
+	
 	call ActS_GetPlDistanceX
-	jr   c, L025EDE
-	cp   $60
-	jr   nc, L025EDE
+	; As this actor can only face left, blow the player only if he's on the left side.
+	jr   c, .anim			; Player is on the right? If so, skip
+	; Don't blow away if too far away
+	cp   BLOCK_H*6			; DiffX >= $60?			
+	jr   nc, .anim			; If so, jump
+	; Checks passed, push player left at 0.5px/frame
 	ld   a, $00
 	ld   bc, $0080
-	call Pl_Unk_SetSpeedByActDir
-L025EDE:;R
+	call Pl_SetSpeedByActDir
+	
+.anim:
+	;
+	; Animate the fan (using sprites $00-$01)
+	; wActCurSprMapBaseId = (hTimer / 4) % 2
+	;
 	ldh  a, [hTimer]
 	rrca 
 	rrca 
 	and  $01
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; After ~1 second, switch to the next mode
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; 16 frames in the next mode
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025EF5:;I
+	
+; =============== Act_Matasaburo_Blow1 ===============
+; Nearly identical to Act_Matasaburo_Blow0 except for the sprites used in the animation.
+Act_Matasaburo_Blow1:
+	;
+	; Try to blow the player to backwards.
+	;
+	
 	call ActS_GetPlDistanceX
-	jr   c, L025F06
-	cp   $60
-	jr   nc, L025F06
+	; As this actor can only face left, blow the player only if he's on the left side.
+	jr   c, .anim			; Player is on the right? If so, skip
+	; Don't blow away if too far away
+	cp   BLOCK_H*6			; DiffX >= $60?			
+	jr   nc, .anim			; If so, jump
+	; Checks passed, push player left at 0.5px/frame
 	ld   a, $00
 	ld   bc, $0080
-	call Pl_Unk_SetSpeedByActDir
-L025F06:;R
+	call Pl_SetSpeedByActDir
+	
+.anim:
+	;
+	; Animate the fan (using sprites $02-$03)
+	; These have the enemy hold their arms up.
+	; wActCurSprMapBaseId = (hTimer / 4) % 2 + 2
+	;
 	ldh  a, [hTimer]
 	rrca 
 	rrca 
 	and  $01
 	add  $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; After 16 frames, switch to the previous mode
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; ~1 second, consistent with the init routine
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_DecRtnId
-L025F1F:;I
+
+; =============== Act_KaminariGoro ===============
+; ID: ACT_KAMINARIGORO
+; Enemy throwing lightning bolts on a rotating cloud platform.
+; Spawned by the aforemented cloud platform (Act_KaminariCloud).
+Act_KaminariGoro:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025F22: db $28
-L025F23: db $5F
-L025F24: db $33
-L025F25: db $5F
-L025F26: db $59
-L025F27: db $5F
-L025F28:;I
-	ld   a, $40
+	dw Act_KaminariGoro_Init
+	dw Act_KaminariGoro_Move
+	dw Act_KaminariGoro_Throw
+	DEF ACTRTN_KAMINARIGORO_MOVE = $01
+
+; =============== Act_KaminariGoro_Init ===============
+Act_KaminariGoro_Init:
+	;--
+	; [POI] This doesn't matter because this actor's position is relative to the cloud
+	ld   a, ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
+	;--
+	
+	; Wait ~2 seconds before throwing a lightning bolt.
 	ld   a, $80
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L025F33:;I
+	
+; =============== Act_KaminariGoro_Move ===============
+; Movement - holding lightning bolt.
+Act_KaminariGoro_Move:
+	; Use frames $00-$01 at 1/8 speed.
+	; In this animation, the lightning bolt is being held and is baked in the sprites.
+	; Note that $80 frames at 1/8 speed means it will end at frame ($80 / 8) % 2 = 0
 	ld   c, $01
 	call ActS_Anim2
-	call L025F71
+	
+	; Always track the player position
+	call Act_KaminariGoro_SyncPos
 	call ActS_FacePl
+	
+	; Wait for those ~2 seconds before throwing
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	;
+	; Set up throw animation, which is handled in the next routine.
+	;
+	
+	; Display the throw sprite ($02) for 16 frames
+	; [BUG] This forgets to reset the relative sprite ID, which could have offset the sprite ID by $01.
+	;       Thankfully, due to the animation length and speed used (($80 * 1/8) % 2 => 0) that offset 
+	;       will always be $00,  but altering the throw timing will make the bug show up.
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
-	ld   a, $4D
-	ld   bc, $00F8
+	ld   [wActCurSprMapBaseId], a
+	
+	; Spawn the lightning bolt.
+	; As it is being thrown from the hand, it should be spawned around there.
+	; The spawn position is set to be 8px above and 8px in front of the actor's origin,
+	; but for convenience the latter is set in the newly spawned actor's init code, so it's $00 for now.
+	ld   a, ACT_KAMINARI
+	ld   bc, ($00 << 8)|LOW(-$08) ; 8px up
 	call ActS_SpawnRel
+	
 	jp   ActS_IncRtnId
-L025F59:;I
+	
+; =============== Act_KaminariGoro_Throw ===============
+; Movement - throw pose.
+Act_KaminariGoro_Throw:
+	; Display the throw sprite $03 for 16 frames.
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
-	call L025F71
+	ld   [wActCurSprMapBaseId], a
+	
+	; Always track the player position
+	call Act_KaminariGoro_SyncPos
+	
+	; Wait those 16 frames
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $80
+	
+	; Done, materialize a new lightning bolt
+	ld   a, $80							; Throw it after ~2 seconds
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $01
+	ld   a, ACTRTN_KAMINARIGORO_MOVE	; Back to the main routine
 	ldh  [hActCur+iActRtnId], a
 	ret
-L025F71:;C
-	ldh  a, [hActCur+iAct0D]
+	
+; =============== Act_KaminariGoro_SyncPos ===============
+; Syncronizes the actor's position with the cloud's.
+; This is useful since the cloud moves in a complex circular path.
+Act_KaminariGoro_SyncPos:
+	ldh  a, [hActCur+iActGoroCloudXPtr]	; Seek HL to the cloud's iActX
 	ld   l, a
-	ld   h, $CD
-	ldi  a, [hl]
+	ld   h, HIGH(wAct)
+	
+	ldi  a, [hl] ; iActX		; X Position: CloudX (center)
 	ldh  [hActCur+iActX], a
-	inc  hl
-	ld   a, [hl]
-	sub  $10
+	
+	inc  hl ; iActYSub
+	ld   a, [hl] ; iActY		; Y Position: CloudY - $10 (on top of the cloud)
+	sub  $10					; Consistent with the offset set in Act_KaminariCloud_Init
 	ldh  [hActCur+iActY], a
 	ret
-L025F80:;I
+	
+; =============== Act_KaminariCloud ===============
+; ID: ACT_KAMINARICLOUD
+; Rotating cloud platform the player can stand on.
+Act_KaminariCloud:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025F83: db $87
-L025F84: db $5F
-L025F85: db $A3
-L025F86: db $5F
-L025F87:;I
+	dw Act_KaminariCloud_Init
+	dw Act_KaminariCloud_Move
+
+; =============== Act_KaminariCloud_Init ===============
+Act_KaminariCloud_Init:
+	; Start moving anticlockwise, from the top.
 	call ActS_InitCirclePath
-	ld   a, $40
+	ld   a, ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
-	ld   a, $4B
-	ld   bc, $00F0
+	
+	; Spawn the child enemy on top of the cloud, which is the part that can be shot.
+	ld   a, ACT_KAMINARIGORO
+	ld   bc, ($00 << 8)|LOW(-$10) ; $10px up
 	call ActS_SpawnRel
-	ld   de, $000D
+	
+	; Share the cloud's slot pointer to the child, which it can use to sync its position.
+	; To save time, it's already pointing to the X position.
+	ld   de, iActGoroCloudXPtr	; HL = Seek to child iActGoroCloudXPtr
 	add  hl, de
-	ld   a, [wActCurSlotPtr]
-	add  $05
-	ld   [hl], a
+	ld   a, [wActCurSlotPtr]	; A = Low byte of ptr to cloud iActX
+	add  iActX
+	ld   [hl], a				; Save to iActGoroCloudXPtr
+	
 	jp   ActS_IncRtnId
-L025FA3:;I
+	
+; =============== Act_KaminariCloud_Move ===============
+; Handles the rotation movement path.
+Act_KaminariCloud_Move:
+	;
+	; Animate the propeller under the cloud.
+	; Use sprites $00-$01 at 1/4 speed.
+	;
 	ldh  a, [hTimer]
-	rrca 
-	rrca 
-	and  $01
-	ld   [wActCurSprMapRelId], a
-	ld   a, $01
-	call ActS_ApplyCirclePath
-	call ActS_HalfSpdSub
-	call ActS_ApplySpeedFwdX
+	rrca ; /2			; Every 4 frames...
+	rrca ; /4
+	and  $01			; Alternate between $00 and $01
+	ld   [wActCurSprMapBaseId], a
+	
+	;
+	; Continue moving on the large circle path, at half speed.
+	; ActS_ApplyCirclePath will automatically flip the cloud's direction as needed,
+	; which is why it flips horizontally when it starts moving left.
+	;
+	ld   a, ARC_LG
+	call ActS_ApplyCirclePath	; Use large path
+	call ActS_HalfSpdSub		; At half speed
+	call ActS_ApplySpeedFwdX	; Move the player
 	call ActS_ApplySpeedFwdY
-	ld   a, [wActCurSlotPtr]
+	
+	;
+	; If the player is standing on the cloud platform, drag him along with it.
+	;
+	ld   a, [wActCurSlotPtr]		; A = Our slot
 	ld   b, a
-	ld   a, [wActPlatColiSlotPtr]
-	cp   b
-	ret  nz
-	ldh  a, [hActCur+iActSpdXSub]
+	ld   a, [wActPlatColiSlotPtr]	; B = Slot the player is standing on
+	cp   b							; Do they match?
+	ret  nz							; If not, return
+	; Otherwise, add the cloud's horizontal speed to player's, which keeps him horizontally aligned.
+	; There's no need to do so for the vertical speed, as the way platform collision works accounts for it.
+	ldh  a, [hActCur+iActSpdXSub]	; BC = Cloud horizontal speed
 	ld   c, a
 	ldh  a, [hActCur+iActSpdX]
 	ld   b, a
-	ldh  a, [hActCur+iActSprMap]
-	jp   Pl_Unk_SetSpeedByActDir
-L025FCE:;I
+	ldh  a, [hActCur+iActSprMap]	; A = Cloud direction
+	jp   Pl_SetSpeedByActDir		; Move player by that
+	
+; =============== Act_Kaminari ===============
+; ID: ACT_KAMINARI
+; Lightning bolt projectile thrown in an arc by Act_KaminariGoro.
+Act_Kaminari:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L025FD1: db $D7
-L025FD2: db $5F
-L025FD3: db $F2
-L025FD4: db $5F
-L025FD5: db $01
-L025FD6: db $60
-L025FD7:;I
-	call ActS_FacePl
-	ld   bc, $0800
+	dw Act_Kaminari_Init
+	dw Act_Kaminari_JumpU
+	dw Act_Kaminari_JumpD
+
+; =============== Act_Kaminari_Init ===============
+; Sets up the jump arc.
+Act_Kaminari_Init:
+	
+	; Immediately move 8px towards the player.
+	; Typically this places it on Kaminari Goro's hand.
+	call ActS_FacePl			; Move towards player
+	ld   bc, $0800				; Move 8px forward
 	call ActS_SetSpeedX
-	call ActS_ApplySpeedFwdX
-	ld   bc, $0100
+	call ActS_ApplySpeedFwdX	; And apply it
+	
+	; Set up jump arc
+	ld   bc, $0100				; 1px/frame forward
 	call ActS_SetSpeedX
-	ld   bc, $0200
+	ld   bc, $0200				; 2px/frame up
 	call ActS_SetSpeedY
+	
 	jp   ActS_IncRtnId
-L025FF2:;I
+	
+; =============== Act_Kaminari_JumpU ===============
+; Jump, pre-peak.
+Act_Kaminari_JumpU:
+	; Flash at 1/4 speed
 	ld   c, $02
 	call ActS_Anim2
+	; Continue the arc until we reach the peak of the jump
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedUpY
 	ret  c
 	jp   ActS_IncRtnId
-L026001:;I
+	
+; =============== Act_Kaminari_JumpD ===============
+; Jump, post-peak.
+Act_Kaminari_JumpD:
+	; Flash at 1/4 speed
 	ld   c, $02
 	call ActS_Anim2
+	
+	; Continue the arc until we get offscreened
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedDownY
 	ret
-L02600D:;I
+	
+; =============== Act_Telly ===============
+; ID: ACT_TELLY
+; Floating block that homes in on the player.
+Act_Telly:;I
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026010: db $14
-L026011: db $60
-L026012: db $2A
-L026013: db $60
-L026014:;I
-	ld   bc, $0601
+	dw Act_Telly_Init
+	dw Act_Telly_Move
+
+; =============== Act_Telly_Init ===============
+Act_Telly_Init:
+	
+	ld   bc, $0601			; Play telly rotation animation (sprites $00-$06, at 1/8 speed)
 	call ActS_AnimCustom
-	call ActS_AngleToPl
-	call ActS_HalfSpdSub
-	call ActS_HalfSpdSub
-	ld   a, $10
+	
+	call ActS_AngleToPl		; Take snapshot of player position
+	call ActS_HalfSpdSub	; Move there at 1/4th of the speed
+	call ActS_HalfSpdSub	;
+	
+	ld   a, $10				; Take next snapshot after 16 frames
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02602A:;I
+	
+; =============== Act_Telly_Move ===============
+Act_Telly_Move:
+	; Play telly rotation animation (sprites $00-$06, at 1/8 speed)
 	ld   bc, $0601
 	call ActS_AnimCustom
+	
+	; Move towards the player('s snapshot)
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
+	
+	; After 16 frames pass, take a new snapshot
 	ldh  a, [hActCur+iActTimer0C]
-	sub  $01
+	sub  $01						; Timer--
 	ldh  [hActCur+iActTimer0C], a
-	ret  nz
-	call ActS_AngleToPl
-	call ActS_HalfSpdSub
-	call ActS_HalfSpdSub
-	ld   a, $10
+	ret  nz							; Timer != 0? If so, return
+	call ActS_AngleToPl				; Take snapshot of player position
+	call ActS_HalfSpdSub			; Move there at 1/4th of the speed
+	call ActS_HalfSpdSub			;
+	
+	ld   a, $10						; Take next snapshot after 16 frames
 	ldh  [hActCur+iActTimer0C], a
 	ret
-L02604B:;I
+	
+; =============== Act_PipiSpawner ===============
+; ID: ACT_PIPISPAWN
+; Spawns Act_Pipi every ~1 second to the side of the screen.
+Act_PipiSpawner:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02604E: db $52
-L02604F: db $60
-L026050: db $59
-L026051: db $60
-L026052:;I
+	dw Act_PipiSpawner_SetWait
+	dw Act_PipiSpawner_Main
+	DEF ACT_PIPISPAWN_SETWAIT = $00
+	
+; =============== Act_PipiSpawner_SetWait ===============
+Act_PipiSpawner_SetWait:
+	; Wait ~1 second before trying to spawn a Pipi.
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026059:;I
+	
+; =============== Act_PipiSpawner_Main ===============
+Act_PipiSpawner_Main:
+	; Wait that ~1 second
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $00
+	; Regardless of the checks passing or failing, wait another second before trying to spawn another
+	ld   a, ACT_PIPISPAWN_SETWAIT
 	ldh  [hActCur+iActRtnId], a
-	ld   a, $32
-	call L001E63
+	
+	; If there's already a Pipi on-screen, don't spawn another one.
+	ld   a, ACT_PIPI
+	call ActS_CountById
 	ld   a, b
 	and  a
 	ret  nz
-	ld   a, $32
+	
+	; Spawn the Pipi directly on top of the spawner...
+	ld   a, ACT_PIPI
 	ld   bc, $0000
 	call ActS_SpawnRel
-	ld   a, l
-	add  $05
+	; ...and immediately reposition it to the side of the screen the player is looking at.
+	; This is how Pipi's work, except in this game the ladder climb animation makes the player turn, which is not good.
+	ld   a, l			; Seek HL to Pipi's X position
+	add  iActX
 	ld   l, a
-	ld   a, [wPlDirH]
-	rrca 
-	ld   [hl], a
-	rrca 
-	add  [hl]
-	ld   [hl], a
+	; iActX = (wPlDirH << 7) + (wPlDirH << 6)
+	; This results in...
+	; [DIR]         | [X POS]
+	; DIR_L ($00) | $00 (offscreen left)
+	; DIR_R ($01) | $C0 (offscreen right)
+	ld   a, [wPlDirH]	; A = Horizontal direction  | ($00 or $01)
+	rrca 				; R>>1 bit0 to bit7         | ($00 or $80)
+	ld   [hl], a		; Save this initial value
+	rrca 				; R>>1 bit7 to bit6         | ($00 or $40)
+	add  [hl]			; Merge with previous value | ($00 or $C0)
+	ld   [hl], a		; Save back
 	ret
-L026081:;I
+	
+; =============== Act_Wily1 ===============
+; ID: ACT_WILY1
+; 1st phase of the Wily Machine.
+Act_Wily1:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026084: db $96
-L026085: db $7D
-L026086: db $9A
-L026087: db $60
-L026088: db $BA
-L026089: db $60
-L02608A: db $CC
-L02608B: db $60
-L02608C: db $E6
-L02608D: db $60
-L02608E: db $FF
-L02608F: db $60
-L026090: db $12
-L026091: db $61
-L026092: db $28
-L026093: db $61
-L026094: db $3E
-L026095: db $61
-L026096: db $57
-L026097: db $61
-L026098: db $6D
-L026099: db $61
-L02609A:;I
-	call L0261A3
-	call L026181
+	dw Act_WilyIntro
+	dw Act_Wily1_InitJump
+	dw Act_Wily1_JumpU
+	dw Act_Wily1_JumpD
+	dw Act_Wily1_WaitBomb
+	dw Act_Wily1_WaitNail
+	dw Act_Wily1_Turn0
+	dw Act_Wily1_Turn1
+	dw Act_Wily1_Turn2
+	dw Act_Wily1_Turn3
+	dw Act_Wily1_Turn4
+	DEF ACTRTN_WILY1_INITJUMP = $01
+	DEF ACTRTN_WILY1_TURN0 = $06
+
+; =============== Act_Wily1_InitJump ===============
+; Sets up the jump towards the player
+Act_Wily1_InitJump:
+	call Act_Wily1_ChkDeath
+	call Act_Wily1_ChkPlBehind
+	
+	; X Speed = (DiffX * 4 / $10) px/frame
 	call ActS_GetPlDistanceX
 	ld   l, a
 	ld   h, $00
@@ -4961,699 +7667,1220 @@ L02609A:;I
 	ldh  [hActCur+iActSpdXSub], a
 	ld   a, h
 	ldh  [hActCur+iActSpdX], a
+	
+	; Y Speed = 3.5px/frame
 	ld   bc, $0380
 	call ActS_SetSpeedY
+	
 	call ActS_FacePl
+	
 	jp   ActS_IncRtnId
-L0260BA:;I
-	call L0261A3
+
+; =============== Act_Wily1_JumpU ===============
+; Jump, pre-peak.
+Act_Wily1_JumpU:
+	call Act_Wily1_ChkDeath
+	
+	; Use jumping sprite $01
 	ld   a, $01
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Move forward, stopping on solid walls
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving up until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L0260CC:;I
-	call L0261A3
+	
+; =============== Act_Wily1_JumpD ===============
+; Jump, post-peak.
+Act_Wily1_JumpD:
+	call Act_Wily1_ChkDeath
+	
+	; Use landing sprite $00 (no separate one post-peak)
 	ld   a, $00
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Move forward, stopping on solid walls
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving down until we hit the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $58
+	
+	; When we do, immediately spawn a bouncing bomb
+	ld   a, ACT_WILY1BOMB
 	ld   bc, $0000
 	call ActS_SpawnRel
+	
 	jp   ActS_IncRtnId
-L0260E6:;I
-	call L0261A3
-	call L026181
-	ld   a, $58
-	call L001E63
+	
+; =============== Act_Wily1_WaitBomb ===============
+Act_Wily1_WaitBomb:
+	call Act_Wily1_ChkDeath
+	
+	; If the player is behind at any point, start turning around
+	call Act_Wily1_ChkPlBehind
+	
+	; Wait for the bomb to despawn before...
+	ld   a, ACT_WILY1BOMB
+	call ActS_CountById
 	ld   a, b
 	and  a
 	ret  nz
-	ld   a, $59
+	
+	; ...firing the nail immediately
+	ld   a, ACT_WILY1NAIL
 	ld   bc, $0000
 	call ActS_SpawnRel
 	jp   ActS_IncRtnId
-L0260FF:;I
-	call L0261A3
-	call L026181
-	ld   a, $59
-	call L001E63
+	
+; =============== Act_Wily1_WaitNail ===============
+Act_Wily1_WaitNail:
+	call Act_Wily1_ChkDeath
+	
+	; If the player is behind at any point, start turning around
+	call Act_Wily1_ChkPlBehind
+	
+	; Wait for the nail to despawn before...
+	ld   a, ACT_WILY1NAIL
+	call ActS_CountById
 	ld   a, b
 	and  a
 	ret  nz
-	ld   a, $01
+	
+	; ...starting another jump towards the player, looping the pattern
+	ld   a, ACTRTN_WILY1_INITJUMP
 	ldh  [hActCur+iActRtnId], a
 	ret
-L026112:;I
-	call L0261A3
+	
+; =============== Act_Wily1_Turn0 ===============
+; The remainder of routines handle the turning animation.
+; Mainly due to limitations with the default animation routines, this is handled manually.
+;
+; The animation uses frames $00,$02,$03 each displayed for 16 frames,
+; then the actor turns and does it in reverse.
+Act_Wily1_Turn0:
+	call Act_Wily1_ChkDeath
+	
+	; Use sprite $00 for 16 frames
 	ld   a, $00
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026128:;I
-	call L0261A3
+	
+; =============== Act_Wily1_Turn1 ===============
+Act_Wily1_Turn1:
+	call Act_Wily1_ChkDeath
+	
+	; Use sprite $02 for 16 frames
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02613E:;I
-	call L0261A3
+	
+; =============== Act_Wily1_Turn2 ===============
+Act_Wily1_Turn2:
+	call Act_Wily1_ChkDeath
+	
+	; Use sprite $03 for 16 frames
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; The Wily Machine is now facing the camera, and it needs to continue turning.
+	; Finally turn the actor at this point, then play back the animation in reverse.
 	call ActS_FacePl
+	
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026157:;I
-	call L0261A3
+	
+; =============== Act_Wily1_Turn3 ===============
+Act_Wily1_Turn3:
+	call Act_Wily1_ChkDeath
+	
+	; Use sprite $02 for 16 frames
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02616D:;I
-	call L0261A3
+	
+; =============== Act_Wily1_Turn4 ===============
+Act_Wily1_Turn4:
+	call Act_Wily1_ChkDeath
+	
+	; Use sprite $00 for 16 frames
 	ld   a, $00
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ldh  a, [hActCur+iAct0D]
+	
+	; Go back to whatever we were doing before
+	ldh  a, [hActCur+iWily1RtnBak]
 	ldh  [hActCur+iActRtnId], a
 	ret
-L026181:;C
-	ldh  a, [hActCur+iActSprMap]
+	
+; =============== Act_Wily1_ChkPlBehind ===============
+; Checks if the player is behind the player and if so, it makes it turn to the other side.
+; The actor return to whatever it was doing after it finishes turning.
+Act_Wily1_ChkPlBehind:
+
+	;##
+	;
+	; Overly complicated code to check if the player is behind us.
+	;
+	; This could have been done the sane way by comparing the player and actor's position,
+	; then checking for the appropriate directional flag.
+	;
+	; Instead, it saves the directions, makes the actor face the player (which may update them)
+	; and then checks if the directions are different compared to before.
+	;
+	
+	ldh  a, [hActCur+iActSprMap]	; Save unmodified iActSprMap for later
 	ld   b, a
-	and  $C0
+	and  ACTDIR_R|ACTDIR_D			; Filter old directions
 	ld   c, a
+	
 	push bc
-	call ActS_FacePl
+		call ActS_FacePl			; Face the player. This may or may not modify the directions.
 	pop  bc
-	ld   hl, hActCur+iActSprMap
+	
+	ld   hl, hActCur+iActSprMap		; Get new iActSprMap
 	ld   a, [hl]
-	and  $C0
-	cp   c
-	ld   [hl], b
-	ret  z
-	ld   a, $10
+	and  ACTDIR_R|ACTDIR_D			; Filter new directions
+	cp   c							; Are the new directions unchanged from the old ones?
+	ld   [hl], b					; (restore original iActSprMap, as if ActS_FacePl was never called)
+	ret  z							; If so, return
+	;##
+	
+	;
+	; Otherwise, it means the player is behind the Wily Machine, make it slowly turn to the other side.
+	; The actor will properly turn to the player in the middle of that sequence.
+	;
+	
+	ld   a, $10						; Show for 16 frames
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, hActCur+iActRtnId
-	ld   a, [hl]
-	ldh  [hActCur+iAct0D], a
-	ld   [hl], $06
+	
+	ld   hl, hActCur+iActRtnId		; Seek HL to iActRtnId
+	ld   a, [hl]					; A = iActRtnId
+	ldh  [hActCur+iWily1RtnBak], a	; Save a backup to restore once done
+	ld   [hl], ACTRTN_WILY1_TURN0
+	
+	; Prevent the rest of the routine from being executed.
 	pop  hl
 	ret
-L0261A3:;C
+	
+; =============== Act_Wily1_ChkDeath ===============
+; Handles the death sequence for Wily Machine.
+Act_Wily1_ChkDeath:
+
+	;
+	; The 1st and 2nd phases are specifically set to die at 7 health or less,
+	; to prevent the generic death code from running.
+	; Normally the threshold is set at 16, but that is way too high for boss actors,
+	; which have 19 health.
+	; When that happens:
+	; - Spawn a large explosion
+	; - Reposition the Wily Ship actor and enable it
+	;
+	; The explosion and Wily Ship are set to use the same position, which is specifically
+	; picked to make the effect of attaching and detaching the ship look seamless.
+	;
+	; See also: Act_WilyCtrl
+	;
 	call ActS_GetHealth
-	cp   $08
-	ret  nc
-	ld   a, $FF
-	ld   [$CCFD], a
-	ldh  a, [hActCur+iActY]
+	cp   $08					; Health >= $08?
+	ret  nc						; If so, return
+	
+	ld   a, $FF					; Enable the Wily Ship
+	ld   [wWilyPhaseDone], a
+	
+	ldh  a, [hActCur+iActY]		; Y Position: iActY - $18
 	sub  $18
-	ld   [$CCEE], a
-	ld   [wActSpawnY], a
+	ld   [wWilyShipY], a		; For Wily's ship
+	ld   [wActSpawnY], a		; and the explosion
 	ldh  a, [hActCur+iActX]
-	ld   [wActSpawnX], a
-	ld   [$CCEF], a
+	
+	ld   [wActSpawnX], a		; X Position: iActX
+	ld   [wWilyShipX], a
 	call ActS_SpawnLargeExpl
-	ld   a, $06
+	
+	ld   a, SFX_EXPLODE			; Play explosion sound
 	ldh  [hSFXSet], a
+	
+	; Return to the actor loop
 	pop  hl
-	jp   L001E11
-L0261CB:;I
+	jp   ActS_Explode
+	
+; =============== Act_Wily2 ===============
+; ID: ACT_WILY2
+; 2nd phase of the Wily Machine.
+Act_Wily2:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0261CE: db $96
-L0261CF: db $7D
-L0261D0: db $DE
-L0261D1: db $61
-L0261D2: db $F1
-L0261D3: db $61
-L0261D4: db $14
-L0261D5: db $62
-L0261D6: db $30
-L0261D7: db $62
-L0261D8: db $57
-L0261D9: db $62
-L0261DA: db $70
-L0261DB: db $62
-L0261DC: db $91;X
-L0261DD: db $62;X
-L0261DE:;I
-	ld   b, $F4
+	dw Act_WilyIntro
+	dw Act_Wily2_InitFire
+	dw Act_Wily2_Fire
+	dw Act_Wily2_InitMoveFwd
+	dw Act_Wily2_MoveFwd
+	dw Act_Wily2_Wait
+	dw Act_Wily2_MoveBak
+	dw Act_Wily2_Turn
+	DEF ACTRTN_WILY2_INITFIRE = $01
+	DEF ACTRTN_WILY2_MOVEBAK = $06
+	DEF ACTRTN_WILY2_TURN = $07
+
+; =============== Act_Wily2_InitFire ===============
+; Sets up the shooting mode.
+Act_Wily2_InitFire:
+
+	; Allow damaging the Wily Machine from the top until 12px above its center point.
+	; Make everything below reflect shots.
+	ld   b, -$0C
 	call ActS_SetColiType
-	call L0262D3
+	
+	call Act_Wily2_ChkDeath
+	
+	; Fire two shots, with a cooldown of ~half a second
 	ld   a, $02
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iWily2ShotsLeft], a
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
+	
 	jp   ActS_IncRtnId
-L0261F1:;I
+	
+; =============== Act_Wily2_Fire ===============
+; Shooting mode.
+Act_Wily2_Fire:
+	; Use firing sprite $02
 	ld   a, $02
-	ld   [wActCurSprMapRelId], a
-	call L0262D3
+	ld   [wActCurSprMapBaseId], a
+	
+	call Act_Wily2_ChkDeath
+	
+	; Wait for the cooldown...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $5B
-	ld   bc, $00F8
+	
+	; Fire an energy ball forward.
+	; It's set to fire towards the player, but that's handled by the shot's init code.
+	ld   a, ACT_WILY2SHOT
+	ld   bc, ($00 << 8)|LOW(-$08) ; 8px up
 	call ActS_SpawnRel
+	
+	; Set cooldown for next shot
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, hActCur+iAct0D
+	
+	; If we fired all of them, start moving
+	ld   hl, hActCur+iWily2ShotsLeft
 	dec  [hl]
 	ret  nz
+	
 	jp   ActS_IncRtnId
-L026214:;I
+	
+; =============== Act_Wily2_InitMoveFwd ===============
+; Preparing to move forward.
+Act_Wily2_InitMoveFwd:
+	; Use frames $00-$01 at 1/8 speed to animate the treads.
 	ld   c, $01
 	call ActS_Anim2
-	call L0262D3
+	
+	call Act_Wily2_ChkDeath
+	
+	; Wait for that ~half a sec of cooldown after the last shot...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Move forwards at 0.5px/frame for ~1.5 seconds
 	ld   bc, $0080
 	call ActS_SetSpeedX
 	ld   a, $60
 	ldh  [hActCur+iActTimer0C], a
+	
 	jp   ActS_IncRtnId
-L026230:;I
+	
+; =============== Act_Wily2_MoveFwd ===============
+Act_Wily2_MoveFwd:
+	; Animate the treads
 	ld   c, $01
 	call ActS_Anim2
-	call L0262D3
+	
+	call Act_Wily2_ChkDeath
+
+	; Move forward for the previously set amount
 	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $5A
+	
+	; At this point, we're typically waiting near the center of the screen.
+	
+	
+	; Spawn a boucing bomb
+	ld   a, ACT_WILY2BOMB
 	ld   bc, $0000
 	call ActS_SpawnRel
-	ld   bc, $FF80
+	
+	; For later, set up movement at -0.5px/frame
+	; We won't actually move yet, but setting it here helps out Act_Wily2_ChkPlBehind (see below)
+	ld   bc, -$0080
 	call ActS_SetSpeedX
+	
+	; Wait ~2 seconds, typically near the center of the screen
 	ld   a, $80
 	ldh  [hActCur+iActTimer0C], a
+	
 	jp   ActS_IncRtnId
-L026257:;I
-	call L0262B1
-	call L0262D3
+	
+; =============== Act_Wily2_Wait ===============
+; Waits a bit near the center of the screen, as cooldown after spawning a bomb. 
+Act_Wily2_Wait:
+	; *Only* check if the player has moved behind in the middle of moving backwards.
+	; A consequence of this is that the turning routine doesn't need to either:
+	; - Remember whatever we were doing before, since it will just skip to Act_Wily2_MoveBak
+	; - Explicitly set the backwards speed, as it will always be already set to -0.5px/frame
+	call Act_Wily2_ChkPlBehind
+	
+	call Act_Wily2_ChkDeath
+	
+	; Animate the treads
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Wait for it...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Move back for ~1.5 seconds
 	ld   a, $60
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026270:;I
+	
+; =============== Act_Wily2_MoveBak ===============
+Act_Wily2_MoveBak:
+	; Animate the treads
 	ld   c, $01
 	call ActS_Anim2
-	call L0262D3
+	
+	call Act_Wily2_ChkDeath
+	
+	; Move backwards at 0.5px/frame (for either ~1.5 or ~2 seconds, depending on how we got here)
 	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; For later, set up movement at 0.5px/frame
 	ld   bc, $0080
 	call ActS_SetSpeedX
+	;--
+	; [POI] Ignored, will be overwritten
 	ld   a, $60
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $01
+	;--
+	
+	; Start firing shots again, looping the pattern
+	ld   a, ACTRTN_WILY2_INITFIRE
 	ldh  [hActCur+iActRtnId], a
 	ret
-L026291: db $21;X
-L026292: db $A2;X
-L026293: db $FF;X
-L026294: db $CB;X
-L026295: db $9E;X
-L026296: db $3E;X
-L026297: db $03;X
-L026298: db $EA;X
-L026299: db $38;X
-L02629A: db $CF;X
-L02629B: db $CD;X
-L02629C: db $D3;X
-L02629D: db $62;X
-L02629E: db $F0;X
-L02629F: db $AC;X
-L0262A0: db $D6;X
-L0262A1: db $01;X
-L0262A2: db $E0;X
-L0262A3: db $AC;X
-L0262A4: db $C0;X
-L0262A5: db $CD;X
-L0262A6: db $D7;X
-L0262A7: db $1E;X
-L0262A8: db $3E;X
-L0262A9: db $80;X
-L0262AA: db $E0;X
-L0262AB: db $AC;X
-L0262AC: db $3E;X
-L0262AD: db $06;X
-L0262AE: db $E0;X
-L0262AF: db $A1;X
-L0262B0: db $C9;X
-L0262B1:;C
-	ldh  a, [hActCur+iActSprMap]
-	ld   c, a
-	and  $80
-	ld   b, a
-	push bc
-	call ActS_FacePl
-	pop  bc
+	
+; =============== Act_Wily2_Turn ===============
+; Makes the Wily Machine turn around.
+; After this is done, it will immediately move backwards, to the other side.
+Act_Wily2_Turn:
+
+	; Use turning sprite $03
+	; This one actually remembers to clean up the relative sprite ID in iActSprMap.
 	ld   hl, hActCur+iActSprMap
+	res  3, [hl]	; with ActS_Anim2 used elsewhere, only bit3 is affected
+	ld   a, $03
+	ld   [wActCurSprMapBaseId], a
+	
+	call Act_Wily2_ChkDeath
+	
+	; Show the sprite for 16 frames...
+	ldh  a, [hActCur+iActTimer0C]
+	sub  a, $01
+	ldh  [hActCur+iActTimer0C], a
+	ret  nz
+	
+	; Then turn around
+	call ActS_FacePl
+	
+	; Move away from the player for ~2 seconds.
+	; As the player might be very nearby, this is half a second longer than normal.
+	ld   a, $80
+	ldh  [hActCur+iActTimer0C], a
+	ld   a, ACTRTN_WILY2_MOVEBAK
+	ldh  [hActCur+iActRtnId], a
+	ret 
+
+; =============== Act_Wily2_ChkPlBehind ===============
+; Checks if the player is behind the player and if so, it makes it turn around.
+; Nearly identical to Act_Wily1_ChkPlBehind except for:
+; - Swapped b/c registers
+; - Only the horizontal direction is filtered
+;   (as this phase only moves horizontally, but it could have been like this in the 1st phase too)
+Act_Wily2_ChkPlBehind:
+
+	;##
+	;
+	; Check if the player is behind us.
+	;
+	
+	ldh  a, [hActCur+iActSprMap]	; Save unmodified iActSprMap for later
+	ld   c, a
+	and  ACTDIR_R					; Filter old directions
+	ld   b, a
+	
+	push bc
+		call ActS_FacePl			; Face the player. This may or may not modify the directions.
+	pop  bc
+	
+	ld   hl, hActCur+iActSprMap		; Get new iActSprMap
 	ld   a, [hl]
-	and  $80
-	cp   b
-	ld   [hl], c
-	ret  z
-L0262C5: db $3E;X
-L0262C6: db $10;X
-L0262C7: db $E0;X
-L0262C8: db $AC;X
-L0262C9: db $21;X
-L0262CA: db $A1;X
-L0262CB: db $FF;X
-L0262CC: db $7E;X
-L0262CD: db $E0;X
-L0262CE: db $AD;X
-L0262CF: db $36;X
-L0262D0: db $07;X
-L0262D1: db $E1;X
-L0262D2: db $C9;X
-L0262D3:;C
-	call ActS_GetHealth
-	cp   $08
-	ret  nc
-	ld   a, $FF
-	ld   [$CCFD], a
-	ldh  a, [hActCur+iActY]
-	sub  $10
-	ld   [$CCEE], a
-	ld   [wActSpawnY], a
-	ldh  a, [hActCur+iActX]
-	ld   [wActSpawnX], a
-	ld   [$CCEF], a
-	call ActS_SpawnLargeExpl
-	ld   a, $06
-	ldh  [hSFXSet], a
+	and  ACTDIR_R					; Filter new directions
+	cp   b							; Are the new directions unchanged from the old ones?
+	ld   [hl], c					; (restore original iActSprMap, as if ActS_FacePl was never called)
+	ret  z							; If so, return
+	;##
+	
+	;
+	; Otherwise, it means the player is behind the Wily Machine, make it turn around.
+	;
+	
+	ld   a, $10						; Stay in that mode for 16 frames
+	ldh  [hActCur+iActTimer0C], a
+	
+	ld   hl, hActCur+iActRtnId		; Seek HL to iActRtnId
+	;--
+	; [POI] Copypaste from Act_Wily1_ChkPlBehind that's not applicable here,
+	;       as after turning we switch to an hardcoded routine.
+	;       iWily1RtnBak also points to iWily2ShotsLeft here.  
+	ld   a, [hl]					; A = iActRtnId
+	ldh  [hActCur+iWily1RtnBak], a	; Save a backup to restore once done
+	;--
+	ld   [hl], ACTRTN_WILY2_TURN
+	
+	; Prevent the rest of the routine from being executed.
 	pop  hl
-	jp   L001E11
-L0262FB:;I
+	ret
+
+; =============== Act_Wily2_ChkDeath ===============
+; Handles the death sequence for Wily Machine.
+; This is identical to Act_Wily1_ChkDeath, except for the Y position for the ship,
+; since the 2nd phase machine is shorter than the 1st.
+Act_Wily2_ChkDeath:
+	call ActS_GetHealth
+	cp   $08					; Health >= $08?
+	ret  nc						; If so, return
+	
+	ld   a, $FF					; Enable the Wily Ship
+	ld   [wWilyPhaseDone], a
+	
+	ldh  a, [hActCur+iActY]		; Y Position: iActY - $10
+	sub  $10
+	ld   [wWilyShipY], a		; For Wily's ship
+	ld   [wActSpawnY], a		; and the explosion
+	ldh  a, [hActCur+iActX]
+	
+	ld   [wActSpawnX], a		; X Position: iActX
+	ld   [wWilyShipX], a
+	call ActS_SpawnLargeExpl
+	
+	ld   a, SFX_EXPLODE			; Play explosion sound
+	ldh  [hSFXSet], a
+	
+	; Return to the actor loop
+	pop  hl
+	jp   ActS_Explode
+	
+	
+; =============== Act_Wily3 ===============
+; ID: ACT_WILY3
+; 3rd phase of the Wily Machine, visually distinct from the others.
+;
+; Unlike the others, it is partially drawn with BG tiles, but as they are already part 
+; of the level layout, we don't need to draw those ourselves.
+;
+; This sprite associated to this actor is the skull that extends after attacks,
+; hence why it's the only part that flashes when hit; other parts are indepentently
+; animated and use their own helper actor.
+Act_Wily3:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0262FE: db $0C
-L0262FF: db $63
-L026300: db $96
-L026301: db $7D
-L026302: db $0D
-L026303: db $63
-L026304: db $27
-L026305: db $63
-L026306: db $41
-L026307: db $63
-L026308: db $97
-L026309: db $63
-L02630A: db $A5
-L02630B: db $63
-L02630C:;I
+	dw Act_Wily3_Nop
+	dw Act_WilyIntro
+	dw Act_Wily3_Init
+	dw Act_Wily3_FireMissile
+	dw Act_Wily3_FireMet
+	dw Act_Wily3_WaitSkUp
+	dw Act_Wily3_WaitSkDown
+	DEF ACTRTN_WILY3_FIREMISSILE = $03
+
+; =============== Act_Wily3_Nop ===============
+; The Wily Machine doesn't do anything until Act_WilyCtrl_P3ScrollR sets our routine to Act_Wily3_Init.
+; This is to make sure it only gets processed once it fully scrolls in.
+Act_Wily3_Nop:
 	ret
-L02630D:;I
-	ld   b, $F0
+	
+; =============== Act_Wily3_Init ===============
+; Performs initialization, and sets up the delay for firing the missile.
+Act_Wily3_Init:
+	; Allow damaging the Wily Machine from the top until 16px above its center point.
+	; Make everything below reflect shots.
+	ld   b, -$10
 	call ActS_SetColiType
+	
+	; Always face left, as that's the direction the BG tiles show
 	ld   hl, hActCur+iActSprMap
-	res  7, [hl]
+	res  ACTDIRB_R, [hl]
+	
+	; Do not animate parts yet
 	xor  a
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iWily3AnimPart], a
+	
+	; [POI] Pointless, this actor can't move as it uses BG tiles
 	ld   bc, $0080
 	call ActS_SetSpeedX
+	
+	; Wait 16 frames before firing the missile 
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
+	
 	jp   ActS_IncRtnId
-L026327:;I
+	
+; =============== Act_Wily3_FireMissile ===============
+; Fires an homing missile.
+Act_Wily3_FireMissile:
+	; Wait for it...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $5C
-	ld   bc, $00F0
+	
+	; Spawn the homing missile
+	ld   a, ACT_WILY3MISSILE
+	ld   bc, ($00 << 8)|LOW(-$10) ; 16px up
 	call ActS_SpawnRel
-	ld   a, $04
-	ldh  [hActCur+iAct0D], a
+	
+	; Raise the arm cannon forward
+	ld   a, WILY3PART_SPR_ARM
+	ldh  [hActCur+iWily3AnimPart], a
+	
+	; Cooldown of ~2 seconds before firing the Goombas
 	ld   a, $80
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026341:;I
+	
+; =============== Act_Wily3_FireMet ===============
+; Fires multiple Mets.
+Act_Wily3_FireMet:
+	; Wait those ~2 seconds
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $5D
-	ld   bc, $10E0
+	
+	;
+	; Spawn four Mets at different jump arcs, which are spaced far enough that by the time
+	; they reach the ground, they will have spread out across the room.
+	;
+	; The player will have to dodge them similarly to the falling leaves from Wood Man's fight,
+	; however, unlike those these Mets continue moving horizontally, making dodging them a bit iffy.
+	;
+	
+	ld   a, ACT_WILY3MET
+	; Each one spawns at the same coordinates: 1 block right, 2 blocks up
+	ld   bc, (LOW($10) << 8)|LOW(-$20)
 	call ActS_SpawnRel
-	ld   de, $0008
+	; Their horizontal speed is what differs, which stays the same over time.
+	; Meanwhile, their vertical speed is the same between all of them, making 
+	; sure the Mets stay vertically aligned, and is also affected by gravity.
+	ld   de, iActSpdXSub
 	add  hl, de
-	ld   [hl], $20
+	ld   [hl], LOW($0020)		; 0.125px/frame forward
 	inc  hl
-	ld   [hl], $00
-	ld   a, $5D
-	ld   bc, $10E0
+	ld   [hl], HIGH($0020)
+	
+	ld   a, ACT_WILY3MET
+	ld   bc, (LOW($10) << 8)|LOW(-$20)
 	call ActS_SpawnRel
-	ld   de, $0008
+	ld   de, iActSpdXSub
 	add  hl, de
-	ld   [hl], $E0
+	ld   [hl], LOW($00E0)		; 0.875px/frame forward
 	inc  hl
-	ld   [hl], $00
-	ld   a, $5D
-	ld   bc, $10E0
+	ld   [hl], HIGH($00E0)
+	
+	ld   a, ACT_WILY3MET
+	ld   bc, (LOW($10) << 8)|LOW(-$20)
 	call ActS_SpawnRel
-	ld   de, $0008
+	ld   de, iActSpdXSub
 	add  hl, de
-	ld   [hl], $80
+	ld   [hl], LOW($0180)		; 1.5px/frame forward
 	inc  hl
-	ld   [hl], $01
-	ld   a, $5D
-	ld   bc, $10E0
+	ld   [hl], HIGH($0180)
+	
+	ld   a, ACT_WILY3MET
+	ld   bc, (LOW($10) << 8)|LOW(-$20)
 	call ActS_SpawnRel
-	ld   de, $0008
+	ld   de, iActSpdXSub
 	add  hl, de
-	ld   [hl], $20
+	ld   [hl], LOW($0220)		; 2.125px/frame forward
 	inc  hl
-	ld   [hl], $02
-	ld   a, $06
-	ldh  [hActCur+iAct0D], a
+	ld   [hl], HIGH($0220)
+	
+	; Raise the tail up
+	ld   a, WILY3PART_SPR_TAIL
+	ldh  [hActCur+iWily3AnimPart], a
+	
+	; Delay ~2 seconds after shooting, to wait for the Mets to have fallen offscreen
 	ld   a, $80
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026397:;I
+	
+; =============== Act_Wily3_WaitSkUp ===============
+; Waits - skull retracted.
+Act_Wily3_WaitSkUp:
+	; Wait those ~2 seconds...
+	; During this time, sprite
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Stay in the next routine for ~half a second
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0263A5:;I
+	
+; =============== Act_Wily3_WaitSkDown ===============
+; Waits - skull extended.
+Act_Wily3_WaitSkDown:
+	; Extend the skull down by using sprite $01.
+	; This is only a visual effect, it does nothing at all otherwise.
 	ld   a, $01
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Show that for ~half a second
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $80
+	
+	; Then fire the homing missile, looping the pattern.
+	ld   a, $80						; Delay that by ~2 secs
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $03
-	ldh  [hActCur+iActRtnId], a
+	
+	ld   a, ACTRTN_WILY3_FIREMISSILE
+	ldh  [hActCur+iActRtnId], a		; Loop back. Exiting this routine retracts the skull.
 	ret
-L0263BA:;C
-	ldh  a, [hActCur+iAct0D]
+	
+; =============== Act_WilyShip ===============
+; ID: N/A (run inside ACT_WILYCTRL)
+;
+; Wily's Spaceship, visible between the Wily Machine phases.
+;
+; This actor is used to animate the top half of the Wily Machine after its body explodes,
+; and is then shown flying away and seamlessly attaching itself to the top of the next one.
+; 
+; To make the illusion work, the spaceship visually matches with the top half of the first
+; two phases of the Wily Machine, and is positioned to precisely overlap with that part
+; when it attaches or detaches itself -- most noticeable with Wily's sprite, which visually
+; doesn't appear to change position, even though actors teleport around.
+;
+; The exception to this is the 3rd phase, which is why the spaceship doesn't visually attach
+; itself there.
+;
+; This is not used as its own actor, instead it's run under Act_WilyCtrl, which is associated
+; to the Wily Spaceship sprites. The main consequence is that it shouldn't interfere with that
+; actor's routine, hence why a separate iWilyShipRtnId is being used.
+;
+; Used at the end of both the 1st and 2nd phases, however the calling code aborts them
+; at different points.
+Act_WilyShip:
+	ldh  a, [hActCur+iWilyShipRtnId]
 	rst  $00 ; DynJump
-L0263BD: db $CB
-L0263BE: db $63
-L0263BF: db $E1
-L0263C0: db $63
-L0263C1: db $03
-L0263C2: db $64
-L0263C3: db $1A
-L0263C4: db $64
-L0263C5: db $34
-L0263C6: db $64
-L0263C7: db $56
-L0263C8: db $64
-L0263C9: db $68;X
-L0263CA: db $64;X
-L0263CB:;I
-	ld   a, $00
+	dw Act_WilyShip_Init
+	dw Act_WilyShip_Wait
+	dw Act_WilyShip_MoveU
+	dw Act_WilyShip_MoveR
+	dw Act_WilyShip_MoveScrollR
+	dw Act_WilyShip_MoveD
+	dw Act_WilyShip_Nop
+
+; =============== Act_WilyShip_Init ===============
+; Sets up the various properties.
+Act_WilyShip_Init:
+	; Set up propeller animation (frames $00-$01 at 1/8 speed)
+	ld   a, $00				; Start from $00, regardless of wherever we are
 	call ActS_SetSprMapId
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Face towards the player
 	call ActS_FacePl
+	
+	; Stand still for ~2 seconds
 	ld   a, $80
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, hActCur+iAct0D
+	
+	; Next mode
+	ld   hl, hActCur+iWilyShipRtnId
 	inc  [hl]
 	ret
-L0263E1:;I
+	
+; =============== Act_WilyShip_Wait ===============
+; Ship stays still.
+Act_WilyShip_Wait:
+	; Animate propeller
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Wait for those ~2 seconds...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   bc, $0080
+	
+	; Set up movement speed for later routines
+	ld   bc, $0080			; 0.5px/frame horizontally
 	call ActS_SetSpeedX
-	ld   bc, $0080
+	ld   bc, $0080			; 0.5px/frame vertically
 	call ActS_SetSpeedY
+	
+	; Move up
 	ld   hl, hActCur+iActSprMap
-	res  6, [hl]
-	ld   hl, hActCur+iAct0D
+	res  ACTDIRB_D, [hl]
+	ld   hl, hActCur+iWilyShipRtnId
 	inc  [hl]
 	ret
-L026403:;I
+	
+; =============== Act_WilyShip_MoveU ===============
+; Move up until reaching the top of the screen.
+Act_WilyShip_MoveU:
+	; Animate propeller
 	ld   c, $01
 	call ActS_Anim2
-	call ActS_ApplySpeedFwdY
+	
+	; Move up at 0.5px/frame, until we're near the ceiling
+	call ActS_ApplySpeedFwdY		; Move up
 	ldh  a, [hActCur+iActY]
-	cp   $38
-	ret  nz
-	ld   hl, hActCur+iActSprMap
-	set  7, [hl]
-	ld   hl, hActCur+iAct0D
+	cp   OBJ_OFFSET_Y+$28			; ActY != $38?
+	ret  nz							; If not, return
+	; Otherwise, start moving right
+	ld   hl, hActCur+iActSprMap		
+	set  ACTDIRB_R, [hl]
+	ld   hl, hActCur+iWilyShipRtnId
 	inc  [hl]
 	ret
-L02641A:;I
+	
+; =============== Act_WilyShip_MoveR ===============
+; Move right, without scrolling the screen.
+Act_WilyShip_MoveR:
+	; Animate propeller
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Move the spaceship right at 0.5px/frame until it reaches X position $90,
+	; which is barely enough before it starts going offscreen, which we want to avoid.
 	ldh  a, [hActCur+iActX]
-	cp   $90
-	jp   c, ActS_ApplySpeedFwdX
+	cp   SCREEN_GAME_H+OBJ_OFFSET_X-$18		; ActX < $90?
+	jp   c, ActS_ApplySpeedFwdX				; If so, just move
+	
+	; Prepare downwards movement for later
 	ld   hl, hActCur+iActSprMap
-	set  6, [hl]
+	set  ACTDIRB_D, [hl]
+	
+	; But continue moving while scrolling the screen for ~2 seconds more
 	ld   a, $80
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, hActCur+iAct0D
+	
+	; Switch to the next routine.
+	; If we're in the transition between the 2nd and 3rd phases, at this point
+	; the caller takes over and makes the ship actually move off-screen,
+	; since it's not possible to attach it to the 3rd phase machine without looking wrong.
+	ld   hl, hActCur+iWilyShipRtnId
 	inc  [hl]
 	ret
-L026434:;I
+	
+; =============== Act_WilyShip_MoveScrollR ===============
+; Move right, while scrolling the screen.
+; First transition only.
+Act_WilyShip_MoveScrollR:
+	; Animate propeller
 	ld   c, $01
 	call ActS_Anim2
-	ld   hl, hActCur+iActXSub
-	ldh  a, [hActCur+iActSpdXSub]
-	add  [hl]
-	ld   [hl], a
-	call c, L026469
+	
+	;
+	; Move the screen (and the actor) right 0.5px/frame.
+	;
+	
+	; First, apply the subpixel speed as normal
+	ld   hl, hActCur+iActXSub		; HL = Ptr to subpixel X
+	ldh  a, [hActCur+iActSpdXSub]	; A = Subpixel speed
+	add  [hl]						; Move right by that
+	ld   [hl], a					; Save back
+	
+	; If that overflowed, instead of incrementing iActX directly, scroll the screen 1px to the right.
+	; The way this works assumes movement < 1px/frame, since it should not alter iActX.
+	call c, Act_WilyShip_ScrollR
+	
+	; Do the above for ~2 seconds
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; After that, start moving down
 	ld   hl, hActCur+iActSprMap
-	res  7, [hl]
-	set  6, [hl]
-	ld   hl, hActCur+iAct0D
+	res  ACTDIRB_R, [hl]			; Face left
+	set  ACTDIRB_D, [hl]			; Move down
+	
+	ld   hl, hActCur+iWilyShipRtnId
 	inc  [hl]
 	ret
-L026456:;I
+	
+; =============== Act_WilyShip_MoveD ===============
+; Move down.
+; First transition only.
+Act_WilyShip_MoveD:
+	; Animate propeller
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Move down 0.5px/frame
 	call ActS_ApplySpeedFwdY
+	
+	; Continue that until we reach the point where the body of the 2nd phase should be.
 	ldh  a, [hActCur+iActY]
-	cp   $70
-	ret  nz
-	ld   hl, hActCur+iAct0D
+	cp   OBJ_OFFSET_Y+$60			; AcyY != $70?
+	ret  nz							; If so, return
+	
+	; Switch to the next routine.
+	; If we're in the transition between the 1st and 2nd phases, at this point the caller takes over.
+	ld   hl, hActCur+iWilyShipRtnId
 	inc  [hl]
 	ret
-L026468: db $C9;X
-L026469:;C
+	
+; =============== Act_WilyShip_Nop ===============
+; We never get here.
+Act_WilyShip_Nop:
+	ret
+	
+; =============== Act_WilyShip_ScrollR ===============
+; Scrolls the screen to the right.
+; IN
+; - HL: Ptr to iActXSub
+Act_WilyShip_ScrollR:
+	; Scroll the screen to the right by 1 pixel
 	push hl
-	call Game_AutoScrollR_NoAct
+		call Game_AutoScrollR_NoAct
 	pop  hl
-	ldh  a, [hActCur+iActX]
-	cp   $91
-	ret  nc
-	inc  hl
-	inc  [hl]
+	
+	;
+	; If haven't reached the rightmost edge of the screen, also move 1px to the right.
+	; Note that to even get here (through Act_WilyShip_MoveScrollR), iActX needs to be $90,
+	; so we only get to increment it once -- then it becomes $91 and the check below always returns.
+	;
+	; What's the point of this? Was the requirement to get to Act_WilyShip_MoveScrollR lower than $90 at some point? 
+	;
+	ldh  a, [hActCur+iActX]	
+	cp   SCREEN_GAME_H+OBJ_OFFSET_X-$18+1	; iActX >= $91?
+	ret  nc									; If not, return
+	inc  hl 			; iActXSub
+	inc  [hl] 			; iActX++
 	ret
-L026476:;I
+	
+; =============== Act_Quint ===============
+; ID: ACT_QUINT
+;
+; Quint, the poor man's Blues.
+Act_Quint:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026479: db $95
-L02647A: db $64
-L02647B: db $9C
-L02647C: db $64
-L02647D: db $C7
-L02647E: db $64
-L02647F: db $DE
-L026480: db $64
-L026481: db $F0
-L026482: db $64
-L026483: db $07
-L026484: db $65
-L026485: db $22
-L026486: db $65
-L026487: db $6D
-L026488: db $65
-L026489: db $A2
-L02648A: db $65
-L02648B: db $B7
-L02648C: db $65
-L02648D: db $C6
-L02648E: db $65
-L02648F: db $DC
-L026490: db $65
-L026491: db $EF
-L026492: db $65
-L026493: db $00
-L026494: db $66
-L026495:;I
+	dw Act_Quint_Init
+	dw Act_Quint_IntroStand
+	dw Act_Quint_IntroWaitSg
+	dw Act_Quint_IntroJumpU
+	dw Act_Quint_JumpD
+	dw Act_Quint_InitGround
+	dw Act_Quint_GroundDebris
+	dw Act_Quint_GroundWait
+	dw Act_Quint_JumpU
+	dw Act_Quint_DeadFall
+	dw Act_Quint_WarpLand
+	dw Act_Quint_WarpMove
+	dw Act_Quint_PlWarpOut
+	dw Act_Quint_EndLvl
+	DEF ACTRTN_QUINT_JUMPD = $04
+	DEF ACTRTN_QUINT_DEADFALL = $09
+	
+; =============== Act_Quint_Init ===============
+Act_Quint_Init:
+	; Stand on the ground (show sprite $00) for ~2 seconds
 	ld   a, $80
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02649C:;I
+	
+; =============== Act_Quint_IntroStand ===============
+; Waiting on the ground, standing.
+Act_Quint_IntroStand:
+
+	;
+	; [POI] At no point does the collision box or type for Quint ever change.
+	;       This makes it possible to already damage him before the intro animation even ends.
+	;       It's even possible to defeat him, but he won't teleport out until the intro ends,
+	;       due to Act_Quint_ChkDeath not getting called there.
+	;       Since Quint doesn't ride on the Sakugarne yet, it makes its hitbox very misleading.
+	;
+
+	; Wait for it...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	;
+	; After those ~2 seconds, spawn the Sakugarne, which will drop from the top of the screen.
+	;
+	; Note that this newly spawned actor is *only* used for this intro -- the Sakugarne shown
+	; when the Quint is riding it is fully handled here.
+	;
+	
+	; Raise both hands arms up as it falls down
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
-	ld   a, $56
+	ld   [wActCurSprMapBaseId], a
+	
+	; Spawn the Sakugarne...
+	ld   a, ACT_QUINT_SG
 	ld   bc, $0000
 	call ActS_SpawnRel
-	ld   de, $0005
+	ld   de, iActX ; $05
 	add  hl, de
-	ld   [hl], $60
-	inc  hl
-	inc  hl
-	ld   [hl], $40
-	inc  de
-	add  hl, de
-	ld   [hl], $00
+	ld   [hl], $60		; ...at the center of the screen
+	inc  hl ; iActYSub
+	inc  hl ; iActY
+	ld   [hl], $40		; ...directly materializing around the top of the screen, but still onscreen (why not from $00?)
+	inc  de ; $06
+	add  hl, de			; Seek to iQuintSgJumpOk
+	ld   [hl], $00		; Initialize the signal that tells us when to jump
+	; Keep track of the slot ptr to iQuintSgJumpOk (only the low byte was needed)
 	ld   a, l
-	ldh  [hActCur+iAct0E], a
+	ldh  [hActCur+iQuintSgJumpOkPtrLow], a
 	ld   a, h
-	ldh  [hActCur+iAct0F], a
+	ldh  [hActCur+iQuintSgJumpOkPtrHigh], a
+	
 	jp   ActS_IncRtnId
-L0264C7:;I
+	
+; =============== Act_Quint_IntroWaitSg ===============
+; Waits for the Sakugarne to reach a particular position.
+Act_Quint_IntroWaitSg:
+	; Keep using same sprite as before
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
-	ldh  a, [hActCur+iAct0E]
+	ld   [wActCurSprMapBaseId], a
+	
+	; Wait for the Sakugarne actor to signal us when to jump
+	ldh  a, [hActCur+iQuintSgJumpOkPtrLow]	; HL = Ptr to iQuintSgJumpOk
 	ld   l, a
-	ldh  a, [hActCur+iAct0F]
+	ldh  a, [hActCur+iQuintSgJumpOkPtrHigh]
 	ld   h, a
-	ld   a, [hl]
-	and  a
-	ret  z
-	ld   bc, $0380
-	call ActS_SetSpeedY
+	ld   a, [hl]	; A = iQuintSgJumpOk
+	and  a			; A == 0?
+	ret  z			; If so, return
+	
+	ld   bc, $0380			; Set up high jump at 3.5px/frame
+	call ActS_SetSpeedY		; This is the same vertical speed the Sakugarne jumps at
 	jp   ActS_IncRtnId
-L0264DE:;I
+	
+; =============== Act_Quint_IntroJumpU ===============
+; Jumps towards the Sakugarne.
+Act_Quint_IntroJumpU:
+	; Use normal jumping sprite
 	ld   a, $04
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Move up, until we reach the peak of the jump
 	call ActS_ApplySpeedUpYColi
 	ret  c
+	; Then start falling straight down
 	ld   bc, $0000
 	call ActS_SetSpeedX
+	
+	; From now on, Quint is riding the Sakugarne.
 	jp   ActS_IncRtnId
-L0264F0:;I
-	call L02660D
+	
+; =============== Act_Quint_JumpD ===============
+; Jump, post-peak.
+; This is the start of the boss pattern.
+Act_Quint_JumpD:
+	call Act_Quint_ChkDeath
 	ret  c
+	
+	; Use sakugarne jumping sprite
 	ld   a, $05
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Move forward, stopping on solid walls
 	call ActS_ApplySpeedFwdXColi
+	; Move up, until we touch the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	
+	; Then wait 8 frames idling
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026507:;I
-	call L02660D
+	
+; =============== Act_Quint_InitGround ===============
+; Idle on the ground, while riding the Sakugarne.
+Act_Quint_InitGround:
+	call Act_Quint_ChkDeath
 	ret  c
+	
+	; Show sprite $06 for 8 frames
+	; This already accounts for the 2-frame $05-$06 1/8 animation (see Act_Quint_GroundDebris).
 	ld   a, $06
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $0C
-	ldh  [hActCur+iAct0D], a
-	ld   a, $08
+	
+	; After that, set up the spawned debris
+	ld   a, $0C								; Number of times we loop to Act_Quint_GroundDebris
+	ldh  [hActCur+iQuintDebrisTimer], a
+	ld   a, $08								; Cooldown between spawn attempts
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026522:;I
-	call L02660D
+	
+; =============== Act_Quint_GroundDebris ===============
+; Ground cycle - spawn debris.
+;
+; This and the next routine alternate every 8 frames, to spawn the debris multiple times between jumps.
+; Another effect is in the sprites used, as this one uses $05 and the other one $06, for manually
+; handling the animation of using sprites $05-$06 at 1/8 speed.
+Act_Quint_GroundDebris:
+	call Act_Quint_ChkDeath
 	ret  c
+	
+	; Show sprite $05 for 8 frames.
 	ld   a, $05
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Wait those 8 frames
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Set timer for the 2nd frame of the animation.
+	; Between the two cooldowns, 16 frames will pass before the next spawn check.
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
-	ldh  a, [hActCur+iAct0D]
-	cp   $06
-	jp   c, ActS_IncRtnId
-	rrca 
-	jp   nc, ActS_IncRtnId
-	ld   a, $57
-	ld   bc, $FA00
+	
+	;
+	; Spawn the debris only if its timer is >= 6 and divisible by 2.
+	; In practice, this makes it spawn the debris 4 times (at ticks $0C, $0A, $08, $06),
+	; with a longer cooldown period later.
+	;
+	ldh  a, [hActCur+iQuintDebrisTimer]
+	cp   $06					; iQuintDebrisTimer < 6?
+	jp   c, ActS_IncRtnId		; If so, jump
+	rrca 						; iQuintDebrisTimer % 2 != 0?
+	jp   nc, ActS_IncRtnId		; If so, jump
+
+	;
+	; Passed all the checks, spawn four separate debris actors that hurt the player.
+	; The four debris have all different horizontal position and speed, with
+	; the latter being determined by its unique init routines (see also: Act_QuintDebris)
+	;
+	
+	; $00
+	ld   a, ACT_QUINT_DEBRIS
+	ld   bc, (LOW(-$06) << 8)|$00 ; 6px left
+	call ActS_SpawnRel ; ACTRTN_QUINTDEBRIS_INIT0
+	
+	; $01
+	ld   a, ACT_QUINT_DEBRIS
+	ld   bc, (LOW(-$02) << 8)|$00 ; 2px left
 	call ActS_SpawnRel
-	ld   a, $57
-	ld   bc, $FE00
+	inc  hl ; iActRtnId
+	ld   [hl], ACTRTN_QUINTDEBRIS_INIT1
+	
+	; $02
+	ld   a, ACT_QUINT_DEBRIS
+	ld   bc, (LOW($02) << 8)|$00 ; 2px right
 	call ActS_SpawnRel
-	inc  hl
-	ld   [hl], $01
-	ld   a, $57
-	ld   bc, $0200
+	inc  hl ; iActRtnId
+	ld   [hl], ACTRTN_QUINTDEBRIS_INIT2
+	
+	; $03
+	ld   a, ACT_QUINT_DEBRIS
+	ld   bc, (LOW($06) << 8)|$00 ; 6px right
 	call ActS_SpawnRel
-	inc  hl
-	ld   [hl], $02
-	ld   a, $57
-	ld   bc, $0600
-	call ActS_SpawnRel
-	inc  hl
-	ld   [hl], $03
+	inc  hl ; iActRtnId
+	ld   [hl], ACTRTN_QUINTDEBRIS_INIT3
+	
 	jp   ActS_IncRtnId
-L02656D:;I
-	call L02660D
+	
+; =============== Act_Quint_GroundWait ===============
+; Ground cycle - debris end check.
+Act_Quint_GroundWait:
+	call Act_Quint_ChkDeath
 	ret  c
+	
+	; Use sprite $06, as part of the animation
 	ld   a, $06
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Wait 8 more frames (total 16) before spawning debris, in case we loop back.
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, hActCur+iAct0D
-	dec  [hl]
-	jp   nz, ActS_DecRtnId
-	call ActS_FacePl
-	call ActS_GetPlDistanceX
+	; Loop back if we aren't done spawning debris.
+	ld   hl, hActCur+iQuintDebrisTimer
+	dec  [hl]					; Timer--
+	jp   nz, ActS_DecRtnId		; Timer != 0? If so, go back to Act_Quint_GroundDebris
+	
+	;
+	; Otherwise, set up the next Sakugarne jump, directly targeting the player.
+	;
+	
+	call ActS_FacePl			; Towards the player
+	call ActS_GetPlDistanceX	; X Speed = ((DiffX * 4) / $10) px/frame
 	ld   l, a
 	ld   h, $00
 	add  hl, hl
@@ -5662,3024 +8889,4675 @@ L02656D:;I
 	ldh  [hActCur+iActSpdXSub], a
 	ld   a, h
 	ldh  [hActCur+iActSpdX], a
-	ld   bc, $0380
+	ld   bc, $0380				; Y Speed = 3.5px/frame
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L0265A2:;I
-	call L02660D
+	
+; =============== Act_Quint_JumpU ===============
+; Jump, pre-peak.
+Act_Quint_JumpU:
+	call Act_Quint_ChkDeath
 	ret  c
+	
+	; Use sakugarne jumping sprite
 	ld   a, $05
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Move forward, stopping on solid walls
 	call ActS_ApplySpeedFwdXColi
+	; Move up, until we reach the peak of the jump
 	call ActS_ApplySpeedUpYColi
 	ret  c
-	ld   a, $04
+	
+	; Then start falling down
+	ld   a, ACTRTN_QUINT_JUMPD
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0265B7:;I
+	
+; =============== Act_Quint_DeadFall ===============
+; Defeat sequence - fall down.
+Act_Quint_DeadFall:
+	; Fall on the ground in the standing frame.
+	; This is usually barely noticeable, since Quint is likely already on the ground.
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   de, $070A
+	
+	; Start the ground teleport animation
+	; Use sprites $07-$0A at 1/4 speed
+	ld   de, ($07 << 8)|$0A
 	ld   c, $04
-	call Act_Boss_InitIntro
+	call ActS_InitAnimRange
+	
 	jp   ActS_IncRtnId
-L0265C6:;I
-	call Act_Boss_PlayIntro
+	
+; =============== Act_Quint_WarpLand ===============
+; Defeat sequence - ground animation.
+Act_Quint_WarpLand:
+	; Play the ground teleport animation, once that's done...
+	call ActS_PlayAnimRange
 	ret  z
+	; ...move up at 4px/frame
 	ld   hl, hActCur+iActSprMap
-	res  6, [hl]
+	res  ACTDIRB_D, [hl]
 	ld   bc, $0400
 	call ActS_SetSpeedY
-	ld   a, $0D
+	; ...play appropriate sound effect
+	ld   a, SFX_TELEPORTOUT
 	ldh  [hSFXSet], a
 	jp   ActS_IncRtnId
-L0265DC:;I
+	
+; =============== Act_Quint_WarpMove ===============
+; Defeat sequence - moving.
+Act_Quint_WarpMove:
+	; Use teleport sprite
 	ld   a, $0B
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Move up until we reach Y position $18
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActY]
-	cp   $18
-	ret  nc
-	xor  a
+	cp   $18				; iActY >= $18?
+	ret  nc					; If so, return
+	xor  a					; Otherwise, offscreen it above
 	ldh  [hActCur+iActY], a
-	jp   ActS_IncRtnId
-L0265EF:;I
+	jp   ActS_IncRtnId		; and teleport the player as soon as possible
+	
+; =============== Act_Quint_PlWarpOut ===============
+; Defeat sequence - teleport player out.
+Act_Quint_PlWarpOut:
+	; Wait until the player has touched the ground before teleporting out
 	ld   a, [wPlMode]
-	or   a
-	ret  nz
-	ld   a, $15
+	or   a						; wPlMode == PL_MODE_GROUND?
+	ret  nz						; If not, wait
+	ld   a, PL_MODE_WARPOUTINIT	; Otherwise, start the teleport
 	ld   [wPlMode], a
-	ld   a, $3C
-	ldh  [hActCur+iActTimer0C], a
+	
+	ld   a, 60						; Wait for a second before ending the level
+	ldh  [hActCur+iActTimer0C], a	; It should be enough to let the player fully teleport out
 	jp   ActS_IncRtnId
-L026600:;I
+	
+; =============== Act_Quint_EndLvl ===============
+; Defeat sequence - end level.
+Act_Quint_EndLvl:
+	; Wait for that second...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $02
+	; Then end the lemvel
+	ld   a, LVLEND_BOSSDEAD
 	ld   [wLvlEnd], a
 	ret
-L02660D:;C
+	
+; =============== Act_Quint_ChkDeath ===============
+; Handles the death checks for Quint.
+; OUT
+; - C Flag: If set, Quint has been defeated
+Act_Quint_ChkDeath:
+	; As this boss doesn't have a visible health bar, it can use the normal $10 threshold
+	; used by actors that perform special actions on death.
 	call ActS_GetHealth
-	cp   $11
-	ret  nc
-	ld   a, $09
+	cp   $11						; Health >= $11?
+	ret  nc							; If so, return (C Flag = clear)
+	
+	ld   a, ACTRTN_QUINT_DEADFALL	; Otherwise, start teleporting out
 	ldh  [hActCur+iActRtnId], a
-	scf  
-	ret
-L026619:;I
+	scf  							; C Flag = Set
+	ret								; In practice, the above could have been "pop af"
+	
+; =============== Act_Wily3Part ===============
+; ID: ACT_WILY3PART
+; Animates the secondary parts of Wily Machine's 3rd phase.
+; These parts only have two frames of animation, with the second one being triggered by Act_Wily3.
+;
+; Two separate instances are spawned, one for animating the arms, one for the tail.
+; These are purely visual effects, they don't affect the fight at all.
+Act_Wily3Part:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02661C: db $22
-L02661D: db $66
-L02661E: db $37
-L02661F: db $66
-L026620: db $47
-L026621: db $66
-L026622:;I
-	ldh  a, [hActCur+iAct0D]
-	ld   [wActCurSprMapRelId], a
-	ldh  a, [hActCur+iAct0E]
-	sub  $08
-	ld   l, a
-	ld   h, $CD
-	ld   a, [hl]
-	ldh  [hActCur+iActX], a
-	cp   $88
-	ret  nz
+	dw Act_Wily3Part_Intro
+	dw Act_Wily3Part_Spr0
+	dw Act_Wily3Part_Spr1
+
+; =============== Act_Wily3Part_Intro ===============
+; Displays the parts during the 3rd phase intro.
+Act_Wily3Part_Intro:
+	;
+	; During this intro, Act_Wily3 scrolls in from the right, offscreen.
+	; Make sure to keep our X position syncronized.
+	;
+	
+	; Only use base sprite
+	ldh  a, [hActCur+iWily3PartSprMapId]
+	ld   [wActCurSprMapBaseId], a
+	
+	; Syncronize our X position with Act_Wily3, this is the important bit.
+	ldh  a, [hActCur+iWily3PartAnimPtr]	; Get pointer to iWily3AnimPart
+	sub  iWily3AnimPart-iActX			; Seek back to X position
+	ld   l, a							; Set as low byte
+	ld   h, HIGH(wAct)					; Use standard high byte
+	ld   a, [hl]						; Read out the X position
+	ldh  [hActCur+iActX], a				; Copy it over, as-is
+	
+	; The intro is treated as "finished" here once we have moved into position.
+	cp   OBJ_OFFSET_X+$80		; iActX != $88?
+	ret  nz						; If so, keep waiting
+	
+	; Otherwise, we're ready. The X position won't change anymore.
 	jp   ActS_IncRtnId
-L026637:;I
-	call L026658
-	ld   [wActCurSprMapRelId], a
-	sub  [hl]
-	ret  nz
-	ld   [hl], a
-	ld   a, $20
+	
+; =============== Act_Wily3Part_Spr0 ===============
+; Use 1st sprite.
+Act_Wily3Part_Spr0:
+	; Set sprite #0 (wActCurSprMapBaseId)
+	call Act_Wily3Part_GetProp		; HL = Ptr to iWily3AnimPart, A = iWily3PartSprMapId
+	ld   [wActCurSprMapBaseId], a	; Confirm sprite #0
+	
+	;
+	; Check if Act_Wily3 is requesting to animate a part.
+	; To uniquely identify the two actor instances, iWily3AnimPart goes off by sprite ID.
+	;
+	sub  [hl]						; iWily3AnimPart == iWily3PartSprMapId?
+	ret  nz							; If not, keep waiting for the signal
+									; Otherwise...
+									
+	ld   [hl], a					; Reset the request signal (A will be 0, which is why it uses "sub" over "cp")
+	ld   a, $20						; Display the second sprite for ~half a second
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026647:;I
-	call L026658
+	
+; =============== Act_Wily3Part_Spr1 ===============
+; Use 2nd sprite.
+Act_Wily3Part_Spr1:
+	; Set sprite #1 (iWily3PartSprMapId + 1)
+	; This is always implicitly after iWily3PartSprMapId
+	call Act_Wily3Part_GetProp
 	inc  a
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Show that for ~half a second
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Then go back to sprite #0
 	jp   ActS_DecRtnId
-L026658:;C
-	ldh  a, [hActCur+iAct0E]
+	
+; =============== Act_Wily3Part_GetProp ===============
+; Gets some shared properties.
+; OUT
+; - HL: Ptr to iWily3AnimPart
+; - A: iWily3PartSprMapId
+Act_Wily3Part_GetProp:
+	ldh  a, [hActCur+iWily3PartAnimPtr]
 	ld   l, a
-	ld   h, $CD
-	ldh  a, [hActCur+iAct0D]
+	ld   h, HIGH(wAct)
+	
+	ldh  a, [hActCur+iWily3PartSprMapId]
+	
 	ret
-L026660:;I
+	
+; =============== Act_Wily2Intro ===============
+; ID: ACT_WILY2INTRO
+; Body of the 2nd phase Wily Machine, used in the intro cutscene before the Wily attaches itself to it. 
+Act_Wily2Intro:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026663: db $69
-L026664: db $66
-L026665: db $77
-L026666: db $66
-L026667: db $82
-L026668: db $66
-L026669:;I
+	dw Act_Wily2Intro_Init
+	dw Act_Wily2Intro_Move
+	dw Act_Wily2Intro_Wait
+
+; =============== Act_Wily2Intro_Init ===============
+Act_Wily2Intro_Init:
+	; Move left 0.5px/frame 
 	ld   bc, $0080
 	call ActS_SetSpeedX
+	;--
+	; [POI] This was intended to make the actor face left, but it's writing to the wrong address.
+	;       It also doesn't matter as the actor is already facing left.
 	ld   hl, hActCur+iAct0D
-	res  7, [hl]
+	res  ACTDIRB_R, [hl]
+	;--
+	
 	jp   ActS_IncRtnId
-L026677:;I
+; =============== Act_Wily2Intro_Move ===============
+Act_Wily2Intro_Move:
+	; Move forward at 0.5px/frame until we reach the target coordinate.
 	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActX]
-	cp   $90
-	ret  nz
-	jp   ActS_IncRtnId
-L026682:;I
+	cp   OBJ_OFFSET_X+$88	; iActX != $90?
+	ret  nz					; If so, return
+	jp   ActS_IncRtnId		; Otherwise, stop moving
+	
+; =============== Act_Wily2Intro_Wait ===============
+Act_Wily2Intro_Wait:
+	; Wait forever until Wily's Spaceship attaches itself,
+	; at which point Act_WilyCtrl will despawn us.
 	ret
-L026683:;I
+	
+; =============== Act_QuintSakugarne ===============
+; ID: ACT_QUINT_SG
+; Sakugarne used during Quint's intro animation.
+; This is not used during the fight itself, the Sakugarne Quint rides is baked into Quint itself.
+Act_QuintSakugarne:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026686: db $92
-L026687: db $66
-L026688: db $9A
-L026689: db $66
-L02668A: db $A5
-L02668B: db $66
-L02668C: db $C9
-L02668D: db $66
-L02668E: db $D3
-L02668F: db $66
-L026690: db $E5
-L026691: db $66
-L026692:;I
+	dw Act_QuintSakugarne_Init
+	dw Act_QuintSakugarne_FallV
+	dw Act_QuintSakugarne_InitJump
+	dw Act_QuintSakugarne_JumpU
+	dw Act_QuintSakugarne_JumpD
+	dw Act_QuintSakugarne_WaitEnd
+
+; =============== Act_QuintSakugarne_Init ===============
+Act_QuintSakugarne_Init:
+	; Reset gravity in preparation for falling down
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
 	jp   ActS_IncRtnId
-L02669A:;I
+	
+; =============== Act_QuintSakugarne_FallV ===============
+; Drop from the top of the screen.
+Act_QuintSakugarne_FallV:
+	; Fall down until we touch the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	; Wait 4 frames before setting up a jump
 	ld   a, $04
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0266A5:;I
+	
+; =============== Act_QuintSakugarne_InitJump ===============
+Act_QuintSakugarne_InitJump:
+	; Show sprite $01 while waiting 4 frames...
+	; (only for these few frames it's on the ground)
 	ld   a, $01
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	;
+	; After that, set up a jump to the left.
+	;
+	
+	; Signal out to Quint that he may also start jumping up, to make him catch the pogo stick.
 	ld   a, $FF
-	ldh  [hActCur+iAct0D], a
-	ld   hl, hActCur+iActSprMap
-	set  7, [hl]
-	ld   bc, $0140
+	ldh  [hActCur+iQuintSgJumpOk], a
+	
+	ld   hl, hActCur+iActSprMap	; Jump right
+	set  ACTDIRB_R, [hl]
+	ld   bc, $0140				; 1.25px/frame to the right
 	call ActS_SetSpeedX
-	ld   bc, $0380
-	call ActS_SetSpeedY
+	ld   bc, $0380				; 3.5px/frame up
+	call ActS_SetSpeedY			; This is the same vertical speed Quint jumps at
 	jp   ActS_IncRtnId
-L0266C9:;I
+	
+; =============== Act_QuintSakugarne_JumpU ===============
+; Jump, pre-peak.
+Act_QuintSakugarne_JumpU:
+	; Apply jump arc until we reach the peak of the jump 
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L0266D3:;I
+	
+; =============== Act_QuintSakugarne_JumpD ===============
+; Jump, post-peak.
+Act_QuintSakugarne_JumpD:
+	; Apply jump arc until we reach X position $90.
+	; That's the X position Quint is in.
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedDownYColi
 	ldh  a, [hActCur+iActX]
-	cp   $90
-	ret  c
+	cp   OBJ_OFFSET_X+$88	; iActX < $90?
+	ret  c					; If so, wait
+	
+	; Wait for 4 frames before despawning.
+	; This is timed with the end of Quint's intro animation,
+	; as the Sakugarne is baked into his sprites there.
 	ld   a, $04
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0266E5:;I
+	
+; =============== Act_QuintSakugarne_WaitEnd ===============
+Act_QuintSakugarne_WaitEnd:
+	; Wait those 4 frames...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Then despawn
 	xor  a
 	ldh  [hActCur+iActId], a
 	ret
-L0266F0:;I
+	
+; =============== Act_QuintDebris ===============
+; ID: ACT_QUINT_DEBRIS
+; Damaging debris spawned when Quint is on the ground.
+Act_QuintDebris:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0266F3: db $FF
-L0266F4: db $66
-L0266F5: db $16
-L0266F6: db $67
-L0266F7: db $2D
-L0266F8: db $67
-L0266F9: db $46
-L0266FA: db $67
-L0266FB: db $5D
-L0266FC: db $67
-L0266FD: db $67
-L0266FE: db $67
-L0266FF:;I
-	ld   bc, $0060
+	dw Act_QuintDebris_Init0
+	dw Act_QuintDebris_Init1
+	dw Act_QuintDebris_Init2
+	dw Act_QuintDebris_Init3
+	dw Act_QuintDebris_JumpU
+	dw Act_QuintDebris_JumpD
+	DEF ACTRTN_QUINTDEBRIS_JUMPU = $04
+
+; =============== Act_QuintDebris_Init* ===============
+; Four debris spawn at once, each with its own jump arc.
+; Hence why there are four separate init routines, which are directly
+; set by Act_Quint when it spawns the debris.
+;
+
+; =============== Act_QuintDebris_Init0 ===============
+; ACTRTN_QUINTDEBRIS_INIT0
+Act_QuintDebris_Init0:
+	ld   bc, $0060						; 0.375px/frame left
 	call ActS_SetSpeedX
-	ld   bc, $0240
+	ld   bc, $0240						; 2.25px/frame up
 	call ActS_SetSpeedY
 	ldh  a, [hActCur+iActSprMap]
-	and  $3F
+	and  $FF^(ACTDIR_R|ACTDIR_D)		; Set LEFT, UP directions
 	ldh  [hActCur+iActSprMap], a
-	ld   a, $04
+	ld   a, ACTRTN_QUINTDEBRIS_JUMPU	; Apply jump
 	ldh  [hActCur+iActRtnId], a
 	ret
-L026716:;I
-	ld   bc, $0020
+	
+; =============== Act_QuintDebris_Init1 ===============
+; ACTRTN_QUINTDEBRIS_INIT1
+Act_QuintDebris_Init1:
+	ld   bc, $0020						; 0.125px/frame left
 	call ActS_SetSpeedX
-	ld   bc, $02C0
+	ld   bc, $02C0						; 2.75px/frame up
 	call ActS_SetSpeedY
 	ldh  a, [hActCur+iActSprMap]
-	and  $3F
+	and  $FF^(ACTDIR_R|ACTDIR_D)		; Set LEFT, UP directions
 	ldh  [hActCur+iActSprMap], a
-	ld   a, $04
+	ld   a, ACTRTN_QUINTDEBRIS_JUMPU	; Apply jump
 	ldh  [hActCur+iActRtnId], a
 	ret
-L02672D:;I
-	ld   bc, $0020
+	
+; =============== Act_QuintDebris_Init2 ===============
+; ACTRTN_QUINTDEBRIS_INIT2
+Act_QuintDebris_Init2:
+	ld   bc, $0020						; 0.125px/frame left
 	call ActS_SetSpeedX
-	ld   bc, $02C0
+	ld   bc, $02C0						; 2.75px/frame up
 	call ActS_SetSpeedY
 	ldh  a, [hActCur+iActSprMap]
-	and  $3F
-	or   $80
+	and  $FF^(ACTDIR_R|ACTDIR_D)		; Set RIGHT, UP directions
+	or   ACTDIR_R
 	ldh  [hActCur+iActSprMap], a
-	ld   a, $04
+	ld   a, ACTRTN_QUINTDEBRIS_JUMPU	; Apply jump
 	ldh  [hActCur+iActRtnId], a
 	ret
-L026746:;I
-	ld   bc, $0060
+	
+; =============== Act_QuintDebris_Init3 ===============
+; ACTRTN_QUINTDEBRIS_INIT3
+Act_QuintDebris_Init3:
+	ld   bc, $0060						; 0.375px/frame right
 	call ActS_SetSpeedX
-	ld   bc, $0240
+	ld   bc, $0240						; 2.25px/frame up
 	call ActS_SetSpeedY
 	ldh  a, [hActCur+iActSprMap]
-	and  $3F
-	or   $80
+	and  $FF^(ACTDIR_R|ACTDIR_D)		; Set RIGHT, UP directions
+	or   ACTDIR_R
 	ldh  [hActCur+iActSprMap], a
-	jp   ActS_IncRtnId
-L02675D:;I
+	jp   ActS_IncRtnId ; ACTRTN_QUINTDEBRIS_JUMPU	; Apply jump
+	
+; =============== Act_QuintDebris_JumpU ===============
+; Jump, pre-peak.
+Act_QuintDebris_JumpU:
+	; Apply jump arc until we reach the peak of the jump 
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedUpYColi
 	ret  c
-	jp   ActS_IncRtnId
-L026767:;I
+	jp   ActS_IncRtnId			; Then start falling down
+	
+; =============== Act_QuintDebris_JumpD ===============
+; Jump, post-peak.
+Act_QuintDebris_JumpD:
+	; Apply jump arc until we touch the ground 
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	jp   L001E11
-L026771:;I
+	jp   ActS_Explode			; Then explode
+	
+; =============== Act_Wily1Bomb ===============
+; ID: ACT_WILY1BOMB
+; Bouncing bomb from the 1st phase of the Wily Machine.
+; Does not explode.
+Act_Wily1Bomb:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026774: db $7A
-L026775: db $67
-L026776: db $8C
-L026777: db $67
-L026778: db $96
-L026779: db $67
-L02677A:;I
-	call ActS_FacePl
-	ld   bc, $0100
+	dw Act_Wily1Bomb_Init
+	dw Act_Wily1Bomb_JumpU
+	dw Act_Wily1Bomb_JumpD
+
+; =============== Act_Wily1Bomb_Init ===============
+Act_Wily1Bomb_Init:
+	call ActS_FacePl		; Jump towards the player
+	ld   bc, $0100			; 1px/frame forward
 	call ActS_SetSpeedX
-	ld   bc, $0300
+	ld   bc, $0300			; 3px/frame up
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L02678C:;I
+	
+; =============== Act_Wily1Bomb_JumpU ===============
+Act_Wily1Bomb_JumpU:
+	; Apply jump arc until we reach the peak of the jump.
+	; This does not check for solid walls while going forward,
+	; so they it will phase through
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedUpY
 	ret  c
-	jp   ActS_IncRtnId
-L026796:;I
+	jp   ActS_IncRtnId		; Then start falling down
+	
+; =============== Act_Wily1Bomb_JumpD ===============
+Act_Wily1Bomb_JumpD:
+	; Apply jump arc until we touch the ground 
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   bc, $0300
+	
+	ld   bc, $0300			; Then start another identical jump
 	call ActS_SetSpeedY
-	jp   ActS_DecRtnId
-L0267A6:;I
+	jp   ActS_DecRtnId		; looping
+	
+; =============== Act_Wily1Nail ===============
+; ID: ACT_WILY1NAIL
+; Toenail fired forward, with a very misleading hitbox.
+Act_Wily1Nail:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0267A9: db $AD
-L0267AA: db $67
-L0267AB: db $B9
-L0267AC: db $67
-L0267AD:;I
+	dw Act_Wily1Nail_Init
+	dw Act_Wily1Nail_Move
+
+; =============== Act_Wily1Nail_Init ===============
+; Set up horizontal movement towards the player at 2px/frame.
+Act_Wily1Nail_Init:
 	call ActS_FacePl
 	ld   bc, $0200
 	call ActS_SetSpeedX
 	jp   ActS_IncRtnId
-L0267B9:;I
+; =============== Act_Wily1Nail_Move ===============
+; Move forward until it gets offscreened.
+Act_Wily1Nail_Move:
 	call ActS_ApplySpeedFwdX
 	ret
-L0267BD:;I
+	
+; =============== Act_Wily2Bomb ===============
+; ID: ACT_WILY2BOMB
+; Bouncing bomb from the 2nd phase of the Wily Machine.
+; Does explode.
+Act_Wily2Bomb:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0267C0: db $CA
-L0267C1: db $67
-L0267C2: db $D6
-L0267C3: db $67
-L0267C4: db $E0
-L0267C5: db $67
-L0267C6: db $12
-L0267C7: db $68
-L0267C8: db $26
-L0267C9: db $68
-L0267CA:;I
-	call ActS_FacePl
-	ld   bc, $0080
+	dw Act_Wily2Bomb_Init
+	dw Act_Wily2Bomb_JumpU
+	dw Act_Wily2Bomb_JumpD
+	dw Act_Wily2Bomb_InitShot
+	dw Act_Wily2Bomb_Shot
+	DEF ACTRTN_WILY2BOMB_INITSHOT = $03
+	
+; =============== Act_Wily2Bomb_Init ===============
+Act_Wily2Bomb_Init:
+	call ActS_FacePl		; Jump towards the player
+	ld   bc, $0080			; 0.5px/frame forward
 	call ActS_SetSpeedX
+	; No vertical movement yet, just fall down the first time
 	jp   ActS_IncRtnId
-L0267D6:;I
+	
+; =============== Act_Wily2Bomb_JumpU ===============
+Act_Wily2Bomb_JumpU:
+	; Apply jump arc until we reach the peak of the jump.
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedUpYColi
 	ret  c
-	jp   ActS_IncRtnId
-L0267E0:;I
+	jp   ActS_IncRtnId			; Then start falling down
+	
+; =============== Act_Wily2Bomb_JumpD ===============
+Act_Wily2Bomb_JumpD:
+	; Apply jump arc until we touch the ground 
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   bc, $0380
+	
+	;
+	; When touching the ground, explode only if the player has gone past the bomb.
+	; Otherwise, do another high jump at 3.5px/frame.
+	;
+	
+	ld   bc, $0380					; Prepare 3.5px/frame in case we go back to Act_Wily2Bomb_JumpU
 	call ActS_SetSpeedY
-	ldh  a, [hActCur+iActSprMap]
+	
+	; Check if the player is behind the bomb, similarly to Act_Wily2_ChkPlBehind,
+	; except simpler since the bomb is guaranteed to not animate (so there's no need to filter directions)
+	ldh  a, [hActCur+iActSprMap]	; Save unmodified iActSprMap for later
 	push af
-	call ActS_FacePl
+		call ActS_FacePl			; Face the player. This may or may not modify the directions.
 	pop  af
-	ld   hl, hActCur+iActSprMap
-	cp   [hl]
-	ld   [hl], a
-	jp   z, ActS_DecRtnId
-	res  6, [hl]
-	ld   a, $5A
+	ld   hl, hActCur+iActSprMap		; Get new iActSprMap
+	cp   [hl]						; Are the new directions unchanged from the old ones?
+	ld   [hl], a					; (restore original iActSprMap, as if ActS_FacePl was never called)
+	jp   z, ActS_DecRtnId			; If so, return (go back doing another jump)
+	
+	;
+	; Otherwise, explode!
+	; This causes two shots to travel diagonally up in both directions.
+	; The moving shot is handled by the next routine, so a second instance of the bomb
+	; is spawned that directly starts there.
+	;
+	
+	; LEFT SHOT
+	; The current actor is already moving left, so use it as left shot.
+	res  ACTDIRB_D, [hl]			; We were moving down though, so make it move up
+	
+	; RIGHT SHOT
+	ld   a, ACT_WILY2BOMB			; Spawn a new bomb instance
 	ld   bc, $0000
 	call ActS_SpawnRel
-	inc  hl
-	ld   [hl], $03
-	inc  hl
-	ldh  a, [hActCur+iActSprMap]
-	xor  $80
+	inc  hl ; iActRtnId				; Start in the explosion routine
+	ld   [hl], ACTRTN_WILY2BOMB_INITSHOT
+	inc  hl ; iActSprMap
+	ldh  a, [hActCur+iActSprMap]	; Face right
+	xor  ACTDIR_R					; Could have been "or"
 	ld   [hl], a
-	jp   ActS_IncRtnId
-L026812:;I
-	ld   a, $01
+	
+	jp   ActS_IncRtnId				; Start left shot
+	
+; =============== Act_Wily2Bomb_InitShot ===============
+Act_Wily2Bomb_InitShot:
+	; [POI] The collision box is not being altered from the bomb, which is extremely misleading
+	;       as the shot's sprite is 8x8 compared to the bomb's 16x16.
+	ld   a, $01					; Use shot sprite
 	call ActS_SetSprMapId
-	ld   bc, $0100
+	ld   bc, $0100				; Move forward 1px/frame
 	call ActS_SetSpeedX
-	ld   bc, $0100
+	ld   bc, $0100				; Move up 1px/frame
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L026826:;I
+	
+; =============== Act_Wily2Bomb_Shot ===============
+Act_Wily2Bomb_Shot:
+	; Apply movement until it goes offscreen
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L02682D:;I
+	
+; =============== Act_Wily2Shot ===============
+; ID: ACT_WILY2SHOT
+; Diagonal energy ball thrown towards the player.
+Act_Wily2Shot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026830: db $34
-L026831: db $68
-L026832: db $3D
-L026833: db $68
-L026834:;I
-	call ActS_AngleToPl
-	call ActS_DoubleSpd
+	dw Act_Wily2Shot_Init
+	dw Act_Wily2Shot_Move
+
+; =============== Act_Wily2Shot_Init ===============
+Act_Wily2Shot_Init:
+	call ActS_AngleToPl	; Throw towards the player...
+	call ActS_DoubleSpd	; ...at double speed
 	jp   ActS_IncRtnId
-L02683D:;I
+	
+; =============== Act_Wily2Shot_Move ===============
+Act_Wily2Shot_Move:
+	; Move the shot at the set speed until it goes offscreen
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L026844:;I
+	
+; =============== Act_Wily3Missile ===============
+; ID: ACT_WILY3MISSILE
+; Missile that initially homes in on the player.
+Act_Wily3Missile:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026847: db $4D
-L026848: db $68
-L026849: db $54
-L02684A: db $68
-L02684B: db $67
-L02684C: db $68
-L02684D:;I
+	dw Act_Wily3Missile_Init
+	dw Act_Wily3Missile_TrackPl
+	dw Act_Wily3Missile_Move
+
+; =============== Act_Wily3Missile_Init ===============
+Act_Wily3Missile_Init:
+	; Home in for the first ~second
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026854:;I
-	call ActS_AngleToPl
-	call ActS_ApplySpeedFwdX
-	call ActS_ApplySpeedFwdY
+	
+; =============== Act_Wily3Missile_TrackPl ===============
+Act_Wily3Missile_TrackPl:
+	call ActS_AngleToPl			; Track player position
+	call ActS_ApplySpeedFwdX	; Move precisely there
+	call ActS_ApplySpeedFwdY	; ""
 	ldh  a, [hActCur+iActTimer0C]
-	sub  $01
+	sub  $01					; Done with this part?
 	ldh  [hActCur+iActTimer0C], a
-	ret  nz
+	ret  nz						; If not, return
 	jp   ActS_IncRtnId
-L026867:;I
+	
+; =============== Act_Wily3Missile_Move ===============
+Act_Wily3Missile_Move:
+	; Continue moving with the last tracked speed values (last tracked player position)
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L02686E:;I
+	
+; =============== Act_Wily3Met ===============
+; ID: ACT_WILY3MET
+; Off-model Mets(?) launched up by the final boss. Four are spawned at once.
+Act_Wily3Met:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026871: db $77
-L026872: db $68
-L026873: db $83
-L026874: db $68
-L026875: db $8D
-L026876: db $68
-L026877:;I
-	call ActS_FacePl
-	ld   bc, $0440
+	dw Act_Wily3Met_Init
+	dw Act_Wily3Met_JumpU
+	dw Act_Wily3Met_JumpD
+
+; =============== Act_Wily3Met_Init ===============
+Act_Wily3Met_Init:
+	call ActS_FacePl		; Move towards the player
+	ld   bc, $0440			; Y Speed: 4.25px/frame up
 	call ActS_SetSpeedY
+	; X Speed set by the spawner code in Act_Wily3, since it varies for each spawned instance of the set.
 	jp   ActS_IncRtnId
-L026883:;I
+	
+; =============== Act_Wily3Met_JumpU ===============
+; Jump, pre-peak.
+Act_Wily3Met_JumpU:
+	; (Use normal sprite $00)
+	; Apply jump arc until we reach the peak of the jump.
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedUpY
 	ret  c
-	jp   ActS_IncRtnId
-L02688D:;I
+	jp   ActS_IncRtnId		; Then start falling down
+	
+; =============== Act_Wily3Met_JumpD ===============
+; Jump, post-peak.
+Act_Wily3Met_JumpD:
+	; Use upside down sprite $01
 	ld   a, $01
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Apply jump arc until we get offscreened 
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedDownY
 	ret
-L026899:;I
+	
+;================ Act_WilyCtrl ================
+; ID: ACT_WILYCTRL
+; Master actor for the final boss.
+; Takes care of spawning the actors for the individual phases as needed.
+;
+; The Wily Spaceship sprites are associated to this actor, so its code (Act_WilyShip)
+; runs as part of it, with the necessary measures to not cause conflicts.
+Act_WilyCtrl:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02689C: db $B0
-L02689D: db $68
-L02689E: db $CE
-L02689F: db $68
-L0268A0: db $F1
-L0268A1: db $68
-L0268A2: db $13
-L0268A3: db $69
-L0268A4: db $3C
-L0268A5: db $69
-L0268A6: db $6B
-L0268A7: db $69
-L0268A8: db $7A
-L0268A9: db $69
-L0268AA: db $90
-L0268AB: db $69
-L0268AC: db $C9
-L0268AD: db $69
-L0268AE: db $F9
-L0268AF: db $69
-L0268B0:;I
-	ld   b, $00
+	dw Act_WilyCtrl_P1Init
+	dw Act_WilyCtrl_P1Wait
+	dw Act_WilyCtrl_P2Intro0
+	dw Act_WilyCtrl_P2Intro1
+	dw Act_WilyCtrl_P2Wait
+	dw Act_WilyCtrl_P3Intro0
+	dw Act_WilyCtrl_P3Intro_MoveR
+	dw Act_WilyCtrl_P3Spawn
+	dw Act_WilyCtrl_P3ScrollR
+	dw Act_WilyCtrl_Despawn
+
+;================ Act_WilyCtrl_P1Init ================
+; Wily Machine - Prepare 1st phase.
+Act_WilyCtrl_P1Init:
+
+	;
+	; Hide the Wily Spaceship during the 1st phase.
+	;
+	ld   b, ACTCOLI_PASS		; Make intangible
 	call ActS_SetColiType
-	xor  a
-	ld   [$CCFD], a
-	ld   a, $98
+	xor  a						; Disable defeat trigger (see Act_WilyCtrl_P1Wait)
+	ld   [wWilyPhaseDone], a
+	ld   a, OBJ_OFFSET_Y+$88	; Hide under the ground
 	ldh  [hActCur+iActY], a
-	ld   a, $50
-	ld   bc, $0000
+	
+	;
+	; Spawn the 1st phase of the Wily Machine directly above the spawner.
+	; As actors are executed even during shutter effects, this will spawn
+	; the Wily Machine before it gets scrolled in, avoiding pop-ins.
+	;
+	; This also hides the fact that the Wily Spaceship is visible for one frame,
+	; as that happens offscreen.
+	;
+	ld   a, ACT_WILY1			; Spawn the actor for the 1st phase...
+	ld   bc, $0000				; ...with the same X pos as the spawner
 	call ActS_SpawnRel
-	ld   de, $0007
-	add  hl, de
-	ld   [hl], $80
+	ld   de, iActY
+	add  hl, de					; ...on the ground (Y position $80)
+	ld   [hl], OBJ_OFFSET_Y+$70
+	
 	jp   ActS_IncRtnId
-L0268CE:;I
-	ld   a, $02
-	ld   [wActCurSprMapRelId], a
-	ld   a, [$CCFD]
-	and  a
-	ret  z
-	xor  a
-	ld   [$CCFD], a
-	ld   a, [$CCEE]
-	ldh  [hActCur+iActY], a
-	ld   a, [$CCEF]
+	
+;================ Act_WilyCtrl_P1Wait ================
+; Wily Machine - Wait 1st phase.
+Act_WilyCtrl_P1Wait:
+	
+	;
+	; Wait, hidden, until Act_Wily1 signals to us that it's been destroyed.
+	; wWilyPhaseDone is set when Act_Wily1_ChkDeath detects that the boss has less than 8 bars of health.
+	;
+	ld   a, $02					; Hide the Wily Spaceship (use blank sprite mapping)
+	ld   [wActCurSprMapBaseId], a
+	ld   a, [wWilyPhaseDone]
+	and  a						; Was the 1st phase defeated?
+	ret  z						; If not, return
+	
+	;
+	; 1st phase defeated.
+	;
+	xor  a						; Disable trigger for next time
+	ld   [wWilyPhaseDone], a
+	ld   a, [wWilyShipY]		; Sync the spaceship coordinates
+	ldh  [hActCur+iActY], a		; from whatever Act_Wily1_ChkDeath set them
+	ld   a, [wWilyShipX]
 	ldh  [hActCur+iActX], a
-	ld   b, $03
-	call ActS_SetColiType
-	xor  a
-	ldh  [hActCur+iAct0D], a
+	ld   b, ACTCOLI_ENEMYREFLECT
+	call ActS_SetColiType		; With the ship visible, take damage for running into it
+	xor  a						; Reset routine
+	ldh  [hActCur+iWilyShipRtnId], a
 	jp   ActS_IncRtnId
-L0268F1:;I
-	call L0263BA
-	ldh  a, [hActCur+iAct0D]
-	cp   $04
-	ret  nz
-	ld   a, $55
+	
+;================ Act_WilyCtrl_P2Intro0 ================
+; Wily Machine - 2nd phase intro #0
+Act_WilyCtrl_P2Intro0:
+	;
+	; Animate the Wily Spaceship.
+	;
+	; When that's about to scroll the screen right, spawn the intro actor for the 2nd phase.
+	;
+	call Act_WilyShip
+	
+	ldh  a, [hActCur+iWilyShipRtnId]	; Read ship routine
+	cp   ACTRTN_WILYSHIP_MOVESCROLLR	; Just got set to ACTRTN_WILYSHIP_MOVESCROLLR?
+	ret  nz								; If not, return
+	
+	; Otherwise, spawn the body of the 2nd phase, used for the intro.
+	ld   a, ACT_WILY2INTRO				
 	ld   bc, $0000
 	call ActS_SpawnRel
-	ld   a, l
-	ldh  [hActCur+iAct0E], a
-	add  $05
+	
+	; Make the body spawn on the ground, offscreen to the right.
+	; While we're at it also keep track of the pointer to the spawned slot.
+	
+	; Seek HL to child's X position
+	; HL += iActX
+	ld   a, l			
+	ldh  [hActCur+iWilyCtrlChildPtrLow], a		; # Save child slot ptr
+	add  iActX
 	ld   l, a
 	ld   a, h
-	ldh  [hActCur+iAct0F], a
-	ld   [hl], $C0
-	inc  hl
-	inc  hl
-	ld   [hl], $80
+	ldh  [hActCur+iWilyCtrlChildPtrHigh], a		; # Save child slot ptr
+	; Set coords
+	ld   [hl], SCREEN_GAME_H+OBJ_OFFSET_X+$18	; iActX = $C0
+	inc  hl ; iActYSub
+	inc  hl ; iActY
+	ld   [hl], OBJ_OFFSET_Y+$70 				; iActY = $80
+	
 	jp   ActS_IncRtnId
-L026913:;I
-	call L0263BA
-	ldh  a, [hActCur+iAct0D]
-	cp   $06
-	ret  nz
-	ldh  a, [hActCur+iAct0E]
+	
+;================ Act_WilyCtrl_P2Intro1 ================
+; Wily Machine - 2nd phase intro #1
+Act_WilyCtrl_P2Intro1:
+	; Continue animating the spaceship from where we left off.
+	call Act_WilyShip
+	ldh  a, [hActCur+iWilyShipRtnId]
+	cp   ACTRTN_WILYSHIP_END			; Did the animation just end?
+	ret  nz								; If not, return
+	
+	;
+	; Animation over, the spaceship has attached itself.
+	; Prepare for the 2nd phase.
+	;
+	
+	; Despawn ACT_WILY2INTRO
+	ldh  a, [hActCur+iWilyCtrlChildPtrLow]
 	ld   l, a
-	ldh  a, [hActCur+iAct0F]
+	ldh  a, [hActCur+iWilyCtrlChildPtrHigh]
 	ld   h, a
 	ld   [hl], $00
-	ld   a, $98
+	
+	ld   a, OBJ_OFFSET_Y+$88	; Hide under the ground
 	ldh  [hActCur+iActY], a
-	ld   b, $00
+	ld   b, ACTCOLI_PASS		; Make intangible
 	call ActS_SetColiType
-	ld   a, $02
-	ld   [wShutterNum], a
-	ld   a, $51
-	ld   bc, $00E8
+	; Boss intros alter wBossMode after they're done.
+	; Since we're chaining bosses, we have to reset it to the expected value, 
+	; otherwise it will get skipped and the boss health bar won't refill.
+	ld   a, BSMODE_INIT
+	ld   [wBossMode], a
+	
+	; Spawn the actual 2nd phase actor
+	ld   a, ACT_WILY2
+	ld   bc, ($00 << 8)|LOW(-$18) ; 24px up
 	call ActS_SpawnRel
+	
 	jp   ActS_IncRtnId
-L02693C:;I
-	ld   a, $02
-	ld   [wActCurSprMapRelId], a
-	ld   a, [$CCFD]
-	and  a
-	ret  z
-	xor  a
-	ld   [$CCFD], a
-	ld   a, [$CCEE]
-	ldh  [hActCur+iActY], a
-	ld   a, [$CCEF]
+	
+;================ Act_WilyCtrl_P2Wait ================
+; Wily Machine - Wait 2nd phase.
+; See also: Act_WilyCtrl_P1Wait
+Act_WilyCtrl_P2Wait:
+	;
+	; Wait, hidden, until Act_Wily2 signals to us that it's been destroyed.
+	;
+	ld   a, $02					; Hide the Wily Spaceship (use blank sprite mapping)
+	ld   [wActCurSprMapBaseId], a
+	ld   a, [wWilyPhaseDone]
+	and  a						; Was the 1st phase defeated?
+	ret  z						; If not, return
+	
+	;
+	; 2nd phase defeated.
+	;
+	xor  a						; Disable trigger
+	ld   [wWilyPhaseDone], a
+	ld   a, [wWilyShipY]		; Sync the spaceship coordinates
+	ldh  [hActCur+iActY], a		; from whatever Act_Wily2_ChkDeath set them
+	ld   a, [wWilyShipX]
 	ldh  [hActCur+iActX], a
-	ld   b, $03
-	call ActS_SetColiType
-	xor  a
-	ldh  [hActCur+iAct0D], a
-	ld   bc, $0B80
-	ld   hl, $6000
-	ld   de, $9000
+	ld   b, ACTCOLI_ENEMYREFLECT
+	call ActS_SetColiType		; With the ship visible, take damage for running into it
+	xor  a						; Reset routine
+	ldh  [hActCur+iWilyShipRtnId], a
+	
+	;
+	; Load the GFX for the BG portion of the final boss.
+	;
+	; These graphics completely replace the GFX set with the one from Wily's Castle,
+	; as that one is empty enough it could squeeze those graphics in.
+	;
+	; To make the whole thing work, the only tile shown on screen is for a simple horizontal
+	; pipe (tile $04), which is the same between GFX_LvlCastle and GFX_LvlStation.
+	ld   bc, (BANK(GFX_LvlCastle) << 8) | $80 ; Source GFX bank number + Number of tiles to copy
+	ld   hl, GFX_LvlCastle ; Source GFX ptr
+	ld   de, $9000 ; VRAM Destination ptr (start of 3rd section)
 	call GfxCopy_Req
 	jp   ActS_IncRtnId
-L02696B:;I
-	call L0263BA
+	
+;================ Act_WilyCtrl_P3Intro0 ================
+; Wily Machine - 3rd phase intro #0
+Act_WilyCtrl_P3Intro0:
+	;
+	; Animate the Wily Spaceship.
+	;
+	; When that's about to scroll the screen right, take over the animation.
+	;
+	call Act_WilyShip
 	ldh  a, [hActCur+iAct0D]
-	cp   $04
+	cp   ACTRTN_WILYSHIP_MOVESCROLLR
 	ret  nz
+	
+	; Move right for ~1.5 seconds
 	ld   a, $60
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02697A:;I
+	
+;================ Act_WilyCtrl_P3Intro_MoveR ================
+; Wily Machine - 3rd phase intro - move spaceship right, to offscreen.
+Act_WilyCtrl_P3Intro_MoveR:
+	; Animate propeller
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Move the spaceship right 0.5px/frame for those ~1.5 seconds
 	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; At this point, the spaceship should be fully offscreen.
+	; Wait ~half a second doing nothing to simulate the docking happening.
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026990:;I
+	
+;================ Act_WilyCtrl_P3Spawn ================
+; Wily Machine - 3rd phase intro - spawn actors.
+Act_WilyCtrl_P3Spawn:
+	; Wait for that ~half a second...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $52
+	
+	;
+	; Spawn the actual 3rd phase actor.
+	; This will be stuck in the first routine, which does nothing, 
+	; until Act_WilyCtrl_P3ScrollR finishes scrolling the screen.
+	;
+	ld   a, ACT_WILY3
 	ld   bc, $0000
 	call ActS_SpawnRel
+	; Save to our struct the slot pointer to iWily3AnimPart, used by ACT_WILY3PART to check for animation signals.
+	; This will be copied over to the spawned ACT_WILY3PART (see next spawns).
 	ld   a, l
-	add  $0D
-	ldh  [hActCur+iAct0E], a
-	xor  a
-	call L0269FD
-	ld   a, $54
+	add  iWily3AnimPart
+	ldh  [hActCur+iWilyCtrl3PartAnimPtr], a
+	; Set shared properties
+	xor  a						; iWily3AnimPart = 0 (no signal)
+	call Act_WilyCtrl_Set3Prop
+	
+	;
+	; Spawn the accessory parts for the arm and tail.
+	;
+	ld   a, ACT_WILY3PART
 	ld   bc, $0000
 	call ActS_SpawnRel
-	ld   a, $04
-	call L0269FD
-	ld   a, $54
+	ld   a, WILY3PART_SPR_ARM ; iWily3PartSprMapId
+	call Act_WilyCtrl_Set3Prop
+	
+	ld   a, ACT_WILY3PART
 	ld   bc, $0000
 	call ActS_SpawnRel
-	ld   a, $06
-	call L0269FD
+	ld   a, WILY3PART_SPR_TAIL ; iWily3PartSprMapId
+	call Act_WilyCtrl_Set3Prop
+	
+	; Scroll the screen right at 0.5px/frame
 	ld   a, $80
 	ldh  [hActCur+iActSpdXSub], a
+	
 	jp   ActS_IncRtnId
-L0269C9:;I
-	ldh  a, [hActCur+iActSpdXSub]
-	ld   hl, hActCur+iActXSub
-	add  [hl]
-	ld   [hl], a
-	jr   nc, L0269DD
+	
+;================ Act_WilyCtrl_P3ScrollR ================
+; Wily Machine - 3rd phase intro - scroll screen.
+; See also: Act_WilyShip_MoveScrollR
+Act_WilyCtrl_P3ScrollR:
+
+	;
+	; Currently, Act_Wily3 is frozen in a dummy routine that does nothing,
+	; so its movement needs to be done here.
+	;
+
+	;--
+	;
+	; Move the screen right 0.5px/frame, adjusting the actor to compensate.
+	;
+
+	; First, apply the subpixel speed as normal
+	ldh  a, [hActCur+iActSpdXSub]	; A = Subpixel speed
+	ld   hl, hActCur+iActXSub		; HL = Ptr to subpixel X
+	add  [hl]						; Move right by that
+	ld   [hl], a					; Save back
+	
+	; If that overflowed, instead of incrementing iActX directly, scroll the screen 1px to the right.
+	; The way this works assumes movement < 1px/frame, since it should not alter iActX.
+	jr   nc, .chkEnd
+	; Scroll screen 1px right
+	; This is not calling the normal Game_AutoScrollR because it leads to inconsistent results
+	; when run from actor code, since ActS_MoveByScrollX would only get called for the actors
+	; not processed yet.
 	call Game_AutoScrollR_NoAct
-	ldh  a, [hActCur+iAct0E]
-	sub  $08
+	; Move final boss actor 1px left to adjust.
+	; Both spawned parts will sync to the updated position by themselves.
+	ldh  a, [hActCur+iWilyCtrl3PartAnimPtr]
+	sub  iWily3AnimPart-iActX
 	ld   l, a
-	ld   h, $CD
-	dec  [hl]
-L0269DD:;R
-	ldh  a, [hActCur+iAct0E]
-	sub  $08
+	ld   h, HIGH(wAct)	; HL = Ptr to Act_Wily3's iActX
+	dec  [hl]			; iActX--
+.chkEnd:
+	;--
+	
+	;
+	; If Act_Wily3's position has reached $88, it has finished moving,
+	; so unlock it from its frozen state.
+	;
+	ldh  a, [hActCur+iWilyCtrl3PartAnimPtr]
+	sub  iWily3AnimPart-iActX
 	ld   l, a
-	ld   h, $CD
-	ld   a, [hl]
-	cp   $88
-	ret  nz
-	ldh  a, [hActCur+iAct0E]
-	sub  $0C
+	ld   h, HIGH(wAct)		; HL = Ptr to Act_Wily3's iActX
+	ld   a, [hl]			; Read it
+	cp   OBJ_OFFSET_X+$80	; iActX != $88?
+	ret  nz					; If so, return
+	
+	; Unlock Act_Wily3, by incrementing its routine
+	ldh  a, [hActCur+iWilyCtrl3PartAnimPtr]
+	sub  iWily3AnimPart-iActRtnId
 	ld   l, a
-	ld   h, $CD
-	ld   [hl], $01
-	ld   a, $02
-	ld   [wShutterNum], a
+	ld   h, HIGH(wAct)		; HL = Ptr to Act_Wily3's iActRtnId
+	ld   [hl], ACTRTN_WILY3_INIT
+	
+	; Like before, allow the boss intro to happen
+	ld   a, BSMODE_INIT
+	ld   [wBossMode], a
 	jp   ActS_IncRtnId
-L0269F9:;I
+	
+;================ Act_WilyCtrl_Despawn ================
+Act_WilyCtrl_Despawn:
 	xor  a
 	ldh  [hActCur+iActId], a
 	ret
-L0269FD:;C
-	ld   de, $0005
+	
+; =============== Act_WilyCtrl_Set3Prop ===============
+; Sets properties to the newly spawned 3rd phase actors.
+; IN
+; - HL: Ptr to newly spawned Act_Wily3 or Act_Wily3Part
+; -  A: For Act_Wily3Part, it's the base sprite mapping ID (iWily3PartSprMapId).
+;       That value acts as an unique identifier for the animation signal, and is never changed.
+;       For Act_Wily3, it's the part animation signal (iWily3AnimPart)
+;       When the sprite mapping ID of a part is written there, the actor with a matching iWily3PartSprMapId will animate.
+Act_WilyCtrl_Set3Prop:
+	;
+	; All of the 3rd phase actors we spawn have the same coordinates.
+	; Initially they spawn off-screen to the right, as their intro animation scrolls them in.
+	;
+	ld   de, iActX
 	add  hl, de
-	ld   [hl], $C8
-	inc  hl
-	inc  hl
-	ld   [hl], $80
-	ld   de, $0006
+	ld   [hl], OBJ_OFFSET_X+SCREEN_GAME_H+$20 ; iActX = $C8
+	inc  hl ; iActYSub
+	inc  hl ; iActY
+	ld   [hl], OBJ_OFFSET_Y+$70 ; iActY = $80
+	
+	;
+	; Save the sprite mapping ID related to the part, or initialize the signal.
+	;
+	ld   de, iWily3PartSprMapId-iActY
 	add  hl, de
-	ldi  [hl], a
-	ldh  a, [hActCur+iAct0E]
-	ld   [hl], a
+	ldi  [hl], a ; iWily3AnimPart / iWily3PartSprMapId
+	
+	;
+	; Share to the Act_Wily3Part the pointer to Act_Wily3's iWily3AnimPart.
+	; Act_Wily3Part will poll on this to know when to animate.
+	;
+	ldh  a, [hActCur+iWilyCtrl3PartAnimPtr]
+	ld   [hl], a ; iWily3PartAnimPtr
 	ret
-L026A10:;I
+	
+;================ Act_RushCoil ================
+; ID: ACT_WPN_RC
+; Rush Coil helper item.
+Act_RushCoil:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026A13: db $D0
-L026A14: db $6C
-L026A15: db $17
-L026A16: db $6A
-L026A17:;I
+	dw Act_Helper_Teleport
+	dw Act_RushCoil_WaitPl
+
+;================ Act_RushCoil_WaitPl ================
+Act_RushCoil_WaitPl:
+	;
+	; The timer is initially set to 3 seconds.
+	; When 1 second remains, start flashing.
+	;
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
-	cp   $3C
-	jr   nc, L026A35
+	cp   60
+	jr   nc, .chkColi
+	
+	; Flash by alternating between frames $xx and $xx+08 every 4 frames.
+	; In practice, the sprite ranges we end up with are $00-$01 and $08-$09.
+	; $08 is a completely blank sprite mapping used for this flashing effect,
+	; ??? whereas $09 is a copy of $01 for programming convenience, since it avoids 
+	; us having to reset wActCurSprMapBaseId when spring collision happens.
 	push af
-	sla  a
-	and  $08
-	ld   [wActCurSprMapRelId], a
+		sla  a							; At double timer speed...
+		and  %1000						; Every 8 frames... (/2)
+		ld   [wActCurSprMapBaseId], a
 	pop  af
+	
+	; If the timer fully elapsed, teleport out
 	or   a
-	jr   nz, L026A35
-	ld   a, AHW_WARPOUT_START
-	ld   [wWpnHelperActive], a
-	jp   ActS_DecRtnId
-L026A35:;R
+	jr   nz, .chkColi
+	ld   a, AHW_WARPOUT_INITANIM
+	ld   [wWpnHelperWarpRtn], a
+	jp   ActS_DecRtnId		; Back to Act_Helper_Teleport
+	
+.chkColi:
+	;
+	; Check if Rush Coil should trigger.
+	;
+	
+	; The player must have collided with this Rush Coil actor.
+	; This collision is checked by Pl_DoActColi.markHelperColi, and only triggers if the player is falling on it.
 	ld   a, [wActHelperColiSlotPtr]
-	ld   b, a
-	ld   a, [wActCurSlotPtr]
-	cp   b
-	ret  nz
+	ld   b, a						; B = Helper actor the player fell on
+	ld   a, [wActCurSlotPtr]		; A = Current actor
+	cp   b							; Do they match?
+	ret  nz							; If not, return (not collided with)
+	
+	; If Rush has already bounced the player up, don't do it again.
 	ldh  a, [hActCur+iActSprMap]
-	bit  3, a
-	ret  nz
-	or   $08
+	bit  3, a						; Is Rush's spring sprite used? ($01)
+	ret  nz							; If so, return (already bounced up)
+	
+	or   $08						; Use spring sprite
 	ldh  [hActCur+iActSprMap], a
-	ld   a, $02
+	ld   a, PL_MODE_FULLJUMP		; Trigger player jump
 	ld   [wPlMode], a
-	ld   a, $04
+	ld   a, $04						; at 4.5px/frame
 	ld   [wPlSpdY], a
 	ld   a, $80
 	ld   [wPlSpdYSub], a
-	jp   WpnS_UseAmmo
-L026A59:;I
+	jp   WpnS_UseAmmo				; Use ammo for the trouble
+	
+;================ Act_RushMarine ================
+; ID: ACT_WPN_RM
+; Rush Marine helper item.
+Act_RushMarine:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026A5C: db $D0
-L026A5D: db $6C
-L026A5E: db $64
-L026A5F: db $6A
-L026A60: db $9B
-L026A61: db $6A
-L026A62: db $E3
-L026A63: db $6A
-L026A64:;I
+	dw Act_Helper_Teleport
+	dw Act_RushMarine_ChkSpawnPos
+	dw Act_RushMarine_WaitPl
+	dw Act_RushMarine_Ride
+	DEF ACTRTN_RUSHMARINE_TELEPORT = $00
+
+;================ Act_RushMarine_ChkSpawnPos ================
+; Determines if the location Rush Marine teleported into is viable.
+; If it isn't, it will immediately teleport out before the player can get in.
+Act_RushMarine_ChkSpawnPos:
+
+	;
+	; Not applicable if the level doesn't have any water to begin with
+	;
 	ld   a, [wLvlWater]
 	or   a
-	jr   z, L026A93
-	ldh  a, [hActCur+iActX]
+	jr   z, .warpOut
+	
+	;
+	; Rush must have fully landed on a water block (both top and bottom)
+	;
+.chkBottom:
+	ldh  a, [hActCur+iActX]		; X Sensor: ActX (center)
 	ld   [wTargetRelX], a
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]		; Y Sensor: ActY (bottom)
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	cp   $10
-	jr   z, L026A7F
-	cp   $18
-	jr   nz, L026A93
-L026A7F:;R
-	ldh  a, [hActCur+iActY]
-	sub  $0F
+	call Lvl_GetBlockId			; A = Block ID
+	cp   BLOCKID_WATER			; Is it a water block?
+	jr   z, .chkTop				; If so, jump (ok)
+	cp   BLOCKID_WATERSPIKE		; Is it an underwater spike?
+	jr   nz, .warpOut			; If not, jump (fail)
+.chkTop:
+	ldh  a, [hActCur+iActY]		; Y Sensor: ActY - $0F (top of block)
+	sub  BLOCK_V-1
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	cp   $10
+	call Lvl_GetBlockId			; Do the same block checks
+	cp   BLOCKID_WATER
 	jp   z, ActS_IncRtnId
-L026A8E: db $FE;X
-L026A8F: db $18;X
-L026A90: db $CA;X
-L026A91: db $B1;X
-L026A92: db $1E;X
-L026A93:;R
-	ld   a, AHW_WARPOUT_START
-	ld   [wWpnHelperActive], a
+	cp   BLOCKID_WATERSPIKE
+	jp   z, ActS_IncRtnId
+	
+.warpOut:
+	ld   a, AHW_WARPOUT_INITANIM	; Checks failed, start teleporting
+	ld   [wWpnHelperWarpRtn], a
 	jp   ActS_DecRtnId
-L026A9B:;I
+	
+;================ Act_RushMarine_WaitPl ================
+; Waiting for the player to ride it.
+; See also: Act_RushCoil_WaitPl
+Act_RushMarine_WaitPl:
+
+	; When 1 second remains, start flashing.
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
-	cp   $3C
-	jr   nc, L026ABB
+	cp   60
+	jr   nc, .chkColi
+	
+	; Flash every 4 frames.
 	push af
-	sla  a
-	and  $08
-	ld   [wActCurSprMapRelId], a
+		sla  a							; At double timer speed...
+		and  %1000						; Every 8 frames... (/2)
+		ld   [wActCurSprMapBaseId], a
 	pop  af
+	
+	; If the timer fully elapsed, teleport out
 	or   a
-	jr   nz, L026ABB
-	ld   a, AHW_WARPOUT_START
-	ld   [wWpnHelperActive], a
-	ld   a, $00
+	jr   nz, .chkColi
+	ld   a, AHW_WARPOUT_INITANIM
+	ld   [wWpnHelperWarpRtn], a
+	ld   a, ACTRTN_RUSHMARINE_TELEPORT
 	ldh  [hActCur+iActRtnId], a
 	ret
-L026ABB:;R
+	
+.chkColi:
+	;
+	; Check if Rush Marine should trigger.
+	;
+	
+	; The player must have collided with this Rush Marine actor.
 	ld   a, [wActHelperColiSlotPtr]
-	ld   b, a
-	ld   a, [wActCurSlotPtr]
-	cp   b
-	ret  nz
+	ld   b, a						; B = Helper actor the player fell on
+	ld   a, [wActCurSlotPtr]		; A = Current actor
+	cp   b							; Do they match?
+	ret  nz							; If not, return (not collided with)
+	
+	; Initialize momentum variables
 	xor  a
 	ld   [wPlRmSpdL], a
 	ld   [wPlRmSpdR], a
 	ld   [wPlRmSpdU], a
 	ld   [wPlRmSpdD], a
+	
+	; Teleport the Rush Marine at the player's X position
 	ld   a, [wPlRelX]
 	ldh  [hActCur+iActX], a
+	; Inconsistently, do the opposite with the Y position
 	ldh  a, [hActCur+iActY]
 	ld   [wPlRelY], a
-	ld   a, $11
+	; Enter the ride state. This will hide the normal player sprite, only drawing Rush Marine.
+	ld   a, PL_MODE_RM
 	ld   [wPlMode], a
 	jp   ActS_IncRtnId
-L026AE3:;I
+	
+;================ Act_RushMarine_Ride ================
+; Player is riding it.
+; This mostly handles drawing the sprite, while the controls are by PlMode_RushMarine.
+Act_RushMarine_Ride:
+	; Animate propeller (use frames $xx-$xx+1 at 1/8 speed)
 	ld   c, $01
 	call ActS_Anim2
+	
+	;
+	; Flashing after getting hit, in differenr ways depending on how long has passed.
+	; Keep in mind the Rush Marine ride state does not handle the hurt state at all,
+	; so the player can keep moving Rush as normal during this.
+	;
+	; The sprite mappings for Rush Marine are grouped in pairs, since the propeller animation
+	; is always done even when flashing, which may offset by 1 the result:
+	;
+	; ...
+	; $08-$09: Hidden
+	; $0A-$0B: Normal
+	; $0C-$0D: Flashing (OBP1)
+	; 
+	
+	;
+	; Immediately after getting hurt, start flashing Rush Marine's palette every 2 frames.
+	; This is done by alternating between sprite mappings $0A-$0B (normal) and $0C-$0D (inverted),
+	; not by simply updating the sprite's palette (which isn't possible with the current system).
+	;
+.chkHurt:
 	ld   a, [wPlHurtTimer]
-	or   a
-	jr   z, L026AF6
-	ldh  a, [hTimer]
-	and  $02
-	add  $0A
-	jr   L026B06
-L026AF6:;R
+	or   a					; Player got hurt?
+	jr   z, .chkInvuln		; If not, skip
+	ldh  a, [hTimer]		
+	and  $02				; Each set has 2 sprites; this also causes the flashing to happen every 2 frames
+	add  $0A				; Use $0A-0B (normal) or $0C-$0D (OBP1)
+	jr   .setSpr
+.chkInvuln:
+	;
+	; If the player is in mercy invulnerability, flash by hiding the sprite every 2 frames.
+	;
 	ld   a, [wPlInvulnTimer]
-	or   a
-	jr   z, L026B04
+	or   a					; Player is invulnerable?
+	jr   z, .noFlash		; If not, skip
 	ldh  a, [hTimer]
-	and  $02
-	add  $08
-	jr   L026B06
-L026B04:;R
-	ld   a, $0A
-L026B06:;R
-	ld   [wActCurSprMapRelId], a
-	ld   a, [wPlRelX]
+	and  $02				; ...
+	add  $08				; Use $08-09 (hide) or $0A-$0B (normal)
+	jr   .setSpr
+.noFlash:
+	; Otherwise, display the normal sprites
+	ld   a, $0A				; Use $0A-$0B
+	
+.setSpr:
+	ld   [wActCurSprMapBaseId], a	; Apply sprite
+	ld   a, [wPlRelX]				; Sync Rush Marine with player's position (latter set by PlMode_RushMarine)
 	ldh  [hActCur+iActX], a
 	ld   a, [wPlRelY]
 	ldh  [hActCur+iActY], a
-	ld   a, [wPlDirH]
-	rrca 
-	and  $80
-	ld   b, a
-	ldh  a, [hActCur+iActSprMap]
-	and  $7F
-	or   b
-	ldh  [hActCur+iActSprMap], a
-	ld   a, [wWpnSGUseTimer]
+	
+	; Face the same direction as the player
+	ld   a, [wPlDirH]				; Get player direction (DIR_L or DIR_R, bit0)
+	rrca 							; Shift to bit7
+	and  ACTDIR_R					; Filter out other bits
+	ld   b, a						; to B
+	ldh  a, [hActCur+iActSprMap]	; Get actor sprite info
+	and  $FF^ACTDIR_R				; Delete horizontal direction flag
+	or   b							; Replace with the player's
+	ldh  [hActCur+iActSprMap], a	; Save back
+	
+	;
+	; Ammo consumption rate: every 1 unit / 16 frames (1 bar / ~2 seconds).
+	; Once it's fully consumed, kick the player out.
+	;
+	; [POI] This address is only initialized when the level starts and never again.
+	;       This can be theoretically used to avoid consuming weapon ammo by switching 
+	;       out just in time and letting another weapon underflow the timer, in practice
+	;       it's pointless and annoying to do.
+	ld   a, [wWpnHelperUseTimer]	; Timer -= $10
 	sub  $10
-	ld   [wWpnSGUseTimer], a
-	call c, WpnS_UseAmmo
+	ld   [wWpnHelperUseTimer], a
+	call c, WpnS_UseAmmo			; Underflowed? If so, use it
+	
 	ld   a, [wWpnAmmoCur]
-	or   a
-	ret  nz
-	xor  a
+	or   a							; Any ammo left?
+	ret  nz							; If so, return
+	xor  a ; PL_MODE_GROUND			; Otherwise, force player out of the ride
 	ld   [wPlMode], a
-	ld   a, AHW_WARPOUT_START
-	ld   [wWpnHelperActive], a
-	ld   a, $00
+	ld   a, AHW_WARPOUT_INITANIM	; and teleport Rush out
+	ld   [wWpnHelperWarpRtn], a
+	ld   a, ACTRTN_RUSHMARINE_TELEPORT
 	ldh  [hActCur+iActRtnId], a
 	ret
-L026B3F:;I
+	
+;================ Act_RushJet ================
+; ID: ACT_WPN_RJ
+; Rush Jet helper item.
+Act_RushJet:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026B42: db $D0
-L026B43: db $6C
-L026B44: db $4A
-L026B45: db $6B
-L026B46: db $70
-L026B47: db $6B
-L026B48: db $A8
-L026B49: db $6B
-L026B4A:;I
+	dw Act_Helper_Teleport
+	dw Act_RushJet_ChkSpawnPos
+	dw Act_RushJet_WaitPl
+	dw Act_RushJet_Ride
+	DEF ACTRTN_RUSHJET_TELEPORT = $00
+
+;================ Act_RushJet_ChkSpawnPos ================
+; Determines if the location Rush Jet teleported into is viable.
+; If it isn't, it will immediately teleport out before the player can get in.
+Act_RushJet_ChkSpawnPos:
+
 	ld   a, [wLvlWater]
-	or   a
-	jr   z, L026B65
-	ldh  a, [hActCur+iActX]
+	or   a					; Does the level have water?
+	jr   z, .ok				; If not, skip checks (Act_Helper_Teleport already checked for solid blocks)
+	
+	; Rush must not have landed on a water block
+	ldh  a, [hActCur+iActX]		; X Sensor: ActX (center)
 	ld   [wTargetRelX], a
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]		; Y Sensor: ActY (bottom)
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	cp   $10
-	jr   z, L026B68
-	cp   $18
-	jr   z, L026B68
-L026B65:;R
+	call Lvl_GetBlockId			; A = Block ID
+	cp   BLOCKID_WATER			; Is it a water block?
+	jr   z, .warpOut			; If so, jump (fail)
+	cp   BLOCKID_WATERSPIKE		; Is it an underwater spike?
+	jr   z, .warpOut			; If so, jump (fail)
+.ok:
 	jp   ActS_IncRtnId
-L026B68:;R
-	ld   a, AHW_WARPOUT_START
-	ld   [wWpnHelperActive], a
+.warpOut:
+	ld   a, AHW_WARPOUT_INITANIM
+	ld   [wWpnHelperWarpRtn], a
 	jp   ActS_DecRtnId
-L026B70:;I
+	
+;================ Act_RushJet_WaitPl ================
+; Waiting for the player to stand on it.
+Act_RushJet_WaitPl:
+
+	; When 1 second remains, start flashing.
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
-	cp   $3C
-	jr   nc, L026B90
-L026B7A: db $F5;X
-L026B7B: db $CB;X
-L026B7C: db $27;X
-L026B7D: db $E6;X
-L026B7E: db $08;X
-L026B7F: db $EA;X
-L026B80: db $38;X
-L026B81: db $CF;X
-L026B82: db $F1;X
-L026B83: db $B7;X
-L026B84: db $20;X
-L026B85: db $0A;X
-L026B86: db $3E;X
-L026B87: db $06;X
-L026B88: db $EA;X
-L026B89: db $F1;X
-L026B8A: db $CF;X
-L026B8B: db $3E;X
-L026B8C: db $00;X
-L026B8D: db $E0;X
-L026B8E: db $A1;X
-L026B8F: db $C9;X
-L026B90:;R
+	cp   60
+	jr   nc, .chkColi
+	
+	; Flash every 4 frames.
+	push af
+		sla  a							; At double timer speed...
+		and  %1000						; Every 8 frames... (/2)
+		ld   [wActCurSprMapBaseId], a
+	pop  af
+	
+	; If the timer fully elapsed, teleport out
+	or   a
+	jr   nz, .chkColi
+	ld   a, AHW_WARPOUT_INITANIM
+	ld   [wWpnHelperWarpRtn], a
+	ld   a, ACTRTN_RUSHJET_TELEPORT
+	ldh  [hActCur+iActRtnId], a
+	ret
+	
+.chkColi:
+	;
+	; Check if Rush Jet should trigger.
+	;
+	
+	; The player must have collided with this Rush Jet actor.
 	ld   a, [wActCurSlotPtr]
-	ld   b, a
-	ld   a, [wActHelperColiSlotPtr]
-	cp   b
-	ret  nz
+	ld   b, a						; B = Current actor
+	ld   a, [wActHelperColiSlotPtr]	; A = Helper actor the player fell on
+	cp   b							; Do they match?
+	ret  nz							; If not, return (not collided with)
+	
+	; When the player is on Rush Jet, move at 1px/frame in any direction
 	ld   bc, $0100
 	call ActS_SetSpeedX
 	ld   bc, $0100
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L026BA8:;I
+	
+;================ Act_RushJet_Ride ================
+; Player is riding it.
+;
+; Rush Jet is simply a top solid platform that follows the player, whose height can be controlled while standing.
+; The normal player modes and the Rush Jet actor collision code handle the rest, with very few RJ-specific checks in place:
+; - Skipping the walk cycle when moving
+; - Preventing sliding on Rush Jet, mainly to prevent falling off as the slide is faster than Rush Jet.
+Act_RushJet_Ride:
+
+	;
+	; HORIZONTAL MOVEMENT
+	;
+	
+	;
+	; Always try to move Rush Jet at the player's horizontal position.
+	; When standing on it, this is what allows to keep it in sync with the player's movement,
+	; it's also the *only* part that's even done when not standing on it, with its speed 
+	; allowing it to catch up as long as the player isn't sliding.
+	;
+	; By *only* part, we really mean it. Everything else is skipped, including the check
+	; that makes it use up ammo, ala RM3 Rush Jet.
+	;
 	call ActS_GetPlDistanceX
-	or   a
-	jr   z, L026BB4
-	call ActS_FacePl
-	call ActS_ApplySpeedFwdXColi
-L026BB4:;R
+	or   a							; DiffX == 0?
+	jr   z, .chkStand				; If so, skip (we're precisely 
+	call ActS_FacePl				; Move towards the player
+	call ActS_ApplySpeedFwdXColi	; at 1px/frame, stopping on solid blocks
+	
+.chkStand:
+	; Do the rest only if the player is standing on it
 	ld   a, [wActCurSlotPtr]
 	ld   b, a
 	ld   a, [wActPlatColiSlotPtr]
 	cp   b
 	ret  nz
+	
+	;
+	; VERTICAL MOVEMENT
+	;
+	
+	; Do the checks by shifting the topmost KEY_* bits to the carry, one by one.
 	ldh  a, [hJoyKeys]
-	rla  
-	jr   nc, L026BEF
+	;--
+	rla ; KEY_DOWN				; Holding DOWN?
+	jr   nc, .chkMoveU			; If not, skip
+.moveD:
+	; If we touch the bottom of the screen, teleport out.
 	ldh  a, [hActCur+iActY]
-	cp   $90
-	jr   nc, L026C31
+	cp   OBJ_OFFSET_Y+SCREEN_GAME_V	; iActY > $90?
+	jr   nc, .teleport				; If so, jump
+	
+	; Prevent moving towards water
 	ld   a, [wLvlWater]
-	or   a
-	jr   z, L026BE4
-	ldh  a, [hActCur+iActX]
+	or   a						; Level supports water?
+	jr   z, .okMoveD			; If not, jump (ok)
+	ldh  a, [hActCur+iActX]		; X Sensor: ActX (center)
 	ld   [wTargetRelX], a
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]		; Y Sensor: ActY + 1 (ground)
 	inc  a
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	cp   $10
-	jr   z, L026C21
-	cp   $18
-	jr   z, L026C21
-L026BE4:;R
+	call Lvl_GetBlockId			; A = Block ID
+	cp   BLOCKID_WATER			; Is it a water block?
+	jr   z, .chkAmmo			; If so, jump (fail)
+	cp   BLOCKID_WATERSPIKE		; Is it an underwater spike?
+	jr   z, .chkAmmo			; If so, jump (fail)
+.okMoveD:
+	; Confirm downwards movement at 1px/frame
 	ldh  a, [hActCur+iActSprMap]
-	or   $40
+	or   ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
 	call ActS_ApplySpeedFwdYColi
-	jr   L026C21
-L026BEF:;R
-	rla  
-	jr   nc, L026C21
+	jr   .chkAmmo
+	;--
+	
+.chkMoveU:
+	rla ; KEY_UP				; Holding UP?
+	jr   nc, .chkAmmo			; If not, skip
+.moveU:
+	; If we're near the top of the screen, prevent moving further up
 	ld   a, [wPlRelY]
-	cp   $18
-	jr   c, L026C21
-	sub  $18
+	cp   OBJ_OFFSET_Y+$08	; iActY < $18?
+	jr   c, .chkAmmo		; If so, jump
+	
+	; Prevent moving up if there's a solid block above, using the same collision box
+	; as the player, except taller.
+	
+	sub  (PLCOLI_V*2)		; Y Sensor: ActY - $18 (above the player)
 	ld   [wTargetRelY], a
-	ld   a, [wPlRelX]
-	sub  $06
+	ld   a, [wPlRelX]		; X Sensor: ActX - $06 (left)
+	sub  PLCOLI_H
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	jr   nc, L026C21
-	ld   a, [wPlRelX]
-	add  $06
+	call Lvl_GetBlockId		; Is the block solid?
+	jr   nc, .chkAmmo		; If so, jump (don't move)
+	
+	ld   a, [wPlRelX]		; X Sensor: ActX + $06 (right)
+	add  PLCOLI_H
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	jr   nc, L026C21
+	call Lvl_GetBlockId		; Is the block solid?
+	jr   nc, .chkAmmo		; If so, jump (don't move)
+.okMoveU:
+	; Confirm upwards movement at 1px/frame
 	ldh  a, [hActCur+iActSprMap]
-	and  $BF
+	and  $FF^ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
 	call ActS_ApplySpeedFwdY
-L026C21:;R
-	ld   a, [wWpnSGUseTimer]
+	;--
+.chkAmmo:
+
+	;
+	; Ammo consumption rate: every 1 unit / 8 frames (1 bar / ~1 second).
+	; Once it's fully consumed, teleport out, making the player fall down.
+	;
+	ld   a, [wWpnHelperUseTimer]	; Timer -= $20
 	sub  $20
-	ld   [wWpnSGUseTimer], a
-	call c, WpnS_UseAmmo
+	ld   [wWpnHelperUseTimer], a
+	call c, WpnS_UseAmmo			; Underflowed? If so, use it
+	
 	ld   a, [wWpnAmmoCur]
-	or   a
-	ret  nz
-L026C31:;R
-	ld   a, AHW_WARPOUT_START
-	ld   [wWpnHelperActive], a
-	ld   a, $00
+	or   a							; Any ammo left?
+	ret  nz							; If so, return
+.teleport:
+	ld   a, AHW_WARPOUT_INITANIM	; Otherwise, teleport out
+	ld   [wWpnHelperWarpRtn], a
+	ld   a, ACTRTN_RUSHJET_TELEPORT
 	ldh  [hActCur+iActRtnId], a
 	ret
-L026C3B:;I
+	
+;================ Act_Sakugarne ================
+; ID: ACT_WPN_SG
+; Sakugarne helper item.
+Act_Sakugarne:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026C3E: db $D0
-L026C3F: db $6C
-L026C40: db $46
-L026C41: db $6C
-L026C42: db $85
-L026C43: db $6C
-L026C44: db $A1
-L026C45: db $6C
-L026C46:;I
+	dw Act_Helper_Teleport
+	dw Act_Sakugarne_WaitPl
+	dw Act_Sakugarne_WaitGfxLoad
+	dw Act_Sakugarne_Ride
+	DEF ACTRTN_SAKUGARNE_TELEPORT = $00
+	
+;================ Act_Sakugarne_WaitPl ================
+; Waiting for the player to ride it.
+; See also: Act_RushCoil_WaitPl
+Act_Sakugarne_WaitPl:
+
+	; When 1 second remains, start flashing.
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
-	cp   $3C
-	jr   nc, L026C64
+	cp   60
+	jr   nc, .chkColi
+	
+	; Flash every 4 frames.
 	push af
-	sla  a
-	and  $08
-	ld   [wActCurSprMapRelId], a
+		sla  a							; At double timer speed...
+		and  %1000						; Every 8 frames... (/2)
+		ld   [wActCurSprMapBaseId], a
 	pop  af
+	
+	; If the timer fully elapsed, teleport out
 	or   a
-	jr   nz, L026C64
-	ld   a, AHW_WARPOUT_START
-	ld   [wWpnHelperActive], a
+	jr   nz, .chkColi
+	ld   a, AHW_WARPOUT_INITANIM
+	ld   [wWpnHelperWarpRtn], a
 	jp   ActS_DecRtnId
-L026C64:;R
+	
+.chkColi:
+	;
+	; Check if the Sakugarne should trigger.
+	;
+	
+	; The player must have collided with this actor.
 	ld   a, [wActHelperColiSlotPtr]
-	ld   b, a
-	ld   a, [wActCurSlotPtr]
-	cp   b
-	ret  nz
+	ld   b, a						; B = Helper actor the player fell on
+	ld   a, [wActCurSlotPtr]		; A = Current actor
+	cp   b							; Do they match?
+	ret  nz							; If not, return (not collided with)
+	
+	;
+	; Player fell on the Sakugarne.
+	;
+	; Like when riding the Rush Marine, the normal player sprite is hidden, with the actor being
+	; drawn with the player's graphics baked in, to save up on the amount of sprites drawn.
+	;
+	; However, keeping the playerless and w/player Sakugarne graphics loaded at the same time 
+	; is a waste and also not possible, as in total they'd go over the 16 tile limit for weapon art sets.
+	; Therefore, those two variations take up two separate sets, and we have to load the 2nd one.
+	;
+	
+	; Since we're loading new GFX while the actor is onscreen, we have to hide it temporarily,
+	; as long as it needs for the graphics to fully load.
 	ld   a, $01
 	call ActS_SetSprMapId
-	ld   hl, $4C00
-	ld   de, $8500
-	ld   bc, $0B10
+	
+	; Start GFX load request
+	ld   hl, GFX_Wpn_SgRide ; Source GFX ptr
+	ld   de, $8500 ; VRAM Destination ptr (2nd set)
+	ld   bc, (BANK(GFX_Wpn_SgRide) << 8) | $10 ; Source GFX bank number + Number of tiles to copy
 	call GfxCopy_Req
+	
+	; Graphics are loaded 4 tiles/frame, so loading 16 tiles will take up 4 frames.
 	ld   a, $04
 	ldh  [hActCur+iActTimer0C], a
+	
 	jp   ActS_IncRtnId
-L026C85:;I
+	
+;================ Act_Sakugarne_WaitGfxLoad ================
+; Sets up the ride state.
+Act_Sakugarne_WaitGfxLoad:
+	; Wait 4 frames while the GFX set hopefully loads.
+	; During this time the normal player sprite will still be visible.
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, [wPlRelX]
+	
+	; Same inconsistency as Rush Marine
+	ld   a, [wPlRelX]			; ActX = PlX
 	ldh  [hActCur+iActX], a
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]		; PlY = ActY
 	ld   [wPlRelY], a
-	xor  a
+	; The Sakugarne controls are handled by PL_MODE_GROUND and PL_MODE_FULLJUMP only.
+	xor  a ; PL_MODE_GROUND
 	ld   [wPlMode], a
+	; Flag the Sakugarne as being riden.
+	; This will hide the normal player sprite.
 	inc  a
-	ld   [wWpnSGRide], a
+	ld   [wWpnSGRide], a		; wWpnSGRide = 1
 	jp   ActS_IncRtnId
-L026CA1:;I
+	
+;================ Act_Sakugarne_Ride ================
+; Player is riding it.
+; Purely handles drawing the sprite and the ridiculous ammo usage.
+Act_Sakugarne_Ride:
+	; Sync Sakugarne with player's position
 	ld   a, [wPlRelX]
 	ldh  [hActCur+iActX], a
 	ld   a, [wPlRelY]
 	ldh  [hActCur+iActY], a
-	cp   $90
-	jr   nc, L026CBF
-	ld   a, [wWpnSGUseTimer]
+	
+	; If we touch the bottom of the screen, teleport out.
+	cp   OBJ_OFFSET_Y+SCREEN_GAME_V	; iActY > $90?
+	jr   nc, .teleport				; If so, jump
+	
+	; Ammo consumption rate: every 1 unit / 4 frames (1 bar / ~half a second).
+	ld   a, [wWpnHelperUseTimer]	; Timer -= $40
 	sub  $40
-	ld   [wWpnSGUseTimer], a
-	call c, WpnS_UseAmmo
+	ld   [wWpnHelperUseTimer], a
+	call c, WpnS_UseAmmo			; Underflowed? If so, use it
+	
 	ld   a, [wWpnAmmoCur]
-	or   a
-	ret  nz
-L026CBF:;R
-	xor  a
-	ld   [wPlMode], a
-	ld   [wWpnSGRide], a
-	ld   a, AHW_WARPOUT_START
-	ld   [wWpnHelperActive], a
-	ld   a, $00
+	or   a							; Any ammo left?
+	ret  nz							; If so, return
+.teleport:
+	xor  a ; PL_MODE_GROUND
+	ld   [wPlMode], a				; Cut early any jump
+	ld   [wWpnSGRide], a			; Disable ride mode & draw normal player sprite
+	ld   a, AHW_WARPOUT_INITANIM	; Teleport the Sakugarne out
+	ld   [wWpnHelperWarpRtn], a
+	ld   a, ACTRTN_SAKUGARNE_TELEPORT
 	ldh  [hActCur+iActRtnId], a
 	ret
-L026CD0:;I
-	ld   a, [wWpnHelperActive]
+	
+;================ Act_Helper_Teleport ================
+; Routine shared by all helper item actors (Rush, Sakugarne), handles teleporting in and out.
+Act_Helper_Teleport:
+	ld   a, [wWpnHelperWarpRtn]
 	dec  a
 	rst  $00 ; DynJump
-L026CD5: db $E5
-L026CD6: db $6C
-L026CD7: db $05
-L026CD8: db $6D
-L026CD9: db $17
-L026CDA: db $6D
-L026CDB: db $78
-L026CDC: db $6D
-L026CDD: db $8B
-L026CDE: db $6D
-L026CDF: db $CF
-L026CE0: db $6D
-L026CE1: db $E2
-L026CE2: db $6D
-L026CE3: db $09
-L026CE4: db $6E
-L026CE5:;I
+	dw Act_Helper_TeleportIn_Init
+	dw Act_Helper_TeleportIn_MoveD
+	dw Act_Helper_TeleportIn_MoveDChkSpawn
+	dw Act_Helper_TeleportIn_Anim
+	dw Act_Helper_TeleportIn_ChkSolid
+	dw Act_Helper_TeleportOut_InitAnim
+	dw Act_Helper_TeleportOut_Anim
+	dw Act_Helper_TeleportOut_MoveU
+
+;================ Act_Helper_TeleportIn_Init ================
+; Teleport in - initialize.
+Act_Helper_TeleportIn_Init:
+	; Use teleport sprite $02.
+	; By convention, all helper items need to define it there.
 	ld   a, $02
 	call ActS_SetSprMapId
+	
+	; Reset gravity in preparation of falling from the top of the screen
 	xor  a
 	ldh  [hActCur+iActSpdYSub], a
 	ldh  [hActCur+iActSpdY], a
-	ld   hl, wWpnHelperActive
+	
+	; Next mode
+	ld   hl, wWpnHelperWarpRtn
 	inc  [hl]
+	
+	;--
+	; The Sakugarne uses two sets of graphics, one without the player, the other with the player baked in.
+	; It is possible to spawn one while the 2nd set is loaded, so to be sure force load the 1st set.
+	; See also: Act_Sakugarne_WaitPl
+	
 	ld   a, [wWpnId]
-	cp   $0C
-	ret  nz
-	ld   hl, $4D00
-	ld   de, $8500
-	ld   bc, $0B08
+	cp   WPN_SG			; Are we using the Sakugarne?
+	ret  nz				; If not, return
+	
+	; Otherwise, request the loading.
+	; It will take 2 frames, which is well ahead of our limit given the teleport animation uses shared graphics.
+	ld   hl, GFX_Wpn_Sg ; Source GFX ptr
+	ld   de, $8500 ; VRAM Destination ptr (2nd set)
+	ld   bc, (BANK(GFX_Wpn_Sg) << 8) | $08 ; Source GFX bank number + Number of tiles to copy
 	jp   GfxCopy_Req
-L026D05:;I
+	;--
+	
+;================ Act_Helper_TeleportIn_MoveD ================
+; Teleport in - move down.
+Act_Helper_TeleportIn_MoveD:
+	; Move down until it reaches 24px above the player.
+	; This is a common threshold applicable for all helpers.
 	call ActS_ApplySpeedDownY
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]	; B = ActX
 	ld   b, a
-	ld   a, [wPlRelY]
+	ld   a, [wPlRelY]		; A = PlX - 24
 	sub  $18
-	cp   b
-	ret  nc
-	ld   hl, wWpnHelperActive
+	cp   b					; Player is below the actor? (PlX - 24 > ActX)
+	ret  nc					; If so, keep moving down
+	
+	; Otherwise, start the ground anim
+	ld   hl, wWpnHelperWarpRtn
 	inc  [hl]
 	ret
-L026D17:;I
+	
+;================ Act_Helper_TeleportIn_MoveDChkSpawn ================
+; Teleport in - move down and check if the helper is viable to spawn at the current position.
+; This will continue moving down the actor until the checks pass or it moves below the level.
+Act_Helper_TeleportIn_MoveDChkSpawn:
+
+	;
+	; If the actor has reached below the level, teleport out on the spot.
+	; This can be easily noticed by attempting to spawn something while facing a solid wall.
+	;
 	ldh  a, [hActCur+iActY]
-	cp   $90
-	jr   c, L026D23
-	ld   a, $06
-	ld   [wWpnHelperActive], a
+	cp   OBJ_OFFSET_Y+SCREEN_GAME_V		; iActY < $90?
+	jr   c, .chkRc						; If so, keep trying
+	
+	ld   a, AHW_WARPOUT_INITANIM			; Otherwise, teleport out
+	ld   [wWpnHelperWarpRtn], a
 	ret
-L026D23:;R
+	
+	;
+	; Depending on the helper we're spawning, check for something different.
+	;
+.chkRc:
 	ld   a, [wWpnId]
-	cp   $01
-	jr   nz, L026D37
+	cp   WPN_RC						; Spawned Rush Coil?
+	jr   nz, .chkRm					; If not, jump
+	
+	; Continue moving down until a solid block is hit
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $00
+	; When reached, advance to the next routine
+	ld   a, $00						; Init anim
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnHelperActive
+	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]
 	ret
-L026D37:;R
-	cp   $02
-	jr   nz, L026D51
+	
+.chkRm:
+	cp   WPN_RM						; Spawned Rush Marine?
+	jr   nz, .chkRj					; If not, jump
+	
+	; Continue moving down until the actor reaches the player
 	call ActS_ApplySpeedDownY
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]			; B = ActY
 	ld   b, a
-	ld   a, [wPlRelY]
-	cp   b
-	ret  nc
-	ldh  [hActCur+iActY], a
-	ld   a, $00
+	ld   a, [wPlRelY]				; A = PlY
+	cp   b							; Player is below the actor? (PlY > ActY)
+	ret  nc							; If so, keep moving down
+	
+	ldh  [hActCur+iActY], a			; Otherwise, align with player position
+	ld   a, $00						; Init anim
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnHelperActive
+	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]
 	ret
-L026D51:;R
-	cp   $03
-	jr   nz, L026D6B
+	
+.chkRj:
+	; Identical to Rush Marine
+	cp   WPN_RJ						; Spawned Rush Jet?
+	jr   nz, .chkSg					; If not, jump
+	
+	; Continue moving down until the actor reaches the player
 	call ActS_ApplySpeedDownY
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]			; B = ActY
 	ld   b, a
-	ld   a, [wPlRelY]
-	cp   b
-	ret  nc
-	ldh  [hActCur+iActY], a
-	ld   a, $00
+	ld   a, [wPlRelY]				; A = PlY
+	cp   b							; Player is below the actor? (PlY > ActY)
+	ret  nc							; If so, keep moving down
+	
+	ldh  [hActCur+iActY], a			; Otherwise, align with player position
+	ld   a, $00						; Init anim
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnHelperActive
+	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]
 	ret
-L026D6B:;R
+.chkSg:
+	; Otherwise, assume the Sakugarne (WPN_SG)
+	; Identical to Rush Coil
+	
+	; Continue moving down until a solid block is hit
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $00
+	; When reached, advance to the next routine
+	ld   a, $00						; Init anim
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wWpnHelperActive
+	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]
 	ret
-L026D78:;I
-	ldh  a, [hActCur+iActTimer0C]
+	
+;================ Act_Helper_TeleportIn_Anim ================
+; Teleport in - ground animation
+Act_Helper_TeleportIn_Anim:
+	ldh  a, [hActCur+iActTimer0C]	; Timer++
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
-	srl  a
-	ld   [wActCurSprMapRelId], a
-	cp   $05
-	ret  nz
-	ld   hl, wWpnHelperActive
+	
+	; Starting from a pre-incremented $00, this will animate from $00 to $05
+	srl  a							; SprMapId = Timer / 2 
+	ld   [wActCurSprMapBaseId], a
+	cp   $05						; SprMapId == 5?
+	ret  nz							; If not, return
+
+	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]
 	ret
-L026D8B:;I
-	ld   a, $05
-	ld   [wActCurSprMapRelId], a
-	ldh  a, [hActCur+iActY]
+	
+;================ Act_Helper_TeleportIn_ChkSolid ================
+; Teleport in - solid ground check.
+Act_Helper_TeleportIn_ChkSolid:
+	ld   a, $05						; Stay on sprite $05 while checking
+	ld   [wActCurSprMapBaseId], a
+	
+	; LEFT SIDE
+	ldh  a, [hActCur+iActY]			; Y Sensor: ActY - 4 (low)
 	sub  $04
 	ld   [wTargetRelY], a
-	ldh  a, [hActCur+iActX]
+	ldh  a, [hActCur+iActX]			; X Sensor: ActX - 8 (left)
 	sub  $08
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	jr   nc, L026DCA
-	ldh  a, [hActCur+iActX]
+	call Lvl_GetBlockId				; Is there an empty block there?
+	jr   nc, .warpOut				; If not, teleport out
+	
+	; RIGHT SIDE
+	ldh  a, [hActCur+iActX]			; X Sensor: ActX + 8 (right)
 	add  $08
 	ld   [wTargetRelX], a
-	call Lvl_GetBlockId
-	jr   nc, L026DCA
-	ld   a, $00
+	call Lvl_GetBlockId				; Is there an empty block there?
+	jr   nc, .warpOut				; If not, teleport out
+	
+.ok:
+	; Checks passed!
+	ld   a, $00						; Return to normal sprite
 	call ActS_SetSprMapId
-	call ActS_FacePl
-	call ActS_FlipH
-	ld   a, $FF
-	ld   [wWpnHelperActive], a
-	ld   a, $0C
+	call ActS_FacePl				; Face the opposite side as the player. As it's spawned in front, 
+	call ActS_FlipH					; typically this causes it to face the same direction as the player.
+	
+	ld   a, AHW_ACTIVE				; Mark helper item as active
+	ld   [wWpnHelperWarpRtn], a
+	ld   a, SFX_TELEPORTIN			; PLay landing sound
 	ldh  [hSFXSet], a
-	ld   a, $B4
+	ld   a, 60*3					; If the player doesn't interact within 3 seconds, automatically teleport it out
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026DCA:;R
-	ld   hl, wWpnHelperActive
+.warpOut:
+	; If we got here, a solid block was in the way, so teleport out immediately.
+	; For what's worth, as this is done after doing the ground animation, it will
+	; look slightly different compared to teleport from moving below the level.
+	ld   hl, wWpnHelperWarpRtn
 	inc  [hl]
 	ret
-L026DCF:;I
-	ld   a, $02
+	
+;================ Act_Helper_TeleportOut_InitAnim ================
+; Teleport out - ground animation init. 
+Act_Helper_TeleportOut_InitAnim:
+	ld   a, $02					; Use normal teleport sprite
 	call ActS_SetSprMapId
-	ld   a, $0A
+	ld   a, $0A					; Wait 8 frames (see below)
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $05
-	ld   [wActCurSprMapRelId], a
-	ld   hl, wWpnHelperActive
+	ld   a, $05					; Start from sprite $05
+	ld   [wActCurSprMapBaseId], a
+	ld   hl, wWpnHelperWarpRtn	; Next mode
 	inc  [hl]
 	ret
-L026DE2:;I
-	ldh  a, [hActCur+iActTimer0C]
+	
+;================ Act_Helper_TeleportOut_Anim ================
+; Teleport out - ground animation. 
+Act_Helper_TeleportOut_Anim:
+	ldh  a, [hActCur+iActTimer0C]	; Timer--
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
-	srl  a
-	ld   [wActCurSprMapRelId], a
-	or   a
-	ret  nz
-	ld   a, $02
+	
+	; Starting from a pre-decremented $0A, this will animate from $04 to $01
+	srl  a							; SprMapId = Timer / 2 
+	ld   [wActCurSprMapBaseId], a
+	or   a							; SprMapId == 0?
+	ret  nz							; If not, return
+	
+	ld   a, $02						; Use normal teleport sprite $02
 	call ActS_SetSprMapId
-	ldh  a, [hActCur+iActSprMap]
-	and  $BF
+	
+	ldh  a, [hActCur+iActSprMap]	; Move up at 4px/frame
+	and  $FF^ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
 	ld   bc, $0400
 	call ActS_SetSpeedY
-	ld   a, $0D
+	ld   a, SFX_TELEPORTOUT			; Play teleport sound
 	ldh  [hSFXSet], a
-	ld   hl, wWpnHelperActive
+	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]
 	ret
-L026E09:;I
+	
+;================ Act_Helper_TeleportOut_MoveU ================
+; Teleport out - moving up. 
+Act_Helper_TeleportOut_MoveU:
+	; Continue moving up until we reach the top of the screen
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActY]
-	cp   $10
-	ret  nc
+	cp   OBJ_OFFSET_Y		; iActY >= $10?
+	ret  nc					; If so, return
+	; Then despawn and flag that there's no helper actor active
 	xor  a
 	ldh  [hActCur+iActId], a
-	ld   [wWpnHelperActive], a
+	ld   [wWpnHelperWarpRtn], a
 	ret
-L026E18:;I
+	
+;================ Act_Bubble ================
+; ID: ACT_BUBBLE
+; Air bubble spawned by the player when underwater.
+Act_Bubble:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026E1B: db $21
-L026E1C: db $6E
-L026E1D: db $39
-L026E1E: db $6E
-L026E1F: db $6D
-L026E20: db $6E
-L026E21:;I
-	ld   bc, $0080
+	dw Act_Bubble_Init
+	dw Act_Bubble_MoveU
+	dw Act_Bubble_Pop
+
+;================ Act_Bubble_Init ================
+Act_Bubble_Init:
+	ld   bc, $0080			; 0.5px/frame forward
 	call ActS_SetSpeedX
-	ld   bc, $0080
+	ld   bc, $0080			; 0.5px/frame up
 	call ActS_SetSpeedY
-	call Rand
-	and  $F7
+	
+	; Randomize time before turning the first time.
+	call Rand					; iActTimer0C = (Rand & $F7) + $0F
+	and  $FF^$08
 	add  $0F
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026E39:;I
-	ldh  a, [hActCur+iActTimer0C]
+	
+;================ Act_Bubble_MoveU ================
+Act_Bubble_MoveU:
+	; Turn horizontally every ~half a second
+	ldh  a, [hActCur+iActTimer0C]	; iActTimer0C++
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
-	and  $1F
-	call z, ActS_FlipH
+	and  $1F						; Timer % $20 != 0?
+	call z, ActS_FlipH				; If so, turn around
+	
+	; Move forward 0.5px/frame, turning if a solid wall is hit
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	
+	; Move up 0.5px/frame
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActX]
+	
+	; Continue doing the above until we exit out of a water block.
+	; Typically this happens when the bubble hits the "ceiling" or a water surface.
+	ldh  a, [hActCur+iActX]		; X Target: ActX (center)
 	ld   [wTargetRelX], a
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]		; Y Target: ActY (bottom)
 	ld   [wTargetRelY], a
-	call Lvl_GetBlockId
-	ret  nc
-	cp   $10
-	ret  z
-	cp   $18
-	ret  z
+	;--
+	; [BUG] But why? The only reason this is typically unnoticed is that
+	;       there usually are empty blocks above water ones.
+	call Lvl_GetBlockId			; Is there a solid block?
+	ret  nc						; If so, return
+	;--
+	cp   BLOCKID_WATER			; Is it a water block?
+	ret  z						; If so, return
+	cp   BLOCKID_WATERSPIKE		; Is it an underwater spike?
+	ret  z						; If so, return
+	
+	; Then pop it. Show popped sprite for 8 frames
 	ld   a, $01
 	call ActS_SetSprMapId
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026E6D:;I
+	
+;================ Act_Bubble_Pop ================
+Act_Bubble_Pop:
+	; Wait those 8 frames...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Then despawn
 	xor  a
 	ldh  [hActCur+iActId], a
 	ret
-L026E78:;I
+	
+;================ Act_WilyCastleCutscene ================
+; ID: ACT_WILYCASTLESC
+; ??? There's actually no code for this, it's only used to load the respective graphics in.
+; ??? The cutscene itself is not handled by an actor, rather it's hardcoded in ??????.
+Act_WilyCastleCutscene:
 	ret
-L026E79:;I
+	
+;================ Act_TeleporterRoom ================
+; ID: ACT_TELEPORTCTRL
+; This actor controls all four teleporters inside Wily's Castle.
+Act_TeleporterRoom:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026E7C: db $80
-L026E7D: db $6E
-L026E7E: db $AB
-L026E7F: db $6E
-L026E80:;I
-	ld   b, $00
+	dw Act_TeleporterRoom_SpawnLights
+	dw Act_TeleporterRoom_WaitPl
+
+;================ Act_TeleporterRoom_SpawnLights ================
+; Spawns flashing lights above active teleporters.
+; These lights are purely a visual effect, teleporting is done by this actor.
+Act_TeleporterRoom_SpawnLights:
+
+	ld   b, $00								; B = Coords ID (top-left)
 	ld   a, [wWpnUnlock0]
-	and  $40
-	call z, L026F16
-	ld   b, $01
+	and  WPU_HA								; Cleared Hard Man's stage?
+	call z, Act_TeleporterRoom_SpawnLight	; If not, flash a light there
+	
+	ld   b, $01								; B = Top-right
 	ld   a, [wWpnUnlock0]
-	and  $01
-	call z, L026F16
-	ld   b, $02
+	and  WPU_TP								; Cleared Top Man's stage?
+	call z, Act_TeleporterRoom_SpawnLight	; ...
+	
+	ld   b, $02								; B = Bottom-left
 	ld   a, [wWpnUnlock0]
-	and  $80
-	call z, L026F16
-	ld   b, $03
+	and  WPU_MG								; Cleared Magnet Man's stage?
+	call z, Act_TeleporterRoom_SpawnLight	; ...
+	
+	ld   b, $03								; B = Bottom-right
 	ld   a, [wWpnUnlock0]
-	and  $20
-	call z, L026F16
+	and  WPU_NE								; Cleared Needle Man's stage?
+	call z, Act_TeleporterRoom_SpawnLight	; ...
+	
 	jp   ActS_IncRtnId
-L026EAB:;I
+	
+;================ Act_TeleporterRoom_WaitPl ================
+; Waits for the player to enter a teleporter.
+Act_TeleporterRoom_WaitPl:
+	; If we're already in the middle of teleporting, don't retrigger it again
 	ld   a, [wLvlWarpDest]
 	or   a
 	ret  nz
-	ld   a, [wPlRelX]
+	
+	;
+	; Determine if the player is overlapping with any teleporter.
+	; The teleporters trigger when precisely on the ground within 24px from the edge of the screen.
+	;
+	
+	ld   a, [wPlRelX]	; B = PlX
 	ld   b, a
-	ld   a, [wPlRelY]
+	ld   a, [wPlRelY]	; C = PlY
 	ld   c, a
-	cp   $3F
-	jr   nz, L026EE7
+	
+.chkU:
+	cp   OBJ_OFFSET_Y+$2F	; PlY == $3F? (standing on 4th block)
+	jr   nz, .chkD			; If not, jump
+	
+.chkUL:
+	; TOP-LEFT SECTION / HARD MAN (Y Pos: $3F, X Pos: < $20)
 	ld   a, b
-	cp   $20
-	jr   nc, L026ED2
+	cp   OBJ_OFFSET_X+$18	; PlX >= $20?
+	jr   nc, .chkUR			; If so, check the right one
+	
 	ld   a, [wWpnUnlock0]
-	and  $40
-	ret  nz
-	ld   a, $10
+	and  WPU_HA				; Hard Man stage cleared?
+	ret  nz					; If so, return
+	
+	ld   a, LVLEND_TLPHARD	; Otherwise, teleport there
 	ld   [wLvlWarpDest], a
-	ld   a, $19
+	ld   a, PL_MODE_TLPINIT
 	ld   [wPlMode], a
 	ret
-L026ED2:;R
+	
+.chkUR:
+	; TOP-RIGHT SECTION / TOP MAN (Y Pos: $3F, X Pos: >= $90)
 	ld   a, b
-	cp   $90
-	ret  c
+	cp   OBJ_OFFSET_X+SCREEN_GAME_H-$18	; PlX < $90?
+	ret  c								; If so, return
+	
 	ld   a, [wWpnUnlock0]
-	and  $01
-	ret  nz
-	ld   a, $20
+	and  WPU_TP				; Top Man stage cleared?
+	ret  nz					; If so, return
+	ld   a, LVLEND_TLPTOP
 	ld   [wLvlWarpDest], a
-	ld   a, $19
+	ld   a, PL_MODE_TLPINIT
 	ld   [wPlMode], a
 	ret
-L026EE7:;R
+	
+.chkD:
 	ld   a, c
-	cp   $7F
-	ret  nz
+	cp   OBJ_OFFSET_Y+$6F	; PlY == $7F? (standing on 8th block)
+	ret  nz					; If not, return (no teleporter touched)
+	
+.chkDL:
+	; BOTTOM-LEFT SECTION / MAGNET MAN (Y Pos: $7F, X Pos: < $20)
 	ld   a, b
-	cp   $20
-	jr   nc, L026F01
+	cp   OBJ_OFFSET_X+$18	; PlX >= $20?
+	jr   nc, .chkDR			; If so, check the right one
+	
 	ld   a, [wWpnUnlock0]
-	and  $80
-	ret  nz
-	ld   a, $30
+	and  WPU_MG				; Magnet Man stage cleared?
+	ret  nz					; If so, return
+	
+	ld   a, LVLEND_TLPMAGNET	; Otherwise, teleport there
 	ld   [wLvlWarpDest], a
-	ld   a, $19
+	ld   a, PL_MODE_TLPINIT
 	ld   [wPlMode], a
 	ret
-L026F01:;R
+	
+.chkDR:
+	; BOTTOM-RIGHT SECTION / NEEDLE MAN (Y Pos: $7F, X Pos: >= $90)
 	ld   a, b
-	cp   $90
-	ret  c
+	cp   OBJ_OFFSET_X+SCREEN_GAME_H-$18	; PlX < $90?
+	ret  c								; If so, return
+	
 	ld   a, [wWpnUnlock0]
-	and  $20
-	ret  nz
-	ld   a, $40
+	and  WPU_NE				; Needle Man stage cleared?
+	ret  nz					; If so, return
+	ld   a, LVLEND_TLPNEEDLE
 	ld   [wLvlWarpDest], a
-	ld   a, $19
+	ld   a, PL_MODE_TLPINIT
 	ld   [wPlMode], a
 	ret
-L026F16:;C
+
+;================ Act_TeleporterRoom_SpawnLight ================
+; Spawns a light, marking an active teleporter.
+; IN
+; - B: Light ID, determines position
+Act_TeleporterRoom_SpawnLight:
+
+	; HL = Act_TeleporterRoom_LightPosTbl[B*2]
 	ld   a, b
 	add  a
-	ld   hl, $6F33
+	ld   hl, Act_TeleporterRoom_LightPosTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
+	
+	; Read out the coordinates from there
 	ldi  a, [hl]
 	ld   [wActSpawnX], a
 	ld   a, [hl]
 	ld   [wActSpawnY], a
+	
+	; Not part of the actor layout
 	xor  a
 	ld   [wActSpawnLayoutPtr], a
-	ld   a, $67
+	
+	ld   a, ACT_TELEPORTLIGHT
 	ld   [wActSpawnId], a
 	jp   ActS_Spawn
-L026F33: db $1C
-L026F34: db $18
-L026F35: db $8C
-L026F36: db $18
-L026F37: db $1C
-L026F38: db $58
-L026F39: db $8C
-L026F3A: db $58
-L026F3B:;I
+	
+;================ Act_TeleporterRoom_LightPosTbl ================
+; Coordinates for the lights, by teleporter number.
+Act_TeleporterRoom_LightPosTbl:
+	;                 X                 Y
+	db OBJ_OFFSET_X+$14, OBJ_OFFSET_Y+$08 ; $00 (top-left, Hard)
+	db OBJ_OFFSET_X+$84, OBJ_OFFSET_Y+$08 ; $01 (top-right, Top)
+	db OBJ_OFFSET_X+$14, OBJ_OFFSET_Y+$48 ; $02 (bottom-left, Magnet)
+	db OBJ_OFFSET_X+$84, OBJ_OFFSET_Y+$48 ; $03 (bottom-right, Needle)
+
+;================ Act_TeleporterLight ================
+; ID: ACT_TELEPORTLIGHT
+; Flashing light above active teleporters.
+Act_TeleporterLight:
+	; Use frames $00-$01 at 1/8 speed
 	ld   c, $01
 	call ActS_Anim2
 	ret
-L026F41:;I
+	
+;================ Act_HardMan ================
+; ID: ACT_HARDMAN
+; First of the eight normal bosses.
+Act_HardMan:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L026F44: db $84
-L026F45: db $7D
-L026F46: db $64
-L026F47: db $6F
-L026F48: db $76
-L026F49: db $6F
-L026F4A: db $81
-L026F4B: db $6F
-L026F4C: db $81
-L026F4D: db $6F
-L026F4E: db $D0
-L026F4F: db $6F
-L026F50: db $FA
-L026F51: db $6F
-L026F52: db $18
-L026F53: db $70
-L026F54: db $46
-L026F55: db $70
-L026F56: db $51
-L026F57: db $70
-L026F58: db $58
-L026F59: db $70
-L026F5A: db $73
-L026F5B: db $70
-L026F5C: db $8A
-L026F5D: db $70
-L026F5E: db $98
-L026F5F: db $70
-L026F60: db $A4
-L026F61: db $70
-L026F62: db $B8
-L026F63: db $70
-L026F64:;I
+	dw Act_BossIntro
+	dw Act_HardMan_InitPunchAnim
+	dw Act_HardMan_PlayPunchAnim
+	dw Act_HardMan_ThrowFist
+	dw Act_HardMan_ThrowFist
+	dw Act_HardMan_InitJump
+	dw Act_HardMan_JumpU
+	dw Act_HardMan_JumpD
+	dw Act_HardMan_InitDropAnim
+	dw Act_HardMan_PlayDropAnim
+	dw Act_HardMan_Drop
+	dw Act_HardMan_Shake
+	dw Act_HardMan_InitRise
+	dw Act_HardMan_RiseU
+	dw Act_HardMan_RiseD
+	dw Act_HardMan_Cooldown
+	DEF ACTRTN_HARDMAN_INTRO = $00
+	DEF ACTRTN_HARDMAN_INITDROPANIM = $08
+	DEF ACTRTN_HARDMAN_SHAKE = $0B
+
+;================ Act_HardMan_InitPunchAnim ================
+; Set up fist throwing animation.
+Act_HardMan_InitPunchAnim:
+	; Already done by ActS_InitAnimRange
 	ld   a, $00
 	ldh  [hActCur+iActTimer0C], a
+	
+	; Throw the first towards the player
 	call ActS_FacePl
-	ld   de, $0003
+	
+	; Use sprites $00-$03 at 1/12 speed
+	ld   de, ($00 << 8)|$03
 	ld   c, $0C
-	call Act_Boss_InitIntro
+	call ActS_InitAnimRange
+	
 	jp   ActS_IncRtnId
-L026F76:;I
-	call Act_Boss_PlayIntro
-	ret  z
-	ld   a, $00
+	
+;================ Act_HardMan_PlayPunchAnim ================
+; Plays the first throwing animation.
+Act_HardMan_PlayPunchAnim:
+	; Wait for it to finish first
+	call ActS_PlayAnimRange			; Is it over?
+	ret  z							; If not, return
+	
+	ld   a, $00						; Reset anim timer
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L026F81:;I
+	
+;================ Act_HardMan_ThrowFist ================
+; Throws a fist.
+; Executed twice in a row to throw two of them.
+Act_HardMan_ThrowFist:
+	; Always throw them towards the player, even if they try to pass through.
 	call ActS_FacePl
-	ldh  a, [hActCur+iActTimer0C]
+	
+	ldh  a, [hActCur+iActTimer0C]	; Timer++
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
-	cp   $0C
-	jr   nc, L026F94
+	
+	;
+	; Handle the timing sequence.
+	;
+	
+.chkSpr3a:
+	; $00-$0B: Continue using launching sprite $03
+	cp   $0C					; Timer >= $0C?		
+	jr   nc, .chkSpawn0			; If so, jump
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ret
-L026F94:;R
-	cp   $18
-	jr   nz, L026FA6
+	
+.chkSpawn0:
+	; $18: Spawn first fist, while still using launching sprite $03
+	cp   $18					; Timer == $18?
+	jr   nz, .chkSpr3b			; If not, jump
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
-	ld   a, $70
-	ld   bc, $00F7
+	ld   [wActCurSprMapBaseId], a
+	
+	ld   a, ACT_HARDKNUCKLE
+	ld   bc, ($00 << 8)|LOW(-$09) ; 9px up
 	call ActS_SpawnRel
 	ret
-L026FA6:;R
-	cp   $18
-	jr   nc, L026FB0
+	
+.chkSpr3b:
+	; $0C-$17: Continue using launching sprite $03
+	;          This isn't any different than .chkSpr3.
+	cp   $18					; Timer >= $18?
+	jr   nc, .chkSpr5			; If so, jump
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ret
-L026FB0:;R
+	
+.chkSpr5:
+	; $19-23: Use recoil sprite $05
 	cp   $24
-	jr   nc, L026FBA
+	jr   nc, .chkSpr4
 	ld   a, $05
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ret
-L026FBA:;R
+	
+.chkSpr4:
+	; $24-2F: Use post recoil sprite $04
 	cp   $30
-	jr   nc, L026FC4
+	jr   nc, .chkEnd
 	ld   a, $04
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ret
-L026FC4:;R
+	
+.chkEnd:
+	; $30: Use front facing sprite $04
 	ld   a, $04
-	ld   [wActCurSprMapRelId], a
-	ld   a, $00
+	ld   [wActCurSprMapBaseId], a
+	ld   a, $00						; Reset for next mode
 	ldh  [hActCur+iActTimer0C], a
-	jp   ActS_IncRtnId
-L026FD0:;I
+	jp   ActS_IncRtnId				; Next mode
+	
+;================ Act_HardMan_InitJump ================
+; Sets up an high jump directly at the player.
+Act_HardMan_InitJump:
+	; Delay it by half a second
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
-	cp   $1E
+	cp   30
 	ret  nz
-	call ActS_FacePl
-	call ActS_GetPlDistanceX
-	swap a
-	and  $0F
-	add  a
-	ld   hl, $70D7
+	
+	call ActS_FacePl			; Jump towards the player
+	
+	; X Speed: Act_HardMan_JumpXTbl[DiffX / 8]
+	; Precomputed based on how far the player is, in 16px ranges.
+	call ActS_GetPlDistanceX	; Get X distance
+	swap a						; /16, to Group by column
+	and  $0F					; ""
+	add  a						; Each table entry is 2 bytes long
+	ld   hl, Act_HardMan_JumpXTbl
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ld   c, [hl]
+	add  hl, bc					; Index it
+	ld   c, [hl]				; Read out to BC
 	inc  hl
 	ld   b, [hl]
 	call ActS_SetSpeedX
+	
+	; Y Speed: 4.25px/frame
 	ld   bc, $0440
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L026FFA:;I
+	
+;================ Act_HardMan_JumpU ================
+; Jump, pre-peak.
+; This continues until either we reach the peak, or the player gets near.
+Act_HardMan_JumpU:
+	; Use jumping sprite
 	ld   a, $06
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; If the player is within 4px away, interrupt the jump and start dropping down
 	call ActS_GetPlDistanceX
 	cp   $04
-	jr   nc, L02700B
-	ld   a, $08
+	jr   nc, .move
+	ld   a, ACTRTN_HARDMAN_INITDROPANIM
 	ldh  [hActCur+iActRtnId], a
 	ret
-L02700B:;R
+.move:
+	; Move forward, turning around if there's a solid wall
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Move up until we reach the peak of the jump
 	call ActS_ApplySpeedUpYColi
 	ret  c
-	jp   ActS_IncRtnId
-L027018:;I
+	jp   ActS_IncRtnId ; Fall down then
+	
+;================ Act_HardMan_JumpD ================
+; Jump, post-peak.
+Act_HardMan_JumpD:
+	; Use jumping sprite
 	ld   a, $06
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; If the player is within 4px away, interrupt the jump and start dropping down
 	call ActS_GetPlDistanceX
 	cp   $04
-	jr   nc, L027029
-	ld   a, $08
+	jr   nc, .move
+	ld   a, ACTRTN_HARDMAN_INITDROPANIM
 	ldh  [hActCur+iActRtnId], a
 	ret
-L027029:;R
+.move:
+	; Move forward, turning around if there's a solid wall
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Move down until we reach the touch the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $3C
+	
+	; If we got all the way here, Hard Man failed to find the player.
+	
+	ld   a, 60					; Shake for a second
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $0F
+	ld   a, PL_MODE_FROZEN		; Freeze the player while it happens
 	ld   [wPlMode], a
-	ldh  a, [hScrollY]
+	ldh  a, [hScrollY]			; Backup untouched coord
 	ld   [wHardYShakeOrg], a
-	ld   a, $0B
+	ld   a, ACTRTN_HARDMAN_SHAKE
 	ldh  [hActCur+iActRtnId], a
 	ret
-L027046:;I
-	ld   de, $0709
+	
+;================ Act_HardMan_InitDropAnim ================
+; Sets up the dropping animation, when the player is below.
+Act_HardMan_InitDropAnim:
+	; Use sprites $07-$09 at 1/12 speed
+	ld   de, ($07 << 8)|$09
 	ld   c, $0C
-	call Act_Boss_InitIntro
+	call ActS_InitAnimRange
 	jp   ActS_IncRtnId
-L027051:;I
-	call Act_Boss_PlayIntro
+	
+;================ Act_HardMan_PlayDropAnim ================
+; Play the dropping animation, during this time Hard Man will stay frozen in the air, to give time to the player.
+Act_HardMan_PlayDropAnim:
+	call ActS_PlayAnimRange
 	ret  z
 	jp   ActS_IncRtnId
-L027058:;I
+	
+;================ Act_HardMan_Drop ================
+; Drops to the ground.
+Act_HardMan_Drop:
+	; Use sprite $09 from before
 	ld   a, $09
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Drop down until we touch the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $3C
+	
+	; When we do, freeze the player identically to Act_HardMan_JumpD 
+	ld   a, 60					; Shake for a second
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $0F
+	ld   a, PL_MODE_FROZEN		; Freeze the player while it happens
 	ld   [wPlMode], a
-	ldh  a, [hScrollY]
+	ldh  a, [hScrollY]			; Backup untouched coord
 	ld   [wHardYShakeOrg], a
-	ld   a, $0B
+	ld   a, ACTRTN_HARDMAN_SHAKE
 	ldh  [hActCur+iActRtnId], a
-L027073:;I
+	; Fall-through!
+	
+;================ Act_HardMan_Shake ================
+; Shakes the screen while the player is frozen.
+Act_HardMan_Shake:
+	; Use sprite $0A, which is halfway into the ground.
 	ld   a, $0A
-	ld   [wActCurSprMapRelId], a
-	call L0270C9
+	ld   [wActCurSprMapBaseId], a
+	
+	; Shake the screen vertically for that second
+	call Act_HardMan_SetShake
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; After it's done, restore the original scroll value
 	ld   a, [wHardYShakeOrg]
 	ldh  [hScrollY], a
 	jp   ActS_IncRtnId
-L02708A:;I
-	ld   a, $09
-	ld   [wActCurSprMapRelId], a
-	ld   bc, $0200
+	
+;================ Act_HardMan_InitRise ================
+; Set up the small jump for exiting out of the ground (just visually).
+Act_HardMan_InitRise:
+	ld   a, $09				; Use rise up sprite $09
+	ld   [wActCurSprMapBaseId], a
+	
+	ld   bc, $0200			; 2px/frame up
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L027098:;I
-	ld   a, $09
-	ld   [wActCurSprMapRelId], a
+	
+;================ Act_HardMan_RiseU ================
+; Rise jump, pre-peak.
+Act_HardMan_RiseU:
+	ld   a, $09				; Continue using rise up sprite $09
+	ld   [wActCurSprMapBaseId], a
+	
+	; Apply gravity until we reach the peak of the jump
 	call ActS_ApplySpeedUpYColi
 	ret  c
+	
 	jp   ActS_IncRtnId
-L0270A4:;I
-	ld   a, $08
-	ld   [wActCurSprMapRelId], a
+	
+;================ Act_HardMan_RiseD ================
+; Rise jump, post-peak.
+Act_HardMan_RiseD:
+	ld   a, $08				; Use rise down sprite $08
+	ld   [wActCurSprMapBaseId], a
+	
+	; Apply gravity until we touch the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	xor  a
+	
+	xor  a ; PL_MODE_GROUND		; Unfreeze the player
 	ld   [wPlMode], a
-	ld   a, $06
+	ld   a, $06					; Wait for 6 frames before looping
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0270B8:;I
+	
+;================ Act_HardMan_Cooldown ================
+; Pre-loop cooldown.
+Act_HardMan_Cooldown:
+	; Wait 6 frames of cooldown using sprite $07
 	ld   a, $07
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $00
+	
+	; Then loop the pattern from the beginning.
+	; [BUG] This is a common bug among all normal boss actors.
+	;       When they need to loop the pattern, they improperly reset the routine to $00 rather than $01.
+	;       That's a problem, because said routine is not supposed to be executed again in the middle of a boss fight,
+	;       so when it ends up attempting to unlock the player's controls by the player state to PL_MODE_GROUND, leading
+	;       to a oddities such as slides ending early or the jump getting cut off.
+	ld   a, ACTRTN_HARDMAN_INTRO
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0270C9:;C
+	
+;================ Act_HardMan_SetShake ================
+; Updates the screen shake effect.
+Act_HardMan_SetShake:
+	; B = hTimer % 4 - 1
+	; Will shift the screen, in a loop, from -1 to +2.
 	ldh  a, [hTimer]
 	and  $03
-	add  $FF
+	add  -1
 	ld   b, a
+	; hScrollY = wHardYShakeOrg + B
 	ld   a, [wHardYShakeOrg]
 	add  b
 	ldh  [hScrollY], a
 	ret
-L0270D7: db $40;X
-L0270D8: db $00;X
-L0270D9: db $40
-L0270DA: db $00
-L0270DB: db $80
-L0270DC: db $00
-L0270DD: db $C0
-L0270DE: db $00
-L0270DF: db $00;X
-L0270E0: db $01;X
-L0270E1: db $40
-L0270E2: db $01
-L0270E3: db $80;X
-L0270E4: db $01;X
-L0270E5: db $C0;X
-L0270E6: db $01;X
-L0270E7: db $00;X
-L0270E8: db $02;X
-L0270E9: db $40;X
-L0270EA: db $02;X
-L0270EB: db $80;X
-L0270EC: db $02;X
-L0270ED: db $C0;X
-L0270EE: db $02;X
-L0270EF: db $00;X
-L0270F0: db $03;X
-L0270F1: db $40;X
-L0270F2: db $03;X
-L0270F3: db $80;X
-L0270F4: db $03;X
-L0270F5: db $C0;X
-L0270F6: db $03;X
-L0270F7:;I
+	
+;================ Act_HardMan_JumpXTbl ================
+; Horizontal speed for the jumps, depending on how far the player is.
+; These account for the vertical jump speed being 4.25px/frame.
+Act_HardMan_JumpXTbl:
+	;  X SPD ; px/frame ; PL DISTANCE
+	dw $0040 ; 0.25     ; $00-$0F 
+	dw $0040 ; 0.25     ; $10-$1F 
+	dw $0080 ; 0.5      ; $20-$2F 
+	dw $00C0 ; 0.75     ; $30-$3F 
+	dw $0100 ; 1        ; $40-$4F 
+	dw $0140 ; 1.25     ; $50-$5F 
+	dw $0180 ; 1.5      ; $60-$6F ;X
+	dw $01C0 ; 1.75     ; $70-$7F ;X
+	dw $0200 ; 2        ; $80-$8F ;X
+	dw $0240 ; 2.25     ; $90-$9F ;X
+	dw $0280 ; 2.5      ; $A0-$AF ;X
+	dw $02C0 ; 2.75     ; $B0-$BF ;X
+	dw $0300 ; 3        ; $C0-$CF ;X
+	dw $0340 ; 3.25     ; $D0-$DF ;X
+	dw $0380 ; 3.5      ; $E0-$EF ;X
+	dw $03C0 ; 3.75     ; $F0-$FF ;X
+
+;================ Act_TopMan ================
+; ID: ACT_TOPMAN
+Act_TopMan:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0270FA: db $84
-L0270FB: db $7D
-L0270FC: db $0C
-L0270FD: db $71
-L0270FE: db $18
-L0270FF: db $71
-L027100: db $2B
-L027101: db $71
-L027102: db $3E
-L027103: db $71
-L027104: db $2B
-L027105: db $71
-L027106: db $54
-L027107: db $71
-L027108: db $67
-L027109: db $71
-L02710A: db $81
-L02710B: db $71
-L02710C:;I
-	ld   a, $1E
+	dw Act_BossIntro
+	dw Act_TopMan_InitThrow
+	dw Act_TopMan_Throw0
+	dw Act_TopMan_Throw1
+	dw Act_TopMan_SpawnTop
+	dw Act_TopMan_Throw1
+	dw Act_TopMan_InitSpin
+	dw Act_TopMan_Spin
+	dw Act_TopMan_Move
+	DEF ACTRTN_TOPMAN_INTRO = $00
+
+;================ Act_TopMan_InitThrow ================
+; Initialize arm motion.
+Act_TopMan_InitThrow:
+	; Use sprite $00 for half a second
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $00
 	call ActS_SetSprMapId
+	
 	jp   ActS_IncRtnId
-L027118:;I
+	
+;================ Act_TopMan_Throw0 ================
+; Arm motion - sprite $00.
+Act_TopMan_Throw0:
+	; Wait that half a second
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $1E
+	
+	; Use sprite $02 for half a second
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $02
 	call ActS_SetSprMapId
+	
 	jp   ActS_IncRtnId
-L02712B:;I
+	
+;================ Act_TopMan_Throw1 ================
+; Arm motion - sprite $02.
+Act_TopMan_Throw1:
+	; Wait that half a second
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Use sprite $01 for 15 frames
 	ld   a, $0F
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $01
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
-L02713E:;I
+	
+;================ Act_TopMan_SpawnTop ================
+Act_TopMan_SpawnTop:
+	; Wait those 15 frames
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $78
+	
+	; Cooldown of 2 seconds after spawning them, using sprite $02
+	ld   a, 60*2
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $00
 	call ActS_SetSprMapId
-	call L027D3C
+	
+	; Spawn three spinning tops, which block shots.
+	call Act_TopMan_SpawnShots
 	jp   ActS_IncRtnId
-L027154:;I
+	
+;================ Act_TopMan_InitSpin ================
+Act_TopMan_InitSpin:
+	; Wait those 2 seconds before doing it
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $78
+	
+	; Spin in place for 2 seconds
+	ld   a, 60*2
 	ldh  [hActCur+iActTimer0C], a
-	ld   b, $03
+	ld   b, ACTCOLI_ENEMYREFLECT	; Reflect shots while spinning
 	call ActS_SetColiType
 	jp   ActS_IncRtnId
-L027167:;I
+	
+;================ Act_TopMan_Spin ================
+Act_TopMan_Spin:
+	; Use frames $03-$06 at 1/4 speed to animate the spin
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ld   c, $02
 	call ActS_Anim4
+	; Do that for aforemented 2 seconds
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Then start moving forward at 2px/frame, to the other side of the screen
 	ld   bc, $0200
 	call ActS_SetSpeedX
 	jp   ActS_IncRtnId
-L027181:;I
+	
+;================ Act_TopMan_Move ================
+Act_TopMan_Move:
+	; Use frames $03-$06 at 1/4 speed to animate the spin
 	ld   a, $03
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ld   c, $02
 	call ActS_Anim4
+	
+	; Move forward at 2px/frame until we reach the opposite side of the screen.
+	; Specifically, until we're within 2 blocks from the edge of the screen.
+	DEF OFFS = BLOCK_H*2
 	call ActS_ApplySpeedFwdX
 	ldh  a, [hActCur+iActSprMap]
-	bit  7, a
-	jr   nz, L02719B
+	bit  ACTDIRB_R, a				; Facing right?
+	jr   nz, .chkR					; If so, jump
+.chkL:
 	ldh  a, [hActCur+iActX]
-	cp   $28
-	jr   c, L0271A0
-	ret
-L02719B:;R
+	cp   OBJ_OFFSET_X+OFFS			; Top Man within 2 blocks from the left? (ActX < $18)
+	jr   c, .loop					; If so, jump
+	ret								; Otherwise, keep moving
+.chkR:
 	ldh  a, [hActCur+iActX]
-	cp   $88
-	ret  c
-L0271A0:;R
-	ld   b, $02
+	cp   OBJ_OFFSET_X+SCREEN_GAME_H-OFFS 	; Top Man within 2 blocks from the right? (ActX < $88)
+	ret  c									; If not, keep moving
+	
+.loop:
+	ld   b, ACTCOLI_ENEMYHIT		; Vulnerable when not spinning
 	call ActS_SetColiType
-	call ActS_FlipH
-	ld   a, $00
+	call ActS_FlipH					; Turn the other side
+	; [BUG] This one is easy to notice, the player is likely in the air, so its vertical speed is reset.
+	ld   a, ACTRTN_TOPMAN_INTRO		; Loop the pattern
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0271AD:;I
+	
+	
+;================ Act_MagnetMan ================
+; ID: ACT_MAGNETMAN
+Act_MagnetMan:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0271B0: db $84
-L0271B1: db $7D
-L0271B2: db $D6
-L0271B3: db $71
-L0271B4: db $F2
-L0271B5: db $71
-L0271B6: db $FC
-L0271B7: db $71
-L0271B8: db $0F
-L0271B9: db $72
-L0271BA: db $F2
-L0271BB: db $71
-L0271BC: db $FC
-L0271BD: db $71
-L0271BE: db $24
-L0271BF: db $72
-L0271C0: db $F2
-L0271C1: db $71
-L0271C2: db $5C
-L0271C3: db $72
-L0271C4: db $63
-L0271C5: db $72
-L0271C6: db $5C
-L0271C7: db $72
-L0271C8: db $63
-L0271C9: db $72
-L0271CA: db $5C
-L0271CB: db $72
-L0271CC: db $63
-L0271CD: db $72
-L0271CE: db $FC
-L0271CF: db $71
-L0271D0: db $94
-L0271D1: db $72
-L0271D2: db $A0
-L0271D3: db $72
-L0271D4: db $AC
-L0271D5: db $72
-L0271D6:;I
-	ld   bc, $0160
+	dw Act_BossIntro
+	dw Act_MagnetMan_InitFwdJump0
+	dw Act_MagnetMan_JumpU
+	dw Act_MagnetMan_JumpD
+	dw Act_MagnetMan_InitFwdJump1
+	dw Act_MagnetMan_JumpU
+	dw Act_MagnetMan_JumpD
+	dw Act_MagnetMan_ChkAttack
+	dw Act_MagnetMan_JumpU
+	dw Act_MagnetMan_InitSpawnMissile
+	dw Act_MagnetMan_SpawnMissile
+	dw Act_MagnetMan_InitSpawnMissile
+	dw Act_MagnetMan_SpawnMissile
+	dw Act_MagnetMan_InitSpawnMissile
+	dw Act_MagnetMan_SpawnMissile
+	dw Act_MagnetMan_JumpD
+	dw Act_MagnetMan_InitCooldown
+	dw Act_MagnetMan_Cooldown
+	dw Act_MagnetMan_Attract
+	DEF ACTRTN_MAGNETMAN_INITFWDJUMP0 = $01
+	DEF ACTRTN_MAGNETMAN_INITCOOLDOWN = $10
+	DEF ACTRTN_MAGNETMAN_ATTRACT = $12
+	
+;================ Act_MagnetMan_InitFwdJump0 ================
+; Sets up the first of the two forward hops.
+; These hops are notoriously hard to slide under due to misaligned sprite mappings.
+Act_MagnetMan_InitFwdJump0:
+
+	; X Speed = 1.375px/frame to the other side
+	ld   bc, $0160			
 	call ActS_SetSpeedX
+	; For this to work it assumes Magnet Man to be at X positions $80-$8F when starting hops.
 	ldh  a, [hActCur+iActX]
-	and  $80
-	xor  $80
+	and  ACTDIR_R					; Left side -> $00, Right side -> $80
+	xor  ACTDIR_R					; Face the opposite side. That's our ACTDIR_*
 	ldh  [hActCur+iActSprMap], a
+	
+	; Y Speed = 2px/frame
 	ld   bc, $0200
 	call ActS_SetSpeedY
+	
+	; Use jumping sprite $05
 	ld   a, $05
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
-L0271F2:;I
+	
+;================ Act_MagnetMan_JumpU ================
+; Jump, pre-peak.
+; This and the next routines are used to handle all jumps.
+Act_MagnetMan_JumpU:
+	; Apply gravity until the peak of the jump
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L0271FC:;I
+	
+;================ Act_MagnetMan_JumpD ================
+; Jump, post-peak.
+Act_MagnetMan_JumpD:
+	; Apply gravity until we touch the ground
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	
+	; Then temporarily stand on the ground for 6 frames, using sprite $00
 	ld   a, $06
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $00
 	call ActS_SetSprMapId
+	
 	jp   ActS_IncRtnId
-L02720F:;I
+	
+;================ Act_MagnetMan_InitFwdJump1 ================
+; Sets up the second of the two forward hops.
+Act_MagnetMan_InitFwdJump1:
+	; Wait those 6 frames...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Y Speed = 3px/frame
+	; This is the jump Rockman should slide under.
 	ld   bc, $0300
 	call ActS_SetSpeedY
+	
+	; (Keep same X speed as before)
+	
+	; Use jumping sprite $05
 	ld   a, $05
 	call ActS_SetSprMapId
-	jp   ActS_IncRtnId
-L027224:;I
+	
+	jp   ActS_IncRtnId ; Continue to another Act_MagnetMan_JumpU
+	
+;================ Act_MagnetMan_ChkAttack ================
+; On the ground, determining the attack to perform.
+Act_MagnetMan_ChkAttack:
+	; Both attacks are done while facing the player.
 	call ActS_FacePl
+	
+	;
+	; Magnet Man has two attacks.
+	; If the player is further away than 3 blocks, he has a 50% chance of attracting Rockman.
+	; In any other case, he jumps straight up and fires three Magnet Missiles.
+	;
+	; The first attack is notoriously difficult to trigger when fighting the boss properly,
+	; as having to slide under the second hop keeps the player within 3 blocks of distance.
+	;
+	
+	; Don't attract if too close
 	call ActS_GetPlDistanceX
-	cp   $30
-	jr   nc, L027242
-L02722E:;R
-	ld   bc, $0000
+	cp   $30				; DiffX >= $30?
+	jr   nc, .chkAttr		; If so, jump
+.missile:
+	ld   bc, $0000			; Set jump straight up at 4.25px/frame
 	call ActS_SetSpeedX
 	ld   bc, $0440
 	call ActS_SetSpeedY
-	ld   a, $05
+	ld   a, $05				; Use jumping sprite
 	call ActS_SetSprMapId
-	jp   ActS_IncRtnId
-L027242:;R
-	call Rand
-	bit  7, a
-	jr   nz, L02722E
-	ld   b, $03
+	jp   ActS_IncRtnId		; Next mode
+	
+.chkAttr:
+	; 50% chance of attracting player
+	call Rand				; A = Rand()
+	bit  7, a				; A >= $80?
+	jr   nz, .missile		; If so, jump
+	
+	ld   b, ACTCOLI_ENEMYREFLECT	; Make invulnerable while attracting
 	call ActS_SetColiType
-	ld   a, $03
+	ld   a, $03						; Use attract sprite $03 (part of an anim)
 	call ActS_SetSprMapId
-	ld   a, $B4
+	ld   a, 60*3					; Waste 3 seconds doing this
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $12
+	ld   a, ACTRTN_MAGNETMAN_ATTRACT
 	ldh  [hActCur+iActRtnId], a
 	ret
-L02725C:;I
+	
+;================ Act_MagnetMan_InitSpawnMissile ================
+; Sets up the timer for missile spawning, also used for cooldown.
+Act_MagnetMan_InitSpawnMissile:
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L027263:;I
+	
+;================ Act_MagnetMan_SpawnMissile ================
+; Launches a Magnet Missile straight forward, which will home in down on the player.
+; Called three times, alternated with the previous routine.
+Act_MagnetMan_SpawnMissile:
+	; Always face the player while in this pose, which is a bit pointless given those projectiles may hit a wall.
 	call ActS_FacePl
-	ldh  a, [hActCur+iActTimer0C]
+	
+	ldh  a, [hActCur+iActTimer0C]	; Timer--
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	push af
-	ld   b, a
-	srl  a
-	srl  a
-	srl  a
-	and  $01
-	ld   [wActCurSprMapRelId], a
-	ld   a, b
-	cp   $08
-	jr   nz, L02728F
-	ld   a, $72
-	ld   bc, $00F0
-	call ActS_SpawnRel
-	ldh  a, [hActCur+iActSprMap]
-	and  $80
-	or   $40
-	inc  l
-	inc  l
-	ld   [hl], a
-L02728F:;R
-	pop  af
-	ret  nz
+		ld   b, a
+			; Alternate between sprites $05 and $06 every 8 frames.
+			; This is timed with the check below so that it switches to $06, the throw frame,
+			; exactly when the Magnet Missile spawns.
+			; wActCurSprMapBaseId = Timer / 8 % 2
+			srl  a ; /2
+			srl  a ; /4
+			srl  a ; /8 (every 8 frames)
+			and  $01 ; % 2 (offset $00 or $01, relative to the base set in Act_MagnetMan_ChkAttack.missile)
+			; This isn't quite the way the base sprite mapping ID is supposed to be used, but it works out.
+			ld   [wActCurSprMapBaseId], a
+		ld   a, b
+		
+		; Spawn the Magnet Missile halfway through, whe the timer ticks down to $08
+		cp   $08
+		jr   nz, .chkEnd
+		
+		ld   a, ACT_MAGNETMISSILE
+		ld   bc, ($00 << 8)|LOW(-$10) ; 16px up
+		call ActS_SpawnRel
+		ldh  a, [hActCur+iActSprMap]
+		and  ACTDIR_R	; Make missile travel forward
+		or   ACTDIR_D	; Prepare for downwards movement
+		inc  l ; iActRtnId
+		inc  l ; iActSprMap
+		ld   [hl], a	; Save as spawned actor's sprite mapping flags
+.chkEnd:
+	pop  af	; A = Timer
+	ret  nz	; Has it elapsed? If not, return
+	
 	jp   ActS_IncRtnId
-L027294:;I
+	
+;================ Act_MagnetMan_InitCooldown ================
+; On the ground, set up the cooldown before looping.
+Act_MagnetMan_InitCooldown:
+	; Use sprite $00 for 6 frames
 	ld   a, $06
 	ldh  [hActCur+iActTimer0C], a
 	ld   a, $00
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
-L0272A0:;I
+	
+;================ Act_MagnetMan_Cooldown ================
+; Ground cooldown.
+Act_MagnetMan_Cooldown:
+	; Wait on the ground for those 6 frames...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $01
+	; Loop pattern to the start
+	ld   a, ACTRTN_MAGNETMAN_INITFWDJUMP0
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0272AC:;I
+	
+;================ Act_MagnetMan_Attract ================
+; Attracts the player while invulnerable.
+Act_MagnetMan_Attract:
+	; Always face the player...
 	call ActS_FacePl
+	; ...and move the player the opposite direction we're facing.
+	; Basically, move Rockman towards up at 0.5px/frame
 	ldh  a, [hActCur+iActSprMap]
-	and  $80
-	xor  $80
+	and  ACTDIR_R
+	xor  ACTDIR_R
 	ld   bc, $0080
-	call Pl_Unk_SetSpeedByActDir
+	call Pl_SetSpeedByActDir
+	
+	; Getting hurt interrupts the attack
 	ld   a, [wPlHurtTimer]
-	or   a
-	jr   nz, L0272D3
-	ldh  a, [hActCur+iActTimer0C]
+	or   a						; Player is hurt?
+	jr   nz, .end				; If so, jump
+	
+	
+	ldh  a, [hActCur+iActTimer0C]	; TImer--
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
-	push af
-	srl  a
-	srl  a
-	and  $01
-	ld   [wActCurSprMapRelId], a
-	pop  af
-	ret  nz
-L0272D3:;X
-	ld   b, $02
+	push af	; Save timer
+		; Alternate between sprites $03 and $04 every 4 frames.
+		; wActCurSprMapBaseId = Timer / 4 % 2
+		srl  a ; /2
+		srl  a ; /4 (every 4 frames)
+		and  $01 ; % 2 (offset $00 or $01)
+		ld   [wActCurSprMapBaseId], a
+	pop  af	; A = Timer
+	ret  nz	; Has it elapsed? If not, return
+.end:
+	ld   b, ACTCOLI_ENEMYHIT
 	call ActS_SetColiType
-	ld   a, $10
+	ld   a, ACTRTN_MAGNETMAN_INITCOOLDOWN
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0272DD:;I
+	
+;================ Act_NeedleMan ================
+; ID: ACT_NEEDLEMAN
+Act_NeedleMan:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0272E0: db $84
-L0272E1: db $7D
-L0272E2: db $FE
-L0272E3: db $72
-L0272E4: db $0A
-L0272E5: db $73
-L0272E6: db $38
-L0272E7: db $73
-L0272E8: db $46
-L0272E9: db $73
-L0272EA: db $64
-L0272EB: db $73
-L0272EC: db $82
-L0272ED: db $73
-L0272EE: db $93
-L0272EF: db $73
-L0272F0: db $A2
-L0272F1: db $73
-L0272F2: db $B1
-L0272F3: db $73
-L0272F4: db $C2
-L0272F5: db $73
-L0272F6: db $CB
-L0272F7: db $73
-L0272F8: db $DB
-L0272F9: db $73
-L0272FA: db $FF
-L0272FB: db $73
-L0272FC: db $0E
-L0272FD: db $74
-L0272FE:;I
+	dw Act_BossIntro
+	dw Act_NeedleMan_InitChkAttack
+	dw Act_NeedleMan_ChkAttack
+	dw Act_NeedleMan_InitHeadExtend
+	dw Act_NeedleMan_HeadExtend
+	dw Act_NeedleMan_HeadRetract
+	dw Act_NeedleMan_InitJump
+	dw Act_NeedleMan_InitFwdJump
+	dw Act_NeedleMan_JumpU
+	dw Act_NeedleMan_JumpD
+	dw Act_NeedleMan_InitThrJump
+	dw Act_NeedleMan_JumpThrU
+	dw Act_NeedleMan_JumpThrD
+	dw Act_NeedleMan_ThrSpawn
+	dw Act_NeedleMan_ThrCooldown
+	DEF ACTRTN_NEEDLEMAN_INITCHKATTACK = $01
+	DEF ACTRTN_NEEDLEMAN_INITHEADEXTEND = $03
+	DEF ACTRTN_NEEDLEMAN_INITJUMP = $06
+	DEF ACTRTN_NEEDLEMAN_INITFWDJUMP = $07
+	DEF ACTRTN_NEEDLEMAN_JUMPU = $08
+	DEF ACTRTN_NEEDLEMAN_0A = $0A
+	DEF ACTRTN_NEEDLEMAN_JUMPTHRD = $0C
+
+;================ Act_NeedleMan_InitChkAttack ================
+; Sets up the delay before choosing an attack.
+Act_NeedleMan_InitChkAttack:
+	; Show ground sprite for 6 frames
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $06
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02730A:;I
+	
+;================ Act_NeedleMan_ChkAttack ================
+; Chosses a random attack.
+Act_NeedleMan_ChkAttack:
+	; Stay on the ground for those 6 frames, before choosing an attack
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	call Rand
-	swap a
-	and  $03
-	jr   nz, L02731F
-	ld   a, $06
+	
+	;
+	; Randomize the attack.
+	; It's a 50/50 whether the boss attacks or jumps, specifically:
+	;
+	; - 25% Jump straight up
+	; - 25% Forward jump
+	; - 50% Proximity-based attack
+	;   - If the player is within 4 blocks, use the headbutt
+	;   - Otherwise, do a full jump straight up and throw needles
+	;
+	
+	; Roll a value between $00 and $03
+	call Rand	; A = (Rand() / 16) % 4
+	swap a		; / 16
+	and  $03	; % 4
+	
+.chkJump:
+	; $00 - Jump straight up (25%)
+	jr   nz, .chkFwdJump		; A == 0? If not, jump
+	ld   a, ACTRTN_NEEDLEMAN_INITJUMP
 	ldh  [hActCur+iActRtnId], a
 	ret
-L02731F:;R
-	dec  a
-	jr   nz, L027327
-	ld   a, $07
+.chkFwdJump:
+	; $01 - Jump forward (25%)
+	dec  a						; A == 1?
+	jr   nz, .chkAtk			; If not, jump
+	ld   a, ACTRTN_NEEDLEMAN_INITFWDJUMP
 	ldh  [hActCur+iActRtnId], a
 	ret
-L027327:;R
+	
+.chkAtk:
+	; $02-$03 - Proximity-based attack ($50%)
 	call ActS_GetPlDistanceX
-	cp   $40
-	jr   nc, L027333
-	ld   a, $03
+	cp   BLOCK_H*4				; DiffX >= $40?
+	jr   nc, .far				; If so, jump
+.near:
+	; Player is near, use headbutt
+	ld   a, ACTRTN_NEEDLEMAN_INITHEADEXTEND
 	ldh  [hActCur+iActRtnId], a
 	ret
-L027333:;R
-	ld   a, $0A
+.far:
+	; Player is far, jump and throw needles
+	ld   a, ACTRTN_NEEDLEMAN_0A
 	ldh  [hActCur+iActRtnId], a
 	ret
-L027338:;I
+	
+;================ Act_NeedleMan_InitHeadExtend ================
+; Sets up the headbutt attack, used when the player is nearby.
+Act_NeedleMan_InitHeadExtend:
+	; Face towards the player
 	call ActS_FacePl
-	ld   de, $0205
+	
+	; When extending, use sprites $02-$05 at 1/4 speed
+	ld   de, ($02 << 8)|$05
 	ld   c, $04
-	call Act_Boss_InitIntro
+	call ActS_InitAnimRange
+	
 	jp   ActS_IncRtnId
-L027346:;I
-	ldh  a, [hActCur+iAct0D]
-	ld   hl, $741A
+	
+;================ Act_NeedleMan_HeadExtend ================
+; Headbutt, extend spikes.
+Act_NeedleMan_HeadExtend:
+
+	;
+	; During the headbutt attack, use the sprite mapping ID as index to the collision box.
+	; Note that, as radiuses are symmetrical, the collision box will also extend on the
+	; other side... not like it matters since it's not possible to jump over Needle Man
+	; without getting hit anyway.
+	; 
+	; [POI] What does matter however is the index used. While every frame in the animation
+	;       has its own horizontal radius defined, most of them go unused since the index
+	;       is only ever set to the first sprite of the range (iAnimRangeSprMapFrom).
+	;
+	;       This causes the needle to not have an hitbox while it's extending.
+	;       The code for retracting has the opposite problem, with the extended hitbox lingering around.
+	;
+	
+	; B = Act_NeedleMan_ColiXTbl[iAnimRangeSprMapFrom]
+	;     In practice, always $0B
+	ldh  a, [hActCur+iAnimRangeSprMapFrom]
+	ld   hl, Act_NeedleMan_ColiXTbl
+	ld   b, $00
+	ld   c, a
+	add  hl, bc
+	ld   b, [hl]			; Read horizntal radius
+	ld   c, $0B				; Fixed vertical radius
+	call ActS_SetColiBox
+	
+	; Wait until the animation finishes
+	call ActS_PlayAnimRange
+	ret  z
+	
+	; When retracting, use sprites $05-$08 at 1/4 speed
+	ld   de, ($05 << 8)|$08
+	ld   c, $04
+	call ActS_InitAnimRange
+	
+	jp   ActS_IncRtnId
+	
+;================ Act_NeedleMan_HeadRetract ================
+; Headbutt, retract spikes.
+Act_NeedleMan_HeadRetract:
+
+	; Set collision box for first frame
+	ldh  a, [hActCur+iAnimRangeSprMapFrom]
+	ld   hl, Act_NeedleMan_ColiXTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   b, [hl]
 	ld   c, $0B
 	call ActS_SetColiBox
-	call Act_Boss_PlayIntro
+	
+	; Wait until the animation finishes
+	call ActS_PlayAnimRange
 	ret  z
-	ld   de, $0508
-	ld   c, $04
-	call Act_Boss_InitIntro
-	jp   ActS_IncRtnId
-L027364:;I
-	ldh  a, [hActCur+iAct0D]
-	ld   hl, $741A
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ld   b, [hl]
-	ld   c, $0B
+	
+	; Attack is done, restore the normal collision box
+	ld   bc, ($0B << 8)|$0B		; 23x23
 	call ActS_SetColiBox
-	call Act_Boss_PlayIntro
-	ret  z
-	ld   bc, $0B0B
-	call ActS_SetColiBox
-	ld   a, $01
+	
+	; Roll the dice for the next attack
+	ld   a, ACTRTN_NEEDLEMAN_INITCHKATTACK
 	ldh  [hActCur+iActRtnId], a
 	ret
-L027382:;I
-	ld   bc, $0000
+	
+;================ Act_NeedleMan_InitJump ================
+; Sets up a jump straight up.
+Act_NeedleMan_InitJump:
+	ld   bc, $0000			; No horz speed
 	call ActS_SetSpeedX
-	ld   bc, $0380
+	ld   bc, $0380			; 3.5px/frame up
 	call ActS_SetSpeedY
-	ld   a, $08
+	ld   a, ACTRTN_NEEDLEMAN_JUMPU
 	ldh  [hActCur+iActRtnId], a
 	ret
-L027393:;I
-	ld   bc, $0100
+	
+;================ Act_NeedleMan_InitFwdJump ================
+; Sets up a forward jump.
+Act_NeedleMan_InitFwdJump:
+	ld   bc, $0100			; 1px/frame forward
 	call ActS_SetSpeedX
-	ld   bc, $0380
+	ld   bc, $0380			; 3.5px/frame up
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L0273A2:;I
+	
+;================ Act_NeedleMan_JumpU ================
+; Jump, pre-peak.
+Act_NeedleMan_JumpU:
+	; Use jumping sprite
 	ld   a, $09
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Apply gravity while moving up, until we reach the peak
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L0273B1:;I
+	
+;================ Act_NeedleMan_JumpD ================
+; Jump, post-peak.
+Act_NeedleMan_JumpD:
+	; Use jumping sprite
 	ld   a, $09
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Apply gravity while moving down, until we reach touch the ground
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $01
+	; Then check for a new attack
+	ld   a, ACTRTN_NEEDLEMAN_INITCHKATTACK
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0273C2:;I
-	ld   bc, $0440
+	
+;================ Act_NeedleMan_InitThrJump ================
+; Needle attack - Set up straight up high jump near the ceiling.
+Act_NeedleMan_InitThrJump:
+	ld   bc, $0440			; 4.25px/frame up
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L0273CB:;I
+	
+;================ Act_NeedleMan_JumpThrU ================
+; Needle attack - high jump, pre-peak.
+Act_NeedleMan_JumpThrU:
+	; Use jumping sprite
 	ld   a, $09
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Apply gravity while moving up, until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
+	
 	xor  a
-	ld   [w_CF5C_SpawnTimer], a
+	ld   [wNeedleSpawnTimer], a
 	jp   ActS_IncRtnId
-L0273DB:;I
+	
+;================ Act_NeedleMan_JumpThrD ================
+; Needle attack - high jump, post-peak.
+Act_NeedleMan_JumpThrD:
+	; Use jumping sprite
 	ld   a, $09
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Face the player in case he's passing under
 	call ActS_FacePl
-	ld   a, [w_CF5C_SpawnTimer]
-	cp   $20
-	jr   nc, L0273F6
-	inc  a
-	ld   [w_CF5C_SpawnTimer], a
-	dec  a
-	and  $07
-	jr   nz, L0273F6
-	jp   ActS_IncRtnId
-L0273F6:;R
+	
+	;--
+	;
+	; Spawn a needle every 8 frames, over a period of $20 (32) frames.
+	; This will end up spawning four equally spaced needles around the start of the descent.
+	;
+	ld   a, [wNeedleSpawnTimer]
+	cp   $20					; Timer >= $20?
+	jr   nc, .move				; If so, skip (we already spawned 4 needles)
+	inc  a						; Timer++
+	ld   [wNeedleSpawnTimer], a
+	
+	dec  a						; Go back to previous value
+	and  $07					; Divisible by 8?
+	jr   nz, .move				; If not, skip
+	
+	jp   ActS_IncRtnId			; Otherwise, spawn it!
+	;--
+.move:
+	; Apply gravity while moving down, until we touch tne ground.
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $01
+	ld   a, ACTRTN_NEEDLEMAN_INITCHKATTACK
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0273FF:;I
-	ld   a, $73
-	ld   bc, $00F0
+	
+;================ Act_NeedleMan_ThrSpawn ================
+; Spawns a needle.
+Act_NeedleMan_ThrSpawn:
+	ld   a, ACT_NEEDLECANNON
+	ld   bc, ($00 << 8)|LOW(-$10)	; 16px up
 	call ActS_SpawnRel
+	
+	; Cooldown of 6 frames after spawning needle
 	ld   a, $06
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02740E:;I
+	
+;================ Act_NeedleMan_ThrCooldown ================
+; Cooldown after spawning a needle.
+Act_NeedleMan_ThrCooldown:
+	; Wait those 6 frames.
+	; While this happens, gravity is not processed, making Needle Man freeze in the air.
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $0C
+	
+	ld   a, ACTRTN_NEEDLEMAN_JUMPTHRD
 	ldh  [hActCur+iActRtnId], a
 	ret
-L02741A: db $0B;X
-L02741B: db $0B;X
-L02741C: db $0B
-L02741D: db $13;X
-L02741E: db $1B;X
-L02741F: db $23
-L027420: db $1B;X
-L027421: db $13;X
-L027422: db $0B;X
-L027423: db $0B;X
-L027424:;I
+	
+;================ Act_NeedleMan_ColiXTbl ================
+; Maps each sprite to its collision box horizontal radius.
+; Only used during the headbutt attack, so most entries go unused,
+; on top of those unused by mistake (see Act_NeedleMan_HeadExtend).
+Act_NeedleMan_ColiXTbl:
+	db $0B ; $00 ;X
+	db $0B ; $01 ;X
+	db $0B ; $02 
+	db $13 ; $03 ;X
+	db $1B ; $04 ;X
+	db $23 ; $05 
+	db $1B ; $06 ;X
+	db $13 ; $07 ;X
+	db $0B ; $08 ;X
+	db $0B ; $09 ;X
+
+;================ Act_CrashMan ================
+; ID: ACT_CRASHMAN
+Act_CrashMan:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L027427: db $84
-L027428: db $7D
-L027429: db $37
-L02742A: db $74
-L02742B: db $47
-L02742C: db $74
-L02742D: db $72
-L02742E: db $74
-L02742F: db $8C
-L027430: db $74
-L027431: db $9F
-L027432: db $74
-L027433: db $C9
-L027434: db $74
-L027435: db $E2
-L027436: db $74
-L027437:;I
-	xor  a
-	ldh  [hActCur+iAct0D], a
-	ld   bc, $00E0
+	dw Act_BossIntro
+	dw Act_CrashMan_InitWalk
+	dw Act_CrashMan_Walk
+	dw Act_CrashMan_InitJump
+	dw Act_CrashMan_JumpU
+	dw Act_CrashMan_JumpShootD
+	dw Act_CrashMan_JumpD1
+	dw Act_CrashMan_JumpD2
+	DEF ACTRTN_CRASHMAN_INTRO = $00
+	
+;================ Act_CrashMan_InitWalk ================
+; Sets up walking.
+Act_CrashMan_InitWalk:
+	xor  a							; Reset walk cycle
+	ldh  [hActCur+iCrashManWalkTimer], a
+	ld   bc, $00E0					; Move 0.875px/frame forward
 	call ActS_SetSpeedX
-	ld   a, $80
+	ld   a, $80						; Walk for ~2 seconds at most
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L027447:;I
-	ld   hl, hActCur+iAct0D
-	ld   a, [hl]
-	inc  [hl]
-	rrca 
-	rrca 
-	rrca 
-	and  $03
-	add  $03
-	ld   [wActCurSprMapRelId], a
-	ld   a, [wShot0]
-	add  a
-	jp   c, ActS_IncRtnId
+	
+;================ Act_CrashMan_Walk ================
+; Walking on the ground.
+Act_CrashMan_Walk:
+	;
+	; Animate walk cycle.
+	; Use sprites $03-$06 at 1/8 speed.
+	;
+	ld   hl, hActCur+iCrashManWalkTimer
+	ld   a, [hl]		; Get current walk timer
+	inc  [hl]			; WalkTimer++
+	rrca ; /2
+	rrca ; /4
+	rrca ; /8			; Advance anim every 8 frames
+	and  $03			; 4 sprite cycle
+	add  $03			; Starting at $03
+	ld   [wActCurSprMapBaseId], a
+	
+	;
+	; If the player is shooting, retaliate.
+	; Specifically, if the player shot in the first slot is active, retaliate.
+	; This leads to similar results to what RM2 did, which was going off a B button press.
+	;
+	ld   a, [wShot0]		; Get shot ID. If it's active, it will be >= $80
+	add  a					; Does *2 overflow it?
+	jp   c, ActS_IncRtnId	; If so, a shot is active, so cut the wait early
+	
+	;
+	; After waiting ~2 seconds, retaliate on our own.
+	; This is unlike RM2, where Crash Man can wait indefinitely until the player shoots.
+	;
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
-	jp   z, ActS_IncRtnId
-	call ActS_ApplySpeedFwdXColi
-	ret  c
+	ldh  [hActCur+iActTimer0C], a	; Timer--
+	jp   z, ActS_IncRtnId			; Timer == 0? If so, jump
+	
+	; Move forward at 0.875px/frame, turning around when a solid wall is in the way
+	call ActS_ApplySpeedFwdXColi	; Perform movement
+	ret  c							; Hit a wall? If not, return
+	;--								; Otherwise, flip
+	; This is ActS_FlipH done manually, why.
 	ld   hl, hActCur+iActSprMap
-	ld   a, $80
+	ld   a, ACTDIR_R
 	xor  [hl]
 	ld   [hl], a
+	;--
 	ret
-L027472:;I
+	
+;================ Act_CrashMan_InitJump ================
+; Sets up a jump directly at the player.
+Act_CrashMan_InitJump:
+	; Jump towards the player
 	call ActS_FacePl
-	call ActS_GetPlDistanceX
+	; X Speed: (DiffX * 4)subpx/frame
+	call ActS_GetPlDistanceX	; A = Diff
 	ld   l, a
-	ld   h, $00
-	add  hl, hl
-	add  hl, hl
-	ld   a, l
+	ld   h, $00					; to HL
+	add  hl, hl					; *2
+	add  hl, hl					; *4
+	ld   a, l					; Set result
 	ldh  [hActCur+iActSpdXSub], a
 	ld   a, h
 	ldh  [hActCur+iActSpdX], a
-	ld   bc, $0400
+	
+	ld   bc, $0400			; Y Speed: 4px/frame
 	call ActS_SetSpeedY
+	
 	jp   ActS_IncRtnId
-L02748C:;I
+	
+;================ Act_CrashMan_JumpU ================
+; Jump, pre-peak.
+Act_CrashMan_JumpU:
+	; Use jumping sprite
 	ld   a, $07
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Jump forward, stopping on solid blocks
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving up, until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
+	; Wait 8 frames before
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02749F:;I
+	
+;================ Act_CrashMan_JumpShootD ================
+; Jump, post-peak. (can shoot Crash Bomb)
+Act_CrashMan_JumpShootD:
+	; Use jumping sprite
 	ld   a, $08
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Jump forward, stopping on solid blocks
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving down...
+	; No end check due to the high jump arc and level layout in the boss room,
+	; not making it possible to touch the ground in this routine (or the next one).
 	call ActS_ApplySpeedDownYColi
+	
+	; Wait for those 8 frames...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $7A
-	call L001E63
-	ld   a, b
-	and  a
-	jr   nz, L0274C2
-	ld   a, $74
+	
+	;
+	; Spawn a Crash Bomb, which travels diagonally, if one isn't already spawned.
+	;
+	; The spawn check goes off the explosion actor because by the time Crash Man gets to 
+	; fire another bomb, even at the earliest possible time, the old Crash Bomb will have already exploded.
+	;
+	ld   a, ACT_CRASHBOMBEXPL
+	call ActS_CountById
+	ld   a, b				; A = Crash Bomb count
+	and  a					; Is that != 0?
+	jr   nz, .nextMode		; If so, skip
+	
+	ld   a, ACT_CRASHBOMB	; Otherwise, spawn at the current position
 	ld   bc, $0000
 	call ActS_SpawnRel
-L0274C2:;R
+.nextMode:
+	; Continue the jump down while displaying the shooting sprite $09 for 8 frames.
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0274C9:;I
+	
+;================ Act_CrashMan_JumpD1 ================
+; Jump, post-peak (sprite $09).
+Act_CrashMan_JumpD1:
+	; Use jumping/shooting sprite
 	ld   a, $09
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Jump forward, stopping on solid blocks
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving down...
 	call ActS_ApplySpeedDownYColi
+	
+	; Wait for those 8 frames...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Continue the jump down while displaying sprite $09 until we touch the ground
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0274E2:;I
+	
+;================ Act_CrashMan_JumpD2 ================
+; Jump, post-peak (sprite $07).
+Act_CrashMan_JumpD2:
+	; Use jumping sprite 2
 	ld   a, $07
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Jump forward, stopping on solid blocks
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving down, until we touch a solid block.
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	ld   a, $00
+	; [BUG] Resetting to the intro, not Act_CrashMan_InitWalk
+	ld   a, ACTRTN_CRASHMAN_INTRO
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0274F3:;I
+	
+;================ Act_MetalMan ================
+; ID: ACT_METALMAN
+; See also: Act_CrashMan
+Act_MetalMan:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0274F6: db $84
-L0274F7: db $7D
-L0274F8: db $0E
-L0274F9: db $75
-L0274FA: db $18
-L0274FB: db $75
-L0274FC: db $3D
-L0274FD: db $75
-L0274FE: db $4D
-L0274FF: db $75
-L027500: db $6E
-L027501: db $75
-L027502: db $89;X
-L027503: db $75;X
-L027504: db $9A;X
-L027505: db $75;X
-L027506: db $AA;X
-L027507: db $75;X
-L027508: db $AB
-L027509: db $75
-L02750A: db $BD
-L02750B: db $75
-L02750C: db $CC
-L02750D: db $75
-L02750E:;I
-	xor  a
-	ldh  [hActCur+iAct0D], a
-	ld   a, $10
+	dw Act_BossIntro
+	dw Act_MetalMan_InitWalk
+	dw Act_MetalMan_Walk
+	dw Act_MetalMan_AtkJumpU
+	dw Act_MetalMan_AtkJumpSpawnD
+	dw Act_MetalMan_AtkJumpD
+	dw Act_MetalMan_Unused_AtkJumpEndD
+	dw Act_MetalMan_Unused_AtkJumpCooldown
+	dw Act_MetalMan_Unused_08
+	dw Act_MetalMan_InitJumpFwd
+	dw Act_MetalMan_JumpFwdU
+	dw Act_MetalMan_JumpFwdD
+	DEF ACTRTN_METALMAN_WALK = $02
+	DEF ACTRTN_METALMAN_ATKJUMPSPAWND = $04
+	DEF ACTRTN_METALMAN_INITJUMPFWD = $09
+
+;================ Act_MetalMan_InitWalk ================
+; Sets up walking in place.
+Act_MetalMan_InitWalk:
+	xor  a							; Reset walk cycle
+	ldh  [hActCur+iMetalManWalkTimer], a
+	;--
+	ld   a, $10						; Not used
 	ldh  [hActCur+iActTimer0C], a
+	;--
 	jp   ActS_IncRtnId
-L027518:;I
-	ld   hl, hActCur+iAct0D
-	ld   a, [hl]
-	inc  [hl]
-	rrca 
-	rrca 
-	rrca 
-	and  $03
-	add  $03
-	ld   [wActCurSprMapRelId], a
+	
+;================ Act_MetalMan_Walk ================
+; Walking in place on the ground.
+Act_MetalMan_Walk:
+	;
+	; Animate walk cycle.
+	; Use sprites $03-$06 at 1/8 speed.
+	;
+	ld   hl, hActCur+iMetalManWalkTimer
+	ld   a, [hl]		; Get current walk timer
+	inc  [hl]			; WalkTimer++
+	rrca ; /2
+	rrca ; /4
+	rrca ; /8			; Advance anim every 8 frames
+	and  $03			; 4 sprite cycle
+	add  $03			; Starting at $03
+	ld   [wActCurSprMapBaseId], a
+	
+	;
+	; If the player gets within 2 blocks, jump forward, the other way.
+	;
 	call ActS_GetPlDistanceX
-	cp   $20
-	jp   c, L0275E5
+	cp   BLOCK_H*2							; DiffX < $20?
+	jp   c, Act_MetalMan_SwitchToJumpFwd	; If so, jump
+	
+	;
+	; If the player is shooting, retaliate.
+	;
 	ld   a, [wShot0]
-	add  a
-	ret  nc
-	ld   bc, $0400
+	add  a				; wShotId < $80?
+	ret  nc				; If so, return
+	
+	; Jump straight up, preparing to shoot three Metal Blades
+	ld   bc, $0400		; 4px/frame up
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L02753D:;I
+	
+;================ Act_MetalMan_AtkJumpU ================
+; Metal Blade attack - Jump, pre-peak.
+Act_MetalMan_AtkJumpU:
+	; Use jumping sprite
 	ld   a, $07
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Apply gravity while moving up, until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
+	
+	; Wait 4 frames before throwing one
 	ld   a, $04
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02754D:;I
+	
+;================ Act_MetalMan_AtkJumpSpawnD ================
+; Metal Blade attack - Jump, post-peak, throw Metal Blade.
+;
+; This and the next mode are looped in sequence, attempting to throw as many
+; Metal Blades as possible until we land on the ground.
+; Due to the fixed jump height, we always end up throwing 3 of them.
+Act_MetalMan_AtkJumpSpawnD:
+	; Use jumping down sprite
 	ld   a, $08
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Apply gravity while moving down, until we touch the ground.
+	; When that happens, the attack is over.
 	call ActS_ApplySpeedDownYColi
-	jp   nc, L0275E0
+	jp   nc, Act_MetalMan_SwitchToWalk
+	
+	; Wait those 4 frames before spawning a Metal Blade
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $75
+	
+	ld   a, ACT_METALBLADE
 	ld   bc, $0000
 	call ActS_SpawnRel
+	
+	; Display throw sprite for 8 frames, while still falling down
 	ld   a, $08
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02756E:;I
+	
+;================ Act_MetalMan_AtkJumpD ================
+; Metal Blade attack - Jump, post-peak, after throw cooldown.
+Act_MetalMan_AtkJumpD:
+	; Use jumping/throw sprite
 	ld   a, $09
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Apply gravity while moving down, until we touch tne ground
 	call ActS_ApplySpeedDownYColi
-	jp   nc, L0275E0
+	jp   nc, Act_MetalMan_SwitchToWalk
+	
+	; Wait those 8 frames
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Throw another Metal Blade after 16 frames
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $04
-	ldh  [hActCur+iActRtnId], a
+	ld   a, ACTRTN_METALMAN_ATKJUMPSPAWND
+	ldh  [hActCur+iActRtnId], a		; Back to previous routine
 	ret
-L027589: db $C9;X
-L02758A: db $CD;X
-L02758B: db $A8;X
-L02758C: db $23;X
-L02758D: db $D8;X
-L02758E: db $3E;X
-L02758F: db $02;X
-L027590: db $E0;X
-L027591: db $A1;X
-L027592: db $C9;X
-L027593: db $3E;X
-L027594: db $10;X
-L027595: db $E0;X
-L027596: db $AC;X
-L027597: db $C3;X
-L027598: db $B1;X
-L027599: db $1E;X
-L02759A: db $C9;X
-L02759B: db $3E;X
-L02759C: db $07;X
-L02759D: db $EA;X
-L02759E: db $38;X
-L02759F: db $CF;X
-L0275A0: db $F0;X
-L0275A1: db $AC;X
-L0275A2: db $D6;X
-L0275A3: db $01;X
-L0275A4: db $E0;X
-L0275A5: db $AC;X
-L0275A6: db $C0;X
-L0275A7: db $C3;X
-L0275A8: db $B1;X
-L0275A9: db $1E;X
-L0275AA: db $C9;X
-L0275AB:;I
-	call ActS_FacePl
-	ld   bc, $0180
-	call ActS_SetSpeedX
-	ld   bc, $0380
-	call ActS_SetSpeedY
-	jp   ActS_IncRtnId
-L0275BD:;I
-	ld   a, $07
-	ld   [wActCurSprMapRelId], a
-	call ActS_ApplySpeedFwdX
-	call ActS_ApplySpeedUpYColi
-	ret  c
-	jp   ActS_IncRtnId
-L0275CC:;I
-	ld   a, $07
-	ld   [wActCurSprMapRelId], a
-	call ActS_ApplySpeedFwdX
+	
+;================ Act_MetalMan_Unused_* ================
+; [TCRF] Unused routines. All begin with a "ret" blocking their execution.
+;        They appear to be incomplete code that would have made the attack more accurate to the NES counterpart.
+;        This is similar to code found in Needle Man though, it might have been adapted from there.
+
+;================ Act_MetalMan_Unused_AtkJumpEndD ================
+; Metal Blade attack - Jump, post-peak. Don't throw more Metal Blades.
+; It might have been used were the number of spawned Metal Blades capped.
+Act_MetalMan_Unused_AtkJumpEndD:
+	ret
+
+	; Apply gravity while moving down, until we touch tne ground.
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	; Then return walking.
+	ld   a, ACTRTN_METALMAN_WALK
+	ldh  [hActCur+iActRtnId], a
+	ret
+	
+;================ Act_MetalMan_Unused_InitAtkJumpCooldown ================
+; Metal Blsde attack - Set up cooldown after shooting.
+; This is noticeably not done here, unlike the NES game.
+Act_MetalMan_Unused_InitAtkJumpCooldown:
+	; Cooldown of 16 frames, presumably after spawning the Metal Blade
+	ld   a, $10
+	ldh  [hActCur+iActTimer0C], a
+	jp   ActS_IncRtnId
+	
+;================ Act_MetalMan_Unused_AtkJumpCooldown ================
+; Waits 16 frames
+Act_MetalMan_Unused_AtkJumpCooldown:
+	ret  ; Ret'd out  
+	
+	; Use jumping sprite
+	ld   a, $07
+	ld   [wActCurSprMapBaseId], a
+	
+	; Wait those 10 frames.
+	; While this happens, gravity is not processed, making Metal Man freeze in the air.
+	ldh  a, [hActCur+iActTimer0C]
+	sub  a, $01
+	ldh  [hActCur+iActTimer0C], a
+	ret  nz
+	; And then...
+	jp   ActS_IncRtnId
+	
+;================ Act_MetalMan_Unused_08 ================
+Act_MetalMan_Unused_08:
+	; Nothing!
+	ret  
+
+;================ Act_MetalMan_InitJumpFwd ================
+; Sets up the jump to the other side.
+Act_MetalMan_InitJumpFwd:
+	; [POI] Since there's enough space, it is possible to trick Metal Man into jumping the wrong side.
+	call ActS_FacePl		; Jump towards the player.
+	ld   bc, $0180			; 1.5px/frame forward
+	call ActS_SetSpeedX
+	ld   bc, $0380			; 3.5px/frame up
+	call ActS_SetSpeedY
+	jp   ActS_IncRtnId
+	
+;================ Act_MetalMan_JumpFwdU ================
+; Jump to other side, pre-peak.
+Act_MetalMan_JumpFwdU:
+	; Use jumping sprite
+	ld   a, $07
+	ld   [wActCurSprMapBaseId], a
+	
+	; [BUG] This isn't checking for solid collision, which would have been fine hadn't it been possible to
+	;       trick Metal Man into jumping into the wall.
+	call ActS_ApplySpeedFwdX
+	; Apply gravity while moving up, until the peak of the jump
+	call ActS_ApplySpeedUpYColi
+	ret  c
+	
+	jp   ActS_IncRtnId
+	
+;================ Act_MetalMan_JumpFwdD ================
+; Jump to other side, post-peak.
+Act_MetalMan_JumpFwdD:
+	; Use jumping sprite
+	ld   a, $07
+	ld   [wActCurSprMapBaseId], a
+	; [BUG] See above. 
+	call ActS_ApplySpeedFwdX
+	; Apply gravity while moving down, until the peak of the jump
+	call ActS_ApplySpeedDownYColi
+	ret  c
+	; Face the player as soon as we land
 	call ActS_FacePl
-	ld   a, $02
+	
+	; Could have been omitted, to fall through Act_MetalMan_SwitchToWalk
+	ld   a, ACTRTN_METALMAN_WALK
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0275E0:;J
-	ld   a, $02
+	
+;================ Act_MetalMan_SwitchToWalk ================
+Act_MetalMan_SwitchToWalk:
+	ld   a, ACTRTN_METALMAN_WALK
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0275E5:;J
-	ld   a, $09
+	
+;================ Act_MetalMan_SwitchToJumpFwd ================
+Act_MetalMan_SwitchToJumpFwd:
+	ld   a, ACTRTN_METALMAN_INITJUMPFWD
 	ldh  [hActCur+iActRtnId], a
 	ret
-L0275EA:;I
+	
+;================ Act_WoodMan ================
+Act_WoodMan:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0275ED: db $84
-L0275EE: db $7D
-L0275EF: db $03
-L0275F0: db $76
-L0275F1: db $52
-L0275F2: db $76
-L0275F3: db $67
-L0275F4: db $76
-L0275F5: db $85
-L0275F6: db $76
-L0275F7: db $A6
-L0275F8: db $76
-L0275F9: db $EB
-L0275FA: db $76
-L0275FB: db $FA
-L0275FC: db $76
-L0275FD: db $09
-L0275FE: db $77
-L0275FF: db $14
-L027600: db $77
-L027601: db $21;X
-L027602: db $77;X
-L027603:;I
+	dw Act_BossIntro
+	dw Act_WoodMan_SpawnShield
+	dw Act_WoodMan_Idle
+	dw Act_WoodMan_SpawnRise
+	dw Act_WoodMan_ThrowShield
+	dw Act_WoodMan_SpawnFallLeaves
+	dw Act_WoodMan_JumpU
+	dw Act_WoodMan_JumpD
+	dw Act_WoodMan_WaitShieldDespawn
+	dw Act_WoodMan_WaitFallDespawn
+	dw Act_WoodMan_Unused_Nop;X
+	DEF ACTRTN_WOODMAN_INTRO = $00
+	
+;================ Act_WoodMan_SpawnShield ================
+; Spawns the Leaf Shield.
+Act_WoodMan_SpawnShield:
+	; Don't throw it yet
 	xor  a
-	ld   [$CCE0], a
+	ld   [wLeafShieldOrgSpdX], a
+	
+	; After spawning it, idle for 16 frames (before spawning the rising leaves)
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $77
-	ld   bc, $0004
+	
+	;
+	; Spawn the Leaf Shield.
+	; This is made of four individual leaf actors that rotate around Wood Man.
+	;
+	; There are $40 possible positions for the leaves (which wrap around), so to
+	; have them evenly spaced out, their timer value is set to be $10 apart.
+	; 
+	; Since the leaves are small and the collision box is too, it's possible to
+	; easily shoot through the shield, especially with the buster.
+	;
+	
+	ld   a, ACT_LEAFSHIELD
+	ld   bc, ($00 << 8)|$04	; 4px up
 	call ActS_SpawnRel
 	jp   c, ActS_IncRtnId
-	ld   de, $000C
+	ld   de, iActTimer0C
 	add  hl, de
-	ld   [hl], $00
-	ld   a, $77
-	ld   bc, $0004
+	ld   [hl], $10*0
+	
+	ld   a, ACT_LEAFSHIELD
+	ld   bc, ($00 << 8)|$04	; 4px up
 	call ActS_SpawnRel
 	jp   c, ActS_IncRtnId
-	ld   de, $000C
+	ld   de, iActTimer0C
 	add  hl, de
-	ld   [hl], $10
-	ld   a, $77
-	ld   bc, $0004
+	ld   [hl], $10*1
+	
+	ld   a, ACT_LEAFSHIELD
+	ld   bc, ($00 << 8)|$04	; 4px up
 	call ActS_SpawnRel
 	jp   c, ActS_IncRtnId
-	ld   de, $000C
+	ld   de, iActTimer0C
 	add  hl, de
-	ld   [hl], $20
-	ld   a, $77
-	ld   bc, $0004
+	ld   [hl], $10*2
+	
+	ld   a, ACT_LEAFSHIELD
+	ld   bc, ($00 << 8)|$04	; 4px up
 	call ActS_SpawnRel
 	jp   c, ActS_IncRtnId
-	ld   de, $000C
+	ld   de, iActTimer0C
 	add  hl, de
-	ld   [hl], $30
+	ld   [hl], $10*3
+	
 	jp   ActS_IncRtnId
-L027652:;I
-	call L027722
+	
+;================ Act_WoodMan_Idle ================
+; Idle, on the ground.
+Act_WoodMan_Idle:
+	; Wait 16 frames in the idle animation
+	call Act_WoodMan_AnimIdle
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Spawn three rising leaves
 	ld   a, $03
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iWoodManRiseLeft], a
+	; Wait 16 frames (total 32)
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L027667:;I
-	call L027722
+	
+;================ Act_WoodMan_SpawnRise ================
+; Spawns rising leaves, while idling.
+Act_WoodMan_SpawnRise:
+	; Wait 16 frames in the idle animation (cooldown)
+	call Act_WoodMan_AnimIdle
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $78
+	
+	; Spawn a leaf moving straight up
+	ld   a, ACT_LEAFRISE
 	ld   bc, $0000
 	call ActS_SpawnRel
+	
+	; Wait 16 frames before spawning another one
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, hActCur+iAct0D
+	
+	; If we haven't spawned all 3 leaves, loop this routine
+	ld   hl, hActCur+iWoodManRiseLeft
 	dec  [hl]
 	ret  nz
+	
 	jp   ActS_IncRtnId
-L027685:;I
-	call L027722
-	ld   a, $78
-	call L001E63
+	
+;================ Act_WoodMan_ThrowShield ================
+; Waits for the rising leaves to despawn before throwing the shield.
+Act_WoodMan_ThrowShield:
+	;
+	; Continue with the idle animation until all rising leaves have gone offscreen.
+	;
+	call Act_WoodMan_AnimIdle
+	ld   a, ACT_LEAFRISE
+	call ActS_CountById
 	ld   a, b
-	and  a
-	ret  nz
+	and  a			; Leaf count > 0?
+	ret  nz			; If so, wait
+	
+	; Face the player in preparation for jumping towards him
 	call ActS_FacePl
-	call ActS_GetPlDistanceX
-	ld   a, $00
-	sbc  a
-	and  $02
-	dec  a
-	ld   [$CCE0], a
+	
+	;
+	; Signal out to the shield actors to throw the shield forwards at 1px/frame.
+	;
+	; This signal is the movement speed for the shield's origin,
+	; so it should be $01 if it's moving right, $FF if it's moving left.
+	;
+	; That's close to the return value of ActS_GetPlDistanceX, but it needs some mungling first.
+	;
+	call ActS_GetPlDistanceX	; C Flag = Player is on the right
+	ld   a, $00					; Start from blank canvas ("xor a" clears the C flag, can't use it)
+	sbc  a						; Treat C as -1 to have one of them with all bits flipped (R -> $FF, L -> $00)
+	and  $02					; Only keep bit1 (R -> $02, L -> $00)
+	dec  a						; Shift down into place, with equal distance (R -> $01, L -> $FF)
+	ld   [wLeafShieldOrgSpdX], a
+	
+	; Wait ~half a second before
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0276A6:;I
+	
+;================ Act_WoodMan_SpawnFallLeaves ================
+; Spawns the falling leaves and sets up the forward jump.
+Act_WoodMan_SpawnFallLeaves:
+	; Rise arms up for ~half a second...
 	ld   a, $07
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $79
-	ld   bc, $00A0
+	
+	; ...before making three leaves SLOWLY fall down the screen.
+	; These leaves fall from the top of the screen, moving back and forth
+	; They all use the same Y position, while horizontally spread across the screen.
+	
+	ld   a, ACT_LEAFFALL
+	ld   bc, ($00 << 8)|LOW(-$60) 	; [POI] 6 blocks above for testing, perhaps? Will be overwritten by Act_WoodMan_SetLeafFallPos
 	call ActS_SpawnRel
-	ld   a, $18
-	call nc, L02772F
-	ld   a, $79
+	ld   a, OBJ_OFFSET_X+$10		; X Pos = $18
+	call nc, Act_WoodMan_SetLeafFallPos
+	
+	ld   a, ACT_LEAFFALL
 	ld   bc, $0000
 	call ActS_SpawnRel
-	ld   a, $49
-	call nc, L02772F
-	ld   a, $79
+	ld   a, OBJ_OFFSET_X+$41		; X Pos = $49
+	call nc, Act_WoodMan_SetLeafFallPos
+	
+	ld   a, ACT_LEAFFALL
 	ld   bc, $0000
 	call ActS_SpawnRel
-	ld   a, $78
-	call nc, L02772F
-	call ActS_FacePl
-	ld   bc, $0080
+	ld   a, OBJ_OFFSET_X+$70		; X Pos = $78
+	call nc, Act_WoodMan_SetLeafFallPos
+	
+	;
+	; Set up forward hop while the leaves are falling.
+	;
+	call ActS_FacePl		; Towards player
+	ld   bc, $0080			; 0.5px/frame forward
 	call ActS_SetSpeedX
-	ld   bc, $0200
+	ld   bc, $0200			; 2px/frame up
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L0276EB:;I
+	
+;================ Act_WoodMan_JumpU ================
+; Jump, pre-peak.
+Act_WoodMan_JumpU:
+	; Use jumping sprite
 	ld   a, $08
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	
+	; Move forward, stopping on solid walls
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving up, until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L0276FA:;I
+	
+;================ Act_WoodMan_JumpD ================
+; Jump, post-peak.
+Act_WoodMan_JumpD:
+	; Use jumping sprite
 	ld   a, $08
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Move forward, stopping on solid walls
 	call ActS_ApplySpeedFwdXColi
+	; Apply gravity while moving down, until we touch solid ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
 	jp   ActS_IncRtnId
-L027709:;I
-	ld   a, $77
-	call L001E63
-	ld   a, b
-	and  a
-	ret  nz
+	
+;================ Act_WoodMan_WaitShieldDespawn ================
+; Waits until the Leaf Shield has fully despawned.
+Act_WoodMan_WaitShieldDespawn:
+	ld   a, ACT_LEAFSHIELD
+	call ActS_CountById		; Get leaf count
+	ld   a, b 
+	and  a					; Is it != 0?
+	ret  nz					; If so, return
+	
 	jp   ActS_IncRtnId
-L027714:;I
-	ld   a, $79
-	call L001E63
+	
+;================ Act_WoodMan_WaitFallDespawn ================
+; Waits until the falling leaves have fully despawned, then loops the pattern.
+Act_WoodMan_WaitFallDespawn:
+	ld   a, ACT_LEAFFALL
+	call ActS_CountById
 	ld   a, b
 	and  a
 	ret  nz
-	ld   a, $00
+	; [BUG] Improper loop point
+	ld   a, ACTRTN_WOODMAN_INTRO
 	ldh  [hActCur+iActRtnId], a
 	ret
-L027721: db $C9;X
-L027722:;C
+	
+;================ Act_WoodMan_Unused_Nop ================
+Act_WoodMan_Unused_Nop:
+	ret
+	
+;================ Act_WoodMan_AnimIdle ================
+; Handles the idle animation cycle while on the ground.
+Act_WoodMan_AnimIdle:
+	; Use sprites $03-$04 at 1/8 speed
 	ldh  a, [hTimer]
-	rrca 
-	rrca 
-	rrca 
-	and  $01
-	add  $03
-	ld   [wActCurSprMapRelId], a
+	rrca ; /2
+	rrca ; /4
+	rrca ; /8 Every 8 frames...
+	and  $01 ; Alternate between $00 and $01
+	add  $03 ; Offset by $03
+	ld   [wActCurSprMapBaseId], a
 	ret
-L02772F:;C
-	ld   de, $0005
+	
+;================ Act_WoodMan_SetLeafFallPos ================
+; Sets the spawn coordinates for the falling leaves.
+; IN
+; - HL: Ptr to spawned Act_WoodManLeafFall
+; - A: X Position
+Act_WoodMan_SetLeafFallPos:
+	ld   de, iActX
 	add  hl, de
-	ldi  [hl], a
-	inc  hl
-	ld   [hl], $30
+	ldi  [hl], a				; iActX = A, seek to iActYSub
+	inc  hl ; iActY
+	ld   [hl], OBJ_OFFSET_Y+$20	; iActY = $30 (near the top of the screen)
 	ret
-L027738:;I
+	
+;================ Act_AirMan ================
+; ID: ACT_AIRMAN
+Act_AirMan:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02773B: db $84
-L02773C: db $7D
-L02773D: db $51
-L02773E: db $77
-L02773F: db $62
-L027740: db $77
-L027741: db $84
-L027742: db $77
-L027743: db $B0
-L027744: db $77
-L027745: db $EF
-L027746: db $77
-L027747: db $F8
-L027748: db $77
-L027749: db $07
-L02774A: db $78
-L02774B: db $1C
-L02774C: db $78
-L02774D: db $2B
-L02774E: db $78
-L02774F: db $44
-L027750: db $78
-L027751:;I
+	dw Act_BossIntro
+	dw Act_AirMan_Init
+	dw Act_AirMan_Idle
+	dw Act_AirMan_SpawnShot
+	dw Act_AirMan_WaitShotDespawn
+	dw Act_AirMan_InitJump0
+	dw Act_AirMan_Jump0U
+	dw Act_AirMan_Jump0D
+	dw Act_AirMan_Jump1U
+	dw Act_AirMan_Jump1D
+	dw Act_AirMan_Reset
+	DEF ACTRTN_AIRMAN_INIT = $01
+	DEF ACTRTN_AIRMAN_SPAWNSHOT = $03
+	
+;================ Act_AirMan_Init ================
+Act_AirMan_Init:
+	; Do three consecutive waves of whirlwind patterns before jumping to the other side
 	ld   a, $03
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iAirManWavesLeft], a
+	; Set movement speed for later, when jumping forward
 	ld   bc, $0100
 	call ActS_SetSpeedX
+	; Wait ~1 second idling before spawning the whirlwinds
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L027762:;I
+	
+;================ Act_AirMan_Idle ================
+; Idle on the ground.
+Act_AirMan_Idle:
+	; Animate fan on the ground.
+	; Use sprites $03-$04 at 1/4 speed
 	ldh  a, [hTimer]
-	rrca 
-	rrca 
-	and  $01
-	add  $03
-	ld   [wActCurSprMapRelId], a
+	rrca ; /2
+	rrca ; /4 Every 4 frames...
+	and  $01 ; Alternate between $00 and $01
+	add  $03 ; Offset by $03
+	ld   [wActCurSprMapBaseId], a
+	
+	; Wait that ~1 second before doing anythinh...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	call Rand
-	and  $03
-	add  a
-	add  a
-	ldh  [hActCur+iAct0E], a
+	
+	; 
+	; Randomize the wave pattern
+	; There are four patterns, each one having four whirlwinds that have specific "paths",
+	; all stored in a single table, so...
+	;
+	
+	; Build base path ID, to the start of a random pattern
+	call Rand	; Randomize value
+	and  $03	; 4 patterns total (25% chance for any pattern)
+	add  a		; 4 shots in a pattern
+	add  a		; ""
+	ldh  [hActCur+iAirManPatId], a
+	
+	; Initialize relative path ID, will be decremented every frame.
+	; The whirlwind that gets spawned will use the path iAirManPatId + iActTimer0C - 1.
 	ld   a, $04
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L027784:;I
+	
+;================ Act_AirMan_SpawnShot ================
+; Spawns the whirlwinds that are part of the picked pattern, 1 at a time in reverse order.
+; As a pattern is made up of four whirlwinds, this will take four frames.
+Act_AirMan_SpawnShot:
+	; Use different frame while spawning
 	ld   a, $05
-	ld   [wActCurSprMapRelId], a
-	ld   a, $76
+	ld   [wActCurSprMapBaseId], a
+	
+	;
+	; Spawn the whirlwind and set up its properties, most importantly its speed.
+	;
+	ld   a, ACT_WHIRLWIND
 	ld   bc, $0000
 	call ActS_SpawnRel
-	inc  hl
-	inc  hl
+	inc  hl ; iActRtnId
+	inc  hl ; iActSprMap
+	; Move to the same direction Air Man is facing
 	ldh  a, [hActCur+iActSprMap]
 	ld   [hl], a
-	ld   de, $000B
+	; Write the path ID, will be used to index Act_AirManShot_PathTbl
+	ld   de, iAirManShotPathId-iActSprMap	; Seek HL to iAirManShotPathId
 	add  hl, de
-	ldh  a, [hActCur+iAct0E]
+	ldh  a, [hActCur+iAirManPatId]			; Read base path ID
 	ld   b, a
-	ldh  a, [hActCur+iActTimer0C]
-	dec  a
-	add  b
-	ld   [hl], a
+	ldh  a, [hActCur+iActTimer0C]			; Read relative path ID
+	dec  a									; - 1
+	add  b									; Add base to it
+	ld   [hl], a							; Save result to iAirManShotPathId
+	
+	; Do the above 4 times in a row, to quickly spawn all whirlwinds without spiking the CPU
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Then wait for the wind to despawn, polling every 16 frames
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0277B0:;I
+	
+;================ Act_AirMan_WaitShotDespawn ================
+; Stay on the ground, while blowing until the wind until they all despawn.
+Act_AirMan_WaitShotDespawn:
+
+	;
+	; Blow the player back immediately after all the whirlwinds spawn.
+	; This is *not* what RM2 did. In that game, the player is blown back only when
+	; the whirlwinds start moving forward *after* they get into position.
+	;
+	; This should have waited $80 frames before starting to blow the player back,
+	; to be consistent with both RM2 and Act_AirManShot's timing.
+	;
 	ldh  a, [hActCur+iActSprMap]
-	ld   bc, $00C0
-	call Pl_Unk_SetSpeedByActDir
+	ld   bc, $00C0					; 0.75px/frame
+	call Pl_SetSpeedByActDir
+	
+	; Animate fan
+	; Use sprites $03-$04 at 1/4 speed
 	ldh  a, [hTimer]
-	rrca 
-	rrca 
-	and  $01
-	add  $03
-	ld   [wActCurSprMapRelId], a
+	rrca ; /2
+	rrca ; /4 Every 4 frames...
+	and  $01 ; Alternate between $00 and $01
+	add  $03 ; Offset by $03
+	ld   [wActCurSprMapBaseId], a
+	
+	; Poll every 16 frames...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	; Set next check delay
 	ld   a, $10
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, $76
-	call L001E63
-	ld   a, b
-	and  a
-	ret  nz
-	ld   hl, hActCur+iAct0D
-	dec  [hl]
-	jp   z, ActS_IncRtnId
+	
+	; Keep waiting if all whirlwinds haven't been offscreened yet
+	ld   a, ACT_WHIRLWIND
+	call ActS_CountById
+	ld   a, b		; Get ACT_WHIRLWIND count
+	and  a			; Count != 0?
+	ret  nz			; If so, return
+	
+	; 
+	; Randomize another wave pattern, identically to before.
+	;
+	ld   hl, hActCur+iAirManWavesLeft
+	dec  [hl]						; Any waves left?
+	jp   z, ActS_IncRtnId			; If not, start jumping forward
+	
+	; Randomize base path ID
 	call Rand
 	and  $03
 	add  a
 	add  a
-	ldh  [hActCur+iAct0E], a
-	ld   a, $03
+	ldh  [hActCur+iAirManPatId], a
+	; Switch to spawning another wave
+	ld   a, ACTRTN_AIRMAN_SPAWNSHOT
 	ldh  [hActCur+iActRtnId], a
+	; Initialize relative path ID
 	ld   a, $04
 	ldh  [hActCur+iActTimer0C], a
 	ret
-L0277EF:;I
-	ld   bc, $0240
+	
+;================ Act_AirMan_InitJump0 ================
+; The remaining modes handle the two consecutive jumps the player should move under.
+Act_AirMan_InitJump0:
+	ld   bc, $0240			; 2.25px/frame fprward
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L0277F8:;I
+	
+;================ Act_AirMan_Jump0U ================
+; Jump, pre-peak.
+Act_AirMan_Jump0U:
+	; Use jumping frame
 	ld   a, $07
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Handle gravity moving up until the peak of the jump
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedUpYColi
 	ret  c
+	
 	jp   ActS_IncRtnId
-L027807:;I
+	
+;================ Act_AirMan_Jump0D ================
+; Jump, post-peak.
+Act_AirMan_Jump0D:
+	; Use jumping frame
 	ld   a, $07
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Handle gravity moving down until we touch the ground
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	; Set up second, higher jump at 3px/frame
 	ld   bc, $0300
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L02781C:;I
+	
+;================ Act_AirMan_Jump1U ================
+; High jump, pre-peak.
+Act_AirMan_Jump1U:
+	; Use jumping frame
 	ld   a, $07
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Handle gravity moving up until the peak of the jump
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L02782B:;I
+	
+;================ Act_AirMan_Jump1D ================
+; High jump, post-peak.
+Act_AirMan_Jump1D:
+	; Use jumping frame
 	ld   a, $07
-	ld   [wActCurSprMapRelId], a
+	ld   [wActCurSprMapBaseId], a
+	; Handle gravity moving down until we touch the ground
 	call ActS_ApplySpeedFwdXColi
 	call ActS_ApplySpeedDownYColi
 	ret  c
+	; Flip horizontally
 	ldh  a, [hActCur+iActSprMap]
-	xor  $80
+	xor  ACTDIR_R
 	ldh  [hActCur+iActSprMap], a
+	;--
+	; Not necessary
 	ld   a, $03
-	ldh  [hActCur+iAct0D], a
+	ldh  [hActCur+iAirManWavesLeft], a
+	;--
 	jp   ActS_IncRtnId
-L027844:;I
-	ld   a, $01
+	
+;================ Act_AirMan_Reset ================
+; Loop pattern to the start.
+Act_AirMan_Reset:
+	ld   a, ACTRTN_AIRMAN_INIT
 	ldh  [hActCur+iActRtnId], a
 	ret
-L027849: db $CC
-L02784A: db $00
-L02784B: db $CC
-L02784C: db $00
-L02784D: db $88
-L02784E: db $00
-L02784F: db $88
-L027850: db $00
-L027851: db $CC
-L027852: db $00
-L027853: db $44
-L027854: db $00
-L027855: db $10
-L027856: db $01
-L027857: db $44
-L027858: db $00
-L027859: db $44
-L02785A: db $00
-L02785B: db $00
-L02785C: db $00
-L02785D: db $10
-L02785E: db $01
-L02785F: db $CC
-L027860: db $00
-L027861: db $CC
-L027862: db $00
-L027863: db $88
-L027864: db $00
-L027865: db $10
-L027866: db $01
-L027867: db $88
-L027868: db $00
-L027869: db $10
-L02786A: db $01
-L02786B: db $00
-L02786C: db $00
-L02786D: db $10
-L02786E: db $01
-L02786F: db $CC
-L027870: db $00
-L027871: db $44
-L027872: db $00
-L027873: db $88
-L027874: db $00
-L027875: db $88
-L027876: db $00
-L027877: db $CC
-L027878: db $00
-L027879: db $10
-L02787A: db $01
-L02787B: db $44
-L02787C: db $00
-L02787D: db $10
-L02787E: db $01
-L02787F: db $88
-L027880: db $00
-L027881: db $66
-L027882: db $00
-L027883: db $00
-L027884: db $00
-L027885: db $CC
-L027886: db $00
-L027887: db $CC
-L027888: db $00
-L027889:;I
+	
+;================ Act_AirManShot_PathTbl ================
+; Defines the initial speed values a whirlwind can follow.
+; When it spawns, a shot will move in a straight line using these speed for $40 frames (~1 second),
+; effectively defining the "path" it will take.
+Act_AirManShot_PathTbl:
+	;  X SPD  Y SPD ;  ID
+	; PATTERN 1
+	dw $00CC, $00CC ; $00
+	dw $0088, $0088 ; $01
+	dw $00CC, $0044 ; $02
+	dw $0110, $0044 ; $03
+	; PATTERN 2
+	dw $0044, $0000 ; $04
+	dw $0110, $00CC ; $05
+	dw $00CC, $0088 ; $06
+	dw $0110, $0088 ; $07
+	; PATTERN 3
+	dw $0110, $0000 ; $08
+	dw $0110, $00CC ; $09
+	dw $0044, $0088 ; $0A
+	dw $0088, $00CC ; $0B
+	; PATTERN 4
+	dw $0110, $0044 ; $0C
+	dw $0110, $0088 ; $0D
+	dw $0066, $0000 ; $0E
+	dw $00CC, $00CC ; $0F
+
+;================ Act_HardKnuckle ================
+; ID: ACT_HARDKNUCKLE
+; Boss version of Hard Knuckle, a fist that homes in twice.
+Act_HardKnuckle:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L02788C: db $96
-L02788D: db $78
-L02788E: db $AB
-L02788F: db $78
-L027890: db $D8
-L027891: db $78
-L027892: db $F2
-L027893: db $78
-L027894: db $FC
-L027895: db $78
-L027896:;I
+	dw Act_HardKnuckle_SetMove0
+	dw Act_HardKnuckle_Move0
+	dw Act_HardKnuckle_SetMove1
+	dw Act_HardKnuckle_WaitMove1
+	dw Act_HardKnuckle_Move1
+
+;================ Act_HardKnuckle_SetMove0 ================
+; Set up 1st movement.
+Act_HardKnuckle_SetMove0:
+	; Take a snapshot of the player's current position, and use it as target
 	ld   a, [wPlRelX]
 	ld   [wHardFistTargetX], a
 	ld   a, [wPlRelY]
 	ld   [wHardFistTargetY], a
+	; Set up speed values that also home in to that snapshot
 	call ActS_AngleToPl
 	call ActS_DoubleSpd
 	jp   ActS_IncRtnId
-L0278AB:;I
+	
+;================ Act_HardKnuckle_Move0 ================
+; 1st movement.
+Act_HardKnuckle_Move0:
+	; Move at the previously set speed
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
-	ld   a, [wHardFistTargetX]
+	
+	;
+	; Keep moving until we reach around the target position.
+	;
+	
+	; If the we aren't within 16px from the horizontal target, wait.
+	ld   a, [wHardFistTargetX]	; B = X Target
 	ld   b, a
-	ldh  a, [hActCur+iActX]
-	sub  b
-	jr   nc, L0278BE
-	xor  $FF
+	ldh  a, [hActCur+iActX]		; A = X Pos
+	sub  b						; Get distance
+	jr   nc, .chkX				; Underflowed? If not, skip
+	xor  $FF					; Otherwise, make absolute
 	inc  a
 	scf  
-L0278BE:;R
-	and  $F0
-	ret  nz
+.chkX:
+	and  $F0					; Diff != $0x?
+	ret  nz						; If so, return
+	
+	; If the we aren't within 16px from the vertical target, wait.
 	ld   a, [wHardFistTargetY]
 	ld   b, a
 	ldh  a, [hActCur+iActY]
 	sub  b
-	jr   nc, L0278CE
+	jr   nc, .chkY
 	xor  $FF
 	inc  a
 	scf  
-L0278CE:;R
+.chkY:
 	and  $F0
 	ret  nz
+	
+	; Then, keep moving for 24 frames at the same speed, going a bit over the target
 	ld   a, $18
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0278D8:;I
+	
+;================ Act_HardKnuckle_SetMove1 ================
+; After 1st movement.
+Act_HardKnuckle_SetMove1:
+	; Keep moving for those 24 frames...
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Then take a new snapshot of the player location
 	call ActS_AngleToPl
 	call ActS_DoubleSpd
+	
+	; Stop for 6 frames
 	ld   a, $06
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0278F2:;I
+	
+;================ Act_HardKnuckle_WaitMove1 ================
+; Waits for those 6 frames before moving.
+Act_HardKnuckle_WaitMove1:
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	jp   ActS_IncRtnId
-L0278FC:;I
+	
+;================ Act_HardKnuckle_Move1 ================
+; Moves at the previously set speed, crossing over the target.
+Act_HardKnuckle_Move1:
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L027903:;I
+	
+;================ Act_TopManShot ================
+; ID: ACT_SPINTOPSHOT
+; Spinning top shot which moves into place, then targets the player. Spawned by Top Man.
+Act_TopManShot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L027906: db $0E
-L027907: db $79
-L027908: db $1A
-L027909: db $79
-L02790A: db $33
-L02790B: db $79
-L02790C: db $48
-L02790D: db $79
-L02790E:;I
+	dw Act_TopManShot_Init
+	dw Act_TopManShot_MoveU
+	dw Act_TopManShot_Wait
+	dw Act_TopManShot_MoveToPl
+
+;================ Act_TopManShot_Init ================
+Act_TopManShot_Init:
+	; Animate spinning top.
+	; Use sprites $00-$01 at 3/8 speed
 	ld   c, $03
 	call ActS_Anim2
+	
+	; Move diagonally up for ~1 second.
 	ld   a, $30
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02791A:;I
+	
+;================ Act_TopManShot_MoveU ================
+; Moves the spinning top into position.
+Act_TopManShot_MoveU:
+	; Animate spinning top.
 	ld   c, $03
 	call ActS_Anim2
+	
+	; Move for that ~1 second.
+	; The initial speed values come from Act_TopMan_SpawnShots.
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $1E
+	
+	; Wait half a second idling
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L027933:;I
+	
+;================ Act_TopManShot_Wait ================
+; Waits for a bit.
+Act_TopManShot_Wait:
+	; Animate spinning top
 	ld   c, $03
 	call ActS_Anim2
+	
+	; Wait for that half a second...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Take a snapshot of the player position
 	call ActS_AngleToPl
-	call ActS_DoubleSpd
+	call ActS_DoubleSpd		; And move at double speed there
 	jp   ActS_IncRtnId
-L027948:;I
+	
+;================ Act_TopManShot_MoveToPl ================
+; Moves towards the player.
+Act_TopManShot_MoveToPl:
+	; Animate spinning top.
 	ld   c, $03
 	call ActS_Anim2
+	
+	; Move towards that player position, until we get offscreened
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L027954:;I
+	
+;================ Act_MagnetManShot ================
+; ID: ACT_MAGNETMISSILE
+; Magnet that moves horizontally, then straight down when it sees the player.
+; As it's thrown by Magnet Man on the ceiling, it doesn't ever need to move up.
+Act_MagnetManShot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L027957: db $5F
-L027958: db $79
-L027959: db $6C
-L02795A: db $79
-L02795B: db $7B
-L02795C: db $79
-L02795D: db $94
-L02795E: db $79
-L02795F:;I
-	ld   bc, $0200
+	dw Act_MagnetManShot_Init
+	dw Act_MagnetManShot_MoveNoChkH
+	dw Act_MagnetManShot_MoveChkH
+	dw Act_MagnetManShot_MoveD
+
+;================ Act_MagnetManShot_Init ================
+Act_MagnetManShot_Init:
+	ld   bc, $0200				; Move forward at 2px/frame
 	call ActS_SetSpeedX
-	ld   a, $0C
+	ld   a, $0C					; Move for 12 frames with no checks	
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L02796C:;I
-	call ActS_ApplySpeedFwdXColi
-	jr   nc, L02799A
+	
+;================ Act_MagnetManShot_MoveNoChkH ================
+; Move forward without checking if the player is below.
+; This cooldown period prevents the magnets from directly moving down when
+; the player is under Magnet Man.
+Act_MagnetManShot_MoveNoChkH:
+	; Move forward at 2px/frame for 12 frames
+	call ActS_ApplySpeedFwdXColi		; Touched a solid block?
+	jr   nc, Act_MagnetManShot_Explode	; If so, explode
 	ldh  a, [hActCur+iActTimer0C]
-	sub  $01
-	ldh  [hActCur+iActTimer0C], a
-	ret  nz
+	sub  $01							; Timer--
+	ldh  [hActCur+iActTimer0C], a		; Timer != 0?
+	ret  nz								; If so, return
 	jp   ActS_IncRtnId
-L02797B:;I
+	
+;================ Act_MagnetManShot_MoveChkH ================
+; Move forward, checking for the player's position.
+Act_MagnetManShot_MoveChkH:
+	; Move forward at 2px/frame, explode if touching a solid block
 	call ActS_ApplySpeedFwdXColi
-	jr   nc, L02799A
+	jr   nc, Act_MagnetManShot_Explode
+	
+	; If the player is below, halt and drop down
 	call ActS_GetPlDistanceX
-	cp   $04
-	ret  nc
-	ld   bc, $0200
+	cp   $04			; DiffX >= $04?
+	ret  nc				; If so, return
+	
+	ld   bc, $0200		; Drop down at 2px/frame
 	call ActS_SetSpeedY
-	ld   a, $02
+	ld   a, $02			; Use downward-facing sprite
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
-L027994:;I
+	
+;================ Act_MagnetManShot_MoveD ================
+; Move down until we touch solid ground, then explode.
+Act_MagnetManShot_MoveD:
 	call ActS_ApplySpeedFwdYColi
-	jr   nc, L02799A
+	jr   nc, Act_MagnetManShot_Explode
 	ret
-L02799A:;R
-	jp   L001E11
-L02799D:;I
+	
+;================ Act_MagnetManShot_Explode ================
+Act_MagnetManShot_Explode:
+	jp   ActS_Explode
+	
+;================ Act_NeedleManShot ================
+; ID: ACT_NEEDLECANNON
+; Boss version of the Needle Cannon shot, which moves towards the player.
+Act_NeedleManShot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0279A0: db $A4
-L0279A1: db $79
-L0279A2: db $AD
-L0279A3: db $79
-L0279A4:;I
+	dw Act_NeedleManShot_TrackPl
+	dw Act_NeedleManShot_Move
+
+;================ Act_NeedleManShot_TrackPl ================
+; Snapshot the player's position
+Act_NeedleManShot_TrackPl:
 	call ActS_AngleToPl
 	call ActS_DoubleSpd
 	jp   ActS_IncRtnId
-L0279AD:;I
+	
+;================ Act_NeedleManShot_Move ================
+; Move towards that at double speed
+Act_NeedleManShot_Move:
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L0279B4:;I
+	
+;================ Act_CrashManShot ================
+; ID: ACT_CRASHBOMB
+; Boss version of the Crash Bomb.
+; It needs to explode fast enough to win the spawn check Act_CrashMan_JumpShootD makes over ACT_CRASHBOMBEXPL.
+Act_CrashManShot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0279B7: db $C1
-L0279B8: db $79
-L0279B9: db $CA
-L0279BA: db $79
-L0279BB: db $D7
-L0279BC: db $79
-L0279BD: db $DE
-L0279BE: db $79
-L0279BF: db $E8
-L0279C0: db $79
-L0279C1:;I
+	dw Act_CrashManShot_TrackPl
+	dw Act_CrashManShot_MoveToPl
+	dw Act_CrashManShot_SetExplDelay
+	dw Act_CrashManShot_WaitExpl
+	dw Act_CrashManShot_Explode
+
+;================ Act_CrashManShot_TrackPl ================
+; Take a snapshot of the player's position.
+; Unlike the RM2 counterpart, which just moves diagonally down, this directly targets the player.
+Act_CrashManShot_TrackPl:
 	call ActS_AngleToPl
 	call ActS_DoubleSpd
 	jp   ActS_IncRtnId
-L0279CA:;I
+	
+;================ Act_CrashManShot_MoveToPl ================
+Act_CrashManShot_MoveToPl:
+	; Move until we hit a solid wall
 	call ActS_ApplySpeedFwdXColi
 	jp   nc, ActS_IncRtnId
 	call ActS_ApplySpeedFwdYColi
 	jp   nc, ActS_IncRtnId
 	ret
-L0279D7:;I
+	
+;================ Act_CrashManShot_SetExplDelay ================
+Act_CrashManShot_SetExplDelay:
+	; Explode in ~half a second
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L0279DE:;I
+	
+;================ Act_CrashManShot_WaitExpl ================
+Act_CrashManShot_WaitExpl:
+	; Wait for that ~half a second...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
 	jp   ActS_IncRtnId
-L0279E8:;I
-	ld   a, $7A
+	
+;================ Act_CrashManShot_Explode ================
+Act_CrashManShot_Explode:
+	; Spawn a large explosion with a misleadingly larger collision box directly over us.
+	ld   a, ACT_CRASHBOMBEXPL
 	ld   bc, $0000
 	call ActS_SpawnRel
-	jp   L001E11
-L0279F3:;I
+	
+	; Alongside an extra small explosion to replace the bomb, which looks out of place once you notice it.
+	jp   ActS_Explode
+	
+;================ Act_MetalManShot ================
+; ID: ACT_METALBLADE
+; Boss version of the Metal Blade.	
+Act_MetalManShot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L0279F6: db $FA
-L0279F7: db $79
-L0279F8: db $05
-L0279F9: db $7A
-L0279FA:;I
+	dw Act_MetalManShot_TrackPl
+	dw Act_MetalManShot_Move
+
+;================ Act_MetalManShot_TrackPl ================
+Act_MetalManShot_TrackPl:
+	; Move towards the player's *origin* (bottom of the player).
+	; This is the only actor that targets it over the center of the player.
 	ld   b, $00
 	call ActS_AngleToPlCustom
 	call ActS_DoubleSpd
 	jp   ActS_IncRtnId
-L027A05:;I
+	
+;================ Act_MetalManShot_Move ================
+Act_MetalManShot_Move:
+	; Animate the shot
 	ld   c, $01
 	call ActS_Anim2
+	
+	; Move by the previously set position
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ret
-L027A11:;I
+	
+;================ Act_AirManShot ================
+; ID: ACT_WHIRLWIND
+; Whirlwind shot spawned by Air Man, part of a wave.
+Act_AirManShot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L027A14: db $1C
-L027A15: db $7A
-L027A16: db $3A
-L027A17: db $7A
-L027A18: db $54
-L027A19: db $7A
-L027A1A: db $70
-L027A1B: db $7A
-L027A1C:;I
-	ldh  a, [hActCur+iAct0D]
-	ld   l, a
+	dw Act_AirManShot_InitMoveToPos
+	dw Act_AirManShot_MoveToPos
+	dw Act_AirManShot_Wait
+	dw Act_AirManShot_MoveFwd
+
+;================ Act_AirManShot_InitMoveToPos ================
+Act_AirManShot_InitMoveToPos:
+	;
+	; This whirlwind is currently directly overlapping Air Man.
+	; It needs to move in a line into the position defined for the wave pattern.
+	;
+	; We don't have actual target coordinates though, what we do have is its speed values
+	; used when moving into position. The whirlwind will be moved by that for ~1 second.
+	; Read out those speed values from the table entry, indexed by path ID.
+	;
+	ldh  a, [hActCur+iAirManShotPathId]
+	ld   l, a			; HL = PathId
 	ld   h, $00
-	add  hl, hl
-	add  hl, hl
-	ld   de, $7849
-	add  hl, de
-	ldi  a, [hl]
+	add  hl, hl			; *2
+	add  hl, hl			; *4 (Each entry is a pair of words)
+	ld   de, Act_AirManShot_PathTbl
+	add  hl, de			; Seek to entry
+	ldi  a, [hl]		; Read the four bytes out
 	ldh  [hActCur+iActSpdXSub], a
 	ldi  a, [hl]
 	ldh  [hActCur+iActSpdX], a
@@ -8687,769 +13565,1229 @@ L027A1C:;I
 	ldh  [hActCur+iActSpdYSub], a
 	ld   a, [hl]
 	ldh  [hActCur+iActSpdY], a
+	
+	; Move for ~1 second
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L027A3A:;I
-	ld   bc, $0301
+	
+;================ Act_AirManShot_MoveToPos ================
+; Moves the whirlwind into position.
+Act_AirManShot_MoveToPos:
+	; Animate the whirlwind
+	ld   bc, $0301			; Use frames $00-$02 at 1/4 speed
 	call ActS_AnimCustom
+	
+	; Move diagonally forwards for $40 frames
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
+	
+	; Wait ~1 second
 	ld   a, $40
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L027A54:;I
+	
+;================ Act_AirManShot_Wait ================
+; Gives some time for the player to assess the pattern.
+Act_AirManShot_Wait:
+	; Animate the whirlwind
 	ld   bc, $0301
 	call ActS_AnimCustom
+	
+	; Wait for that ~1 second...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   bc, $0100
+	
+	; Start moving the whirlwind straight forward, at 1px/frame
+	ld   bc, $0100			; 1px/frame horz
 	call ActS_SetSpeedX
-	ld   bc, $0000
+	ld   bc, $0000			; No vertical movement
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L027A70:;I
+	
+;================ Act_AirManShot_MoveFwd ================
+; Moves the whirlwind straight forward.
+; As this happens to all whirlwinds at once, the entire pattern gets moved forward.
+Act_AirManShot_MoveFwd:
+	; [BUG] We're forgetting to animate the whirlwind.
+	; [POI] Ideally at this point we should tell Air Man to start blowing the player forward
+	;       but that happens as soon as the whirlwinds spawn...
+	
+	; Move forward until it gets offscreened.
+	; Air Main is waiting for that to happen before jumping forward.
 	call ActS_ApplySpeedFwdX
 	ret
-L027A74:;I
+	
+;================ Act_WoodManLeafShield ================
+; ID: ACT_LEAFSHIELD
+; Single leaf, part of a set of four that makes up Wood Man's Leaf Shield.
+Act_WoodManLeafShield:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L027A77: db $7D
-L027A78: db $7A
-L027A79: db $8A
-L027A7A: db $7A
-L027A7B: db $C1
-L027A7C: db $7A
-L027A7D:;I
-	ldh  a, [hActCur+iActX]
-	ldh  [hActCur+iAct0E], a
-	ldh  a, [hActCur+iActY]
+	dw Act_WoodManLeafShield_Init
+	dw Act_WoodManLeafShield_Around
+	dw Act_WoodManLeafShield_Thrown
+
+;================ Act_WoodManLeafShield_Init ================
+Act_WoodManLeafShield_Init:
+	;
+	; Set the origin point for the leaf shield.
+	; While the leaves are set to rotate around Wood Man, that *only* happens from the next routine.
+	;
+	; Currently, they have the same coordinates as Wood Man himself, so the shield origin point is 13px above that.
+	;
+	ldh  a, [hActCur+iActX]				; X Origin: Wood Man's X position (center)
+	ldh  [hActCur+iLeafShieldOrgX], a	
+	ldh  a, [hActCur+iActY]				; Y Origin: Wood Man's Y position - 13 (middle)
 	sub  $0B
-	ldh  [hActCur+iAct0F], a
+	ldh  [hActCur+iLeafShieldOrgY], a
 	jp   ActS_IncRtnId
-L027A8A:;I
+	
+;================ Act_WoodManLeafShield_Around ================
+; Leaf Shield rotates around Wood Man, without moving the origin point.
+Act_WoodManLeafShield_Around:
+	
+	;
+	; Handle the rotation sequence.
+	;
+	; This is accomplished with a table of sine values that loop every $40 entries.
+	; Each value is a position relative to the shield's origin, when summed together 
+	; you get the final position.
+	;
+	; The rotation pattern using the sine is accomplished by having the X index
+	; shifted forward by $10 entries, through the base table pointer itself being ahead.
+	; To account for that it means the table is $50 bytes large in total, with the last
+	; $10 being identical to the first $10.
+	;
+	; This has a similar effect to what's done by ActS_ApplyCirclePath, except the positions
+	; aren't relative to each other, but to an origin point.
+	;
+	
+	; X POSITION
+	; iActX = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer0C % $40]
+	ldh  a, [hActCur+iActTimer0C]
+	and  $3F									; Wrap around every $40 entries
+	ld   hl, Act_WoodManLeafShield_SinePat.x	; HL = Ptr to table base
+	ld   b, $00									; BC = iActTimer0C % $40
+	ld   c, a
+	add  hl, bc									; HL = Ptr to rel. offset
+	ldh  a, [hActCur+iLeafShieldOrgX]			; Get absolute coordinate
+	add  [hl]									; += relative from entry, to get final pos
+	ldh  [hActCur+iActX], a						; Overwrite
+	
+	; Y POSITION
+	; iActY = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer0C % $40]
+	ld   hl, Act_WoodManLeafShield_SinePat.y	; Same thing but for the other coordinate
 	ldh  a, [hActCur+iActTimer0C]
 	and  $3F
-	ld   hl, $7B00
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ldh  a, [hActCur+iAct0E]
-	add  [hl]
-	ldh  [hActCur+iActX], a
-	ld   hl, $7AF0
-	ldh  a, [hActCur+iActTimer0C]
-	and  $3F
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ldh  a, [hActCur+iAct0F]
+	ldh  a, [hActCur+iLeafShieldOrgY]
 	add  [hl]
 	ldh  [hActCur+iActY], a
+	
+	; Increment table index for next time we get here
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
-	ld   a, [$CCE0]
-	and  a
-	ret  z
+	
+	; Wait until we've been signaled by Act_WoodMan to throw the shield.
+	; For performance reasons, we're given a movement speed to apply to the origin point.
+	ld   a, [wLeafShieldOrgSpdX]
+	and  a							; Any throw speed set yet?
+	ret  z							; If not, wait
+	
+	;--
+	; [POI] Not necessary, the leaves don't move forward through their normal speed.
+	;       Instead, the origin is moved forward through the speed Act_WoodMan wrote to wLeafShieldOrgSpdX.
+	;       Maybe there was simpler logic on throw at some point, that *did* simply move the leaves forward without rotating them?
 	call ActS_FacePl
 	ld   bc, $0100
 	call ActS_SetSpeedX
+	;--
 	jp   ActS_IncRtnId
-L027AC1:;I
-	ld   hl, hActCur+iAct0E
-	ld   a, [$CCE0]
+	
+;================ Act_WoodManLeafShield_Thrown ================
+; Leaf Shield rotates around the origin point, which moves forward.
+Act_WoodManLeafShield_Thrown:
+	;
+	; Move the shield's origin forward
+	;
+	ld   hl, hActCur+iLeafShieldOrgX	; iLeafShieldOrgX += wLeafShieldOrgSpdX
+	ld   a, [wLeafShieldOrgSpdX]
 	add  [hl]
 	ld   [hl], a
+	
+	;
+	; Then do the usual process for rotating the leaves.
+	;
+	
+	; X POSITION
+	; iActX = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer0C % $40]
+	ldh  a, [hActCur+iActTimer0C]
+	and  $3F									; Wrap around every $40 entries
+	ld   hl, Act_WoodManLeafShield_SinePat.x	; HL = Ptr to table base
+	ld   b, $00									; BC = iActTimer0C % $40
+	ld   c, a
+	add  hl, bc									; HL = Ptr to rel. offset
+	ldh  a, [hActCur+iLeafShieldOrgX]			; Get absolute coordinate
+	add  [hl]									; += relative from entry, to get final pos
+	ldh  [hActCur+iActX], a						; Overwrite
+	
+	; Y POSITION
+	; iActY = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer0C % $40]
+	ld   hl, Act_WoodManLeafShield_SinePat.y	; Same thing but for the other coordinate
 	ldh  a, [hActCur+iActTimer0C]
 	and  $3F
-	ld   hl, $7B00
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ldh  a, [hActCur+iAct0E]
-	add  [hl]
-	ldh  [hActCur+iActX], a
-	ld   hl, $7AF0
-	ldh  a, [hActCur+iActTimer0C]
-	and  $3F
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ldh  a, [hActCur+iAct0F]
+	ldh  a, [hActCur+iLeafShieldOrgY]
 	add  [hl]
 	ldh  [hActCur+iActY], a
+	
+	; Increment table index for next time we get here
 	ldh  a, [hActCur+iActTimer0C]
 	add  $01
 	ldh  [hActCur+iActTimer0C], a
+	
 	ret
-L027AF0: db $F0
-L027AF1: db $F0
-L027AF2: db $F0
-L027AF3: db $F1
-L027AF4: db $F1
-L027AF5: db $F2
-L027AF6: db $F3
-L027AF7: db $F4
-L027AF8: db $F5
-L027AF9: db $F6
-L027AFA: db $F7
-L027AFB: db $F8
-L027AFC: db $FA
-L027AFD: db $FB
-L027AFE: db $FD
-L027AFF: db $FE
-L027B00: db $00
-L027B01: db $02
-L027B02: db $03
-L027B03: db $05
-L027B04: db $06
-L027B05: db $08
-L027B06: db $09
-L027B07: db $0A
-L027B08: db $0B
-L027B09: db $0C
-L027B0A: db $0D
-L027B0B: db $0E
-L027B0C: db $0F
-L027B0D: db $0F
-L027B0E: db $10
-L027B0F: db $10
-L027B10: db $10
-L027B11: db $10
-L027B12: db $10
-L027B13: db $0F
-L027B14: db $0F
-L027B15: db $0E
-L027B16: db $0D
-L027B17: db $0C
-L027B18: db $0B
-L027B19: db $0A
-L027B1A: db $09
-L027B1B: db $08
-L027B1C: db $06
-L027B1D: db $05
-L027B1E: db $03
-L027B1F: db $02
-L027B20: db $00
-L027B21: db $FE
-L027B22: db $FD
-L027B23: db $FB
-L027B24: db $FA
-L027B25: db $F8
-L027B26: db $F7
-L027B27: db $F6
-L027B28: db $F5
-L027B29: db $F4
-L027B2A: db $F3
-L027B2B: db $F2
-L027B2C: db $F1
-L027B2D: db $F1
-L027B2E: db $F0
-L027B2F: db $F0
-L027B30: db $F0
-L027B31: db $F0
-L027B32: db $F0
-L027B33: db $F1
-L027B34: db $F1
-L027B35: db $F2
-L027B36: db $F3
-L027B37: db $F4
-L027B38: db $F5
-L027B39: db $F6
-L027B3A: db $F7
-L027B3B: db $F8
-L027B3C: db $FA
-L027B3D: db $FB
-L027B3E: db $FD
-L027B3F: db $FE
-L027B40:;I
+	
+;================ Act_WoodManLeafShield_SinePat ================
+; Leaf positions, relative to the shield's origin.
+; See also: Act_WoodManLeafShield_Around
+Act_WoodManLeafShield_SinePat:
+.y: db $F0,$F0,$F0,$F1,$F1,$F2,$F3,$F4,$F5,$F6,$F7,$F8,$FA,$FB,$FD,$FE ; $00 ;
+.x:	db $00,$02,$03,$05,$06,$08,$09,$0A,$0B,$0C,$0D,$0E,$0F,$0F,$10,$10 ; $10 ; $00
+	db $10,$10,$10,$0F,$0F,$0E,$0D,$0C,$0B,$0A,$09,$08,$06,$05,$03,$02 ; $20 ; $10
+	db $00,$FE,$FD,$FB,$FA,$F8,$F7,$F6,$F5,$F4,$F3,$F2,$F1,$F1,$F0,$F0 ; $30 ; $20
+	db $F0,$F0,$F0,$F1,$F1,$F2,$F3,$F4,$F5,$F6,$F7,$F8,$FA,$FB,$FD,$FE ;     ; $30
+
+;================ Act_WoodManLeafRise ================
+; ID: ACT_LEAFRISE
+; Leaf rising up from Wood Man.
+Act_WoodManLeafRise:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L027B43: db $47
-L027B44: db $7B
-L027B45: db $56
-L027B46: db $7B
-L027B47:;I
-	ldh  a, [hActCur+iActSprMap]
-	and  $BF
+	dw Act_WoodManLeafRise_Init
+	dw Act_WoodManLeafRise_MoveU
+
+;================ Act_WoodManLeafRise_Init ================
+Act_WoodManLeafRise_Init:
+	ldh  a, [hActCur+iActSprMap]	; Move up
+	and  $FF^ACTDIR_D				; (clear down direction flag)
 	ldh  [hActCur+iActSprMap], a
-	ld   bc, $0200
+	ld   bc, $0200					; At 2px/frame
 	call ActS_SetSpeedY
 	jp   ActS_IncRtnId
-L027B56:;I
+	
+;================ Act_WoodManLeafRise_MoveU ================
+Act_WoodManLeafRise_MoveU:
+	; Move up at 2px/frame, until they go offscreen.
+	; Act_WoodMan waits for that before throwing the shield.
 	call ActS_ApplySpeedFwdY
 	ret
-L027B5A:;I
+	
+;================ Act_WoodManLeafFall ================
+; ID: ACT_LEAFFALL
+; Falling leaf, which moves back and forth.
+Act_WoodManLeafFall:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L027B5D: db $61
-L027B5E: db $7B
-L027B5F: db $7A
-L027B60: db $7B
-L027B61:;I
+	dw Act_WoodManLeafFall_Init
+	dw Act_WoodManLeafFall_Move
+
+;================ Act_WoodManLeafFall_Init ================
+Act_WoodManLeafFall_Init:
+	; Move down, and move right as initial horizontal direction
 	ldh  a, [hActCur+iActSprMap]
-	or   $C0
+	or   ACTDIR_R|ACTDIR_D
 	ldh  [hActCur+iActSprMap], a
-	ld   bc, $0100
+	
+	ld   bc, $0100			; 1px/frame horizontally
 	call ActS_SetSpeedX
-	ld   bc, $0060
+	ld   bc, $0060			; 0.375px/frame down
 	call ActS_SetSpeedY
-	ld   a, $10
+	ld   a, $10				; Turn every 16 frames
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L027B7A:;I
+	
+;================ Act_WoodManLeafFall_Move ================
+Act_WoodManLeafFall_Move:
+	;
+	; Move by the previously set speed
+	;
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
+	
+	;
+	; Turn every 16 frames
+	;
 	ldh  a, [hActCur+iActTimer0C]
-	sub  $01
-	ldh  [hActCur+iActTimer0C], a
-	ret  nz
-	ldh  a, [hActCur+iActSprMap]
-	xor  $80
+	sub  $01						; TurnTimer--
+	ldh  [hActCur+iActTimer0C], a	; Has it elapsed?
+	ret  nz							; If not, keep moving at that direction
+	
+	ldh  a, [hActCur+iActSprMap]	; Otherwise, turn around horizontally
+	xor  ACTDIR_R
 	ldh  [hActCur+iActSprMap], a
-	ld   a, $10
+	ld   a, $10						; Move for 16 frames to the other side
 	ldh  [hActCur+iActTimer0C], a
 	ret
-L027B92:;I
+	
+;================ Act_CrashManShotExpl ================
+; ID: ACT_CRASHBOMBEXPL
+; Large explosion caused by the boss version of the Crash Bombs.
+; Unlike the player ones, these are an actual entity that hurts (the player) and have a larger than expected collision box.
+Act_CrashManShotExpl:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L027B95: db $99
-L027B96: db $7B
-L027B97: db $A0
-L027B98: db $7B
-L027B99:;I
+	dw Act_CrashManShotExpl_Init
+	dw Act_CrashManShotExpl_Anim
+
+;================ Act_CrashManShotExpl_Init ================
+Act_CrashManShotExpl_Init:
+	; Show for ~half a second
 	ld   a, $20
 	ldh  [hActCur+iActTimer0C], a
 	jp   ActS_IncRtnId
-L027BA0:;I
+	
+;================ Act_CrashManShotExpl_Anim ================
+Act_CrashManShotExpl_Anim:
+	; The explosion is simply a 4-frame looping animation
 	ld   c, $01
 	call ActS_Anim4
+	
+	; Display the above, maintaining the oversized hitbox, for that ~half a second.
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	jp   L001E11
-L027BAF:;I
+	
+	; Then despawn the explosion.
+	; It should have been done by simply resetting iActId, and not by using the normal explosion,
+	; which looks out of place compared to the larger explosion animation we were playing.
+	jp   ActS_Explode
+	
+;================ Act_GroundExpl ================
+; ID: ACT_GROUNDEXPL
+; Weird-looking explosion used during the Wily Castle cutscene, when ground explodes 
+; from under Rockman and he falls into the teleporter room.
+;
+; This actor is only used to perform the animation and play the explosion sound, it's
+; the cutscene that deletes the actual blocks from the level layout, at least in part
+; because the cutscene spawns *several* of these. 
+; Specifically, for a few seconds, as soon as one despawns a new one is spawned in
+; its place, which is why the animation and sound effects look continuous.
+Act_GroundExpl:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L027BB2: db $B6
-L027BB3: db $7B
-L027BB4: db $C5
-L027BB5: db $7B
-L027BB6:;I
-	ld   a, $04
+	dw Act_GroundExpl_Init
+	dw Act_GroundExpl_Play
+
+;================ Act_GroundExpl_Init ================
+Act_GroundExpl_Init:
+	; Weird sound effect choice
+	ld   a, SFX_ENEMYDEAD
 	ldh  [hSFXSet], a
-	ld   de, $0002
+	; Use sprites $00-$02 at 1/8 speed
+	ld   de, ($00 << 8)|$02
 	ld   c, $08
-	call Act_Boss_InitIntro
+	call ActS_InitAnimRange
 	jp   ActS_IncRtnId
-L027BC5:;I
-	call Act_Boss_PlayIntro
+	
+;================ Act_GroundExpl_Play ================
+Act_GroundExpl_Play:
+	; Wait until the explosion is finished
+	call ActS_PlayAnimRange
 	ret  z
+	; Then despawn the explosion.
+	; The cutscene may either immediately respawn another one, or wait for all explosions
+	; to get despawned before making the player fall down.
 	xor  a
 	ldh  [hActCur+iActRtnId], a
 	ret
-L027BCD:;I
+; =============== Act_NewShotmanShotV ===============
+; ID: ACT_NEOMETSHOT
+; Neo Metall's shot, spawned in three, can be horizontal or diagonal.
+Act_NeoMetShot:
+	; The shot has a 4-frame animation which rotates the "shine" on the sprite.
 	ld   c, $01
 	call ActS_Anim4
+	; Apply movement in both directions
 	call ActS_ApplySpeedFwdX
-	call ActS_ApplySpeedFwdY
+	call ActS_ApplySpeedFwdY ; Could be 0 too
 	ret
-L027BD9:;I
+	
+; =============== Act_NewShotmanShotV ===============
+; ID: ACT_NEWSHOTMANSHOTV
+; New Shotman's vertical shot, spawned in pairs, which moves in an arc.
+Act_NewShotmanShotV:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L027BDC: db $E0
-L027BDD: db $7B
-L027BDE: db $ED
-L027BDF: db $7B
-L027BE0:;I
+	dw Act_NewShotmanShotV_JumpU
+	dw Act_NewShotmanShotV_JumpD
+; =============== Act_NewShotmanShotV_JumpU ===============
+; Jump, pre-peak.
+Act_NewShotmanShotV_JumpU:
+	; [POI] Bounce on solid walls
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Apply gravity while moving up until we reach the peak
 	call ActS_ApplySpeedUpYColi
 	ret  c
 	jp   ActS_IncRtnId
-L027BED:;I
+; =============== Act_NewShotmanShotV_JumpD ===============
+; Jump, post-peak.
+Act_NewShotmanShotV_JumpD:
+	; [POI] Bounce on solid walls
 	call ActS_ApplySpeedFwdXColi
 	call nc, ActS_FlipH
+	; Apply gravity while moving down until we hit the ground
 	call ActS_ApplySpeedDownYColi
 	ret  c
-	jp   L001E11
-L027BFA:;I
+	; Despawn when touching the ground
+	jp   ActS_Explode
+	
+; =============== Act_NewShotmanShotH ===============
+; ID: ACT_NEWSHOTMANSHOTH
+; New Shotman's horizontal shot, which moves horizontally at a fixed 1px/frame speed.
+Act_NewShotmanShotH:
+	; Set up the speed the first time we get here
 	ldh  a, [hActCur+iActRtnId]
-	or   a
-	jr   nz, L027C08
-	ld   bc, $0100
+	or   a				; Routine != 0?
+	jr   nz, .move		; If so, jump
+.init:
+	ld   bc, $0100		; 1px/frame forward
 	call ActS_SetSpeedX
 	jp   ActS_IncRtnId
-L027C08:;R
+.move:
+	; This is the same animation Act_NeoMetShot does, but inconsistently the vertical shot doesn't.
 	ld   c, $01
 	call ActS_Anim4
+	; Move forward at 1px/frame
 	call ActS_ApplySpeedFwdX
 	ret
-L027C11:;I
+	
+; =============== Act_ShotmanShot ===============
+; ID: ACT_SHOTMANSHOT
+; Shotman's shot, which moves in an arc.
+Act_ShotmanShot:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-L027C14: db $18
-L027C15: db $7C
-L027C16: db $22
-L027C17: db $7C
-L027C18:;I
+	dw Act_ShotmanShot_JumpU
+	dw Act_ShotmanShot_JumpD
+; =============== Act_ShotmanShot_JumpU ===============
+; Jump, pre-peak.
+Act_ShotmanShot_JumpU:
+	; Move shot forward at its set speed
 	call ActS_ApplySpeedFwdX
+	; Apply gravity while moving up until we reach the peak
 	call ActS_ApplySpeedUpY
 	ret  c
 	jp   ActS_IncRtnId
-L027C22:;I
+	
+; =============== Act_ShotmanShot_JumpD ===============
+; Jump, post-peak.
+Act_ShotmanShot_JumpD:
+	; Move shot forward at its set speed
 	call ActS_ApplySpeedFwdX
+	; Apply gravity while moving down
 	call ActS_ApplySpeedDownY
+	; The shot moves through the ground, despawning when it moves offscreen
 	ret
-L027C29:;JC
-	ld   [wTmpCFE6], a
+	
+; =============== ActS_SpawnArcShot ===============
+; Spawns a shot that follows a vertical arc.
+; IN
+; - A: Shot direction and sprite ID (iActSprMap)
+; - B: Relative X pos
+; - C: Relative Y pos
+; - D: Vertical speed (px/frame)
+; - E: Actor ID
+;      This should point to a shot that respects gravity.
+ActS_SpawnArcShot:
+	; Save these two for later
+	DEF tActSprMap = wTmpCFE6
+	DEF tActSpdV = wTmpCFE7
+	ld   [tActSprMap], a	; Save A
 	ld   a, d
-	ld   [wTmpCFE7], a
+	ld   [tActSpdV], a		; Save D
+	
+	;
+	; Attempt to spawn the shot actor
+	;
 	ld   a, e
-	call ActS_SpawnRel
-	ret  c
-	push hl
-	call ActS_GetPlDistanceX
-	swap a
-	and  $0E
-	ld   hl, $7C54
-	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ld   c, [hl]
-	inc  hl
-	ld   b, [hl]
-	ld   a, [wTmpCFE7]
-	ld   d, a
-	ld   e, $00
-	ld   a, [wTmpCFE6]
-	pop  hl
-	jp   L027D75
-L027C54: db $80
-L027C55: db $00
-L027C56: db $C0
-L027C57: db $00
-L027C58: db $00
-L027C59: db $01
-L027C5A: db $80;X
-L027C5B: db $01;X
-L027C5C: db $C0;X
-L027C5D: db $01;X
-L027C5E: db $00;X
-L027C5F: db $02;X
-L027C60: db $80;X
-L027C61: db $02;X
-L027C62: db $00;X
-L027C63: db $03;X
-L027C64:;C
-	ld   a, $7C
-	ld   bc, $00FC
-	call ActS_SpawnRel
-	ret  c
+	call ActS_SpawnRel		; HL = Ptr to spawned slot
+	ret  c					; Could it spawn? If not, return
+	
+	;
+	; Adjust the shot's properties.
+	;
+	push hl ; Save slot ptr
+	
+		;
+		; HORIZONTAL SPEED
+		; 
+		; Adjusted to try homing into the player, by pick a different one depending on how far away the player is.
+		; This is read off a table indexed by horizontal distance, in groups of 2 blocks.
+		;
+	
+		; Index = (Distance / $10) & $0E
+		call ActS_GetPlDistanceX	; Get distance in pixels
+		swap a						; / $10 to get distance in blocks
+		and  $0E					; Fix for above + remove the lowest bit.
+									; The latter is because we're indexing a word table so offsets can't be odd,
+									; but it also has the effect of each index being used for two blocks.
+		; Index the table with that
+		ld   hl, ActS_ArcShotSpdXTbl	; HL = Table base
+		ld   b, $00			; BC = Index
+		ld   c, a
+		add  hl, bc			; Seek to entry
+		; Read out to the registers expected by ActS_SetShotSpd
+		ld   c, [hl]		; C = Horizontal speed (subpixels)
+		inc  hl
+		ld   b, [hl]		; B = Horizontal speed (pixels)
+		
+		;
+		; VERTICAL SPEED
+		;
+		; Passed from this subroutine, in pixels.
+		;
+		ld   a, [tActSpdV]
+		ld   d, a			; D = tActSpdV
+		ld   e, $00			; E = $00
+		
+		;
+		; SHOT DIRECTION / SPRITE ID
+		;
+		; Also passed from this subroutine.
+		;
+		ld   a, [tActSprMap] ; A = tActSprMap
+		
+	pop  hl ; HL = Ptr to spawned slot
+	jp   ActS_SetShotSpd
+	
+; =============== ActS_ArcShotSpdXTbl ===============
+; Horizontal shot speed based on the player's distance, in groups of 2 blocks.
+ActS_ArcShotSpdXTbl:
+	;  SPEED | px/frame | PLAYER DISTANCE
+	dw $0080 ;     0.5  | $00-$1F
+	dw $00C0 ;     0.75 | $20-$3F
+	dw $0100 ;     1.0  | $40-$5F
+	; [POI] The rest are too far away, and don't happen to get used
+	dw $0180 ;     1.5  | $60-$7F
+	dw $01C0 ;     1.75 | $80-$9F
+	dw $0200 ;     2.0  | $A0-$BF
+	dw $0280 ;     2.5  | $C0-$DF
+	dw $0300 ;     3.0  | $E0-$FF
+
+
+; =============== SPREAD SHOTS ===============
+; The following subroutines handle spawning shot patterns, all following a similar pattern.
+
+; =============== Act_NeoMet_SpawnShots ===============
+; Spawns the individual shots that make up a Met's 3-way spreadshot.
+Act_NeoMet_SpawnShots:
+
+	;
+	; FIRST SHOT
+	;
+	ld   a, ACT_NEOMETSHOT			
+	ld   bc, ($00 << 8)|LOW(-$04)	; Spawn first shot 4px to the left of the Met
+	call ActS_SpawnRel				; Could it spawn?
+	ret  c							; If not, return
+	;--
+	; Every shot inherits the same direction as its parent (the Met)
+	DEF tActDir = wTmpCF52
 	ldh  a, [hActCur+iActSprMap]
-	and  $80
-	ld   [wTmpCF52], a
-	ld   bc, $00B4
-	ld   de, $00B4
-	call L027D75
+	and  ACTDIR_R
+	ld   [tActDir], a
+	;--
+	ld   bc, $00B4 ; $00.B4px/frame forwards
+	ld   de, $00B4 ; $00.B4px/frame upwards
+	call ActS_SetShotSpd
+	
+	;
+	; For the remainder of the shots, call ActS_Spawn to reuse the spawn settings
+	; that ActS_SpawnRel generated for us. Therefore, all of the shots will reuse
+	; the same origin, which is 4px to the left of the Met.
+	;
+	
+	;
+	; SECOND SHOT
+	;
 	call ActS_Spawn
 	ret  c
-	ld   a, [wTmpCF52]
-	ld   bc, $00FF
-	ld   de, $0000
-	call L027D75
+	ld   a, [tActDir]
+	ld   bc, $00FF ; Nearly 1px/frame forwards
+	ld   de, $0000 ; No vertical movement
+	call ActS_SetShotSpd
+	
+	;
+	; THIRD SHOT
+	;
 	call ActS_Spawn
 	ret  c
-	ld   a, [wTmpCF52]
-	or   $40
-	ld   bc, $00B4
-	ld   de, $00B4
-	jp   L027D75
-L027C9F:;J
-	ld   a, $19
-	ld   bc, $00EC
+	ld   a, [tActDir]	; Set downwards direction
+	or   ACTDIR_D 
+	ld   bc, $00B4 ; $00.B4px/frame forwards
+	ld   de, $00B4 ; $00.B4px/frame downwards
+	jp   ActS_SetShotSpd
+	
+; =============== Act_Tama_SpawnFleas ===============
+; Spawns the three fleas that jump from Tama once the Yarn ball is destroyed.
+; Each of the fleas starts from the same position, but has a different jump arc.
+Act_Tama_SpawnFleas:
+	; FIRST FLEA
+	ld   a, ACT_TAMAFLEA
+	ld   bc, ($00 << 8)|LOW(-$14)	; 20px to the left
 	call ActS_SpawnRel
 	ret  c
+	
+	;--
 	ldh  a, [hActCur+iActSprMap]
-	and  $80
-	ld   [wTmpCF52], a
-	ld   bc, $00C0
-	ld   de, $0180
-	call L027D75
+	and  ACTDIR_R
+	ld   [tActDir], a
+	;--
+	ld   bc, $00C0 ; 0.75px/frame fwd
+	ld   de, $0180 ; 1.5px/frame up
+	call ActS_SetShotSpd
+	
+	; SECOND FLEA
 	call ActS_Spawn
 	ret  c
-	ld   a, [wTmpCF52]
-	ld   bc, $0100
-	ld   de, $0200
-	call L027D75
+	ld   a, [tActDir]
+	ld   bc, $0100 ; 1px/frame fwd
+	ld   de, $0200 ; 2px/frame up
+	call ActS_SetShotSpd
+	
+	; THIRD FLEA
 	call ActS_Spawn
 	ret  c
-	ld   a, [wTmpCF52]
-	ld   bc, $0140
-	ld   de, $0280
-	jp   L027D75
-L027CD8:;C
-	ld   a, $28
-	ld   bc, $F2FC
+	ld   a, [tActDir]
+	ld   bc, $0140 ; 1.25px/frame fwd
+	ld   de, $0280 ; 2.5px/frame
+	jp   ActS_SetShotSpd
+	
+; =============== Act_Hari_SpawnShots ===============
+; Spawns the individual needles that make up Hari Harry's spread shot.
+Act_Hari_SpawnShots:
+	; #1 Left
+	ld   a, ACT_HARISHOT
+	ld   bc, (LOW(-$0E) << 8)|LOW(-$04) ; 14px left, 4px up
 	call ActS_SpawnRel
 	ret  c
-	ld   a, $00
-	ld   bc, $0180
-	ld   de, $0000
-	call L027D75
-	ld   a, $28
-	ld   bc, $F8F8
+	ld   a, ($00 << 3) ; Sprite 0 (h needle)
+	ld   bc, $0180 ; 1.5px/frame left
+	ld   de, $0000 ; no vertical
+	call ActS_SetShotSpd
+	
+	; #2 Top-left
+	ld   a, ACT_HARISHOT
+	ld   bc, (LOW(-$08) << 8)|LOW(-$08) ; 8px left, 8px up
 	call ActS_SpawnRel
 	ret  c
-	ld   a, $08
-	ld   bc, $010E
-	ld   de, $010E
-	call L027D75
-	ld   a, $28
-	ld   bc, $00F0
+	ld   a, ($01 << 3) ; Sprite 1 (diag needle)
+	ld   bc, $010E ; ~1px/frame left
+	ld   de, $010E ; ~1px/frame up
+	call ActS_SetShotSpd
+	
+	; #3 Up
+	ld   a, ACT_HARISHOT
+	ld   bc, (LOW($00) << 8)|LOW(-$10) ; 16px up
 	call ActS_SpawnRel
 	ret  c
-	ld   a, $10
-	ld   bc, $0000
-	ld   de, $0180
-	call L027D75
-	ld   a, $28
-	ld   bc, $08F8
+	ld   a, ($02 << 3) ; Sprite 2 (v needle)
+	ld   bc, $0000 ; no horizontal
+	ld   de, $0180 ; 1.5px/frame up
+	call ActS_SetShotSpd
+	
+	; #4 Top-right
+	ld   a, ACT_HARISHOT
+	ld   bc, (LOW($08) << 8)|LOW(-$08) ; 8px right, 8px up
 	call ActS_SpawnRel
 	ret  c
-	ld   a, $88
-	ld   bc, $010E
-	ld   de, $010E
-	call L027D75
-	ld   a, $28
-	ld   bc, $0EFC
+	ld   a, ACTDIR_R|($01 << 3) ; Sprite 1 (diag needle)
+	ld   bc, $010E ; ~1px/frame right
+	ld   de, $010E ; ~1px/frame up
+	call ActS_SetShotSpd
+	
+	; #5 Right
+	ld   a, ACT_HARISHOT
+	ld   bc, (LOW($0E) << 8)|LOW(-$04) ; 14px right, 4px up
 	call ActS_SpawnRel
 	ret  c
-	ld   a, $80
-	ld   bc, $0180
-	ld   de, $0000
-	jp   L027D75
-L027D3C:;C
-	ld   a, $71
-	ld   bc, $00FC
+	ld   a, ACTDIR_R|($00 << 3) ; Sprite 0 (h needle)
+	ld   bc, $0180 ; 1.5px/frame right
+	ld   de, $0000 ; no vertical
+	jp   ActS_SetShotSpd
+	
+; =============== Act_TopMan_SpawnShots ===============
+; Spawns the three spinning tops in Top Man's fight.
+Act_TopMan_SpawnShots:
+	; FIRST SHOT
+	ld   a, ACT_SPINTOPSHOT
+	ld   bc, ($00 << 8)|LOW(-$04) ; 4px left
 	call ActS_SpawnRel
 	ret  c
+	;--
+	; Top Man throws all three shots forwards, so they face the same direction as him
 	ldh  a, [hActCur+iActSprMap]
-	and  $80
-	ld   [wTmpCF52], a
-	ld   bc, $00C0
-	ld   de, $00C0
-	call L027D75
+	and  ACTDIR_R
+	ld   [tActDir], a
+	;--
+	ld   bc, $00C0 ; 0.75px/frame forwards
+	ld   de, $00C0 ; 0.75px/frame upwards
+	call ActS_SetShotSpd
+	
+	; SECOND SHOT
 	call ActS_Spawn
 	ret  c
-	ld   a, [wTmpCF52]
-	ld   bc, $0120
-	ld   de, $0120
-	call L027D75
+	ld   a, [tActDir]
+	ld   bc, $0120 ; 1.125px/frame forwards
+	ld   de, $0120 ; 1.125px/frame forwards
+	call ActS_SetShotSpd
+	
+	; THIRD SHOT
 	call ActS_Spawn
 	ret  c
-	ld   a, [wTmpCF52]
-	ld   bc, $0180
-	ld   de, $0180
-	jp   L027D75
-L027D75:;JC
-	inc  l
-	inc  l
-	ld   [hl], a
+	ld   a, [tActDir]
+	ld   bc, $0180 ; 1.5px/frame forwards
+	ld   de, $0180 ; 1.5px/frame forwards
+	jp   ActS_SetShotSpd
+	
+; =============== ActS_SetShotSpd ===============
+; Alters the newly spawned actor shot's speed.
+; IN
+; - A: Shot direction and sprite ID (iActSprMap)
+; - HL: Ptr to spawned actor slot
+; - BC: Horizontal speed (forward)
+; - DE: Vertical speed (upwards unless the calling code manually changes iActSprMap after returning)
+ActS_SetShotSpd:
+	; Set shot direction
+	inc  l ; iActRtnId
+	inc  l ; iActSprMap
+	ld   [hl], a ; iActSprMap
+	
+	; Set horizontal and vertical speed
 	ld   a, l
-	add  $06
+	add  iActSpdXSub - iActSprMap
 	ld   l, a
-	ld   [hl], c
+	ld   [hl], c ; C = iActSpdXSub
 	inc  hl
-	ld   [hl], b
+	ld   [hl], b ; B = iActSpdX
 	inc  hl
-	ld   [hl], e
+	ld   [hl], e ; E = iActSpdYSub
 	inc  hl
-	ld   [hl], d
+	ld   [hl], d ; D = iActSpdY
 	ret
-L027D84:;I
-	ld   a, [wShutterNum]
+	
+;================ Act_BossIntro ================
+; Handles the boss intro sequence for all of the normal 8 bosses.
+; It is imperative that this isn't called more after the intro is over,
+; otherwise the player might behave oddly.
+Act_BossIntro:
+	; Execute code based on where we are in the intro sequence.
+	; The wBossMode modes actually start all the way from being in the boss corridor,
+	; however no code should be executed until the 2nd shutter closes, which sets us into mode $02.
+	ld   a, [wBossMode]
 	rst  $00 ; DynJump
-L027D88: db $A8;X
-L027D89: db $7D;X
-L027D8A: db $A8
-L027D8B: db $7D
-L027D8C: db $A9
-L027D8D: db $7D
-L027D8E: db $C7
-L027D8F: db $7D
-L027D90: db $EB
-L027D91: db $7D
-L027D92: db $05
-L027D93: db $7E
-L027D94: db $2A
-L027D95: db $7E
-L027D96:;I
-	ld   a, [wShutterNum]
+	dw Act_SharedIntro_Wait ; BSMODE_NONE
+	dw Act_SharedIntro_Wait ; BSMODE_CORRIDOR
+	dw Act_SharedIntro_Init ; BSMODE_INIT
+	dw Act_BossIntro_InitAnim ; BSMODE_INITANIM
+	dw Act_BossIntro_PlayAnim ; BSMODE_PLAYANIM
+	dw Act_SharedIntro_RefillBar ; BSMODE_REFILL
+	dw Act_BossIntro_End ; BSMODE_END
+	
+;================ Act_WilyIntro ================
+; Handles the boss intro sequence for all three phases of the Wily Machine.
+; The main difference with Act_BossIntro is that routines that deal with animating
+; the boss intro are replaced with generic delays, as the Wily bosses don't have them.
+Act_WilyIntro:
+	ld   a, [wBossMode]
 	rst  $00 ; DynJump
-L027D9A: db $A8;X
-L027D9B: db $7D;X
-L027D9C: db $A8
-L027D9D: db $7D
-L027D9E: db $A9
-L027D9F: db $7D
-L027DA0: db $DB
-L027DA1: db $7D
-L027DA2: db $F9
-L027DA3: db $7D
-L027DA4: db $05
-L027DA5: db $7E
-L027DA6: db $3A
-L027DA7: db $7E
-L027DA8:;I
+	dw Act_SharedIntro_Wait ; BSMODE_NONE
+	dw Act_SharedIntro_Wait ; BSMODE_CORRIDOR
+	dw Act_SharedIntro_Init ; BSMODE_INIT
+	dw Act_WilyIntro_Wait0 ; BSMODE_INITANIM
+	dw Act_WilyIntro_Wait1 ; BSMODE_PLAYANIM
+	dw Act_SharedIntro_RefillBar ; BSMODE_REFILL
+	dw Act_WilyIntro_End ; BSMODE_END
+
+;================ Act_SharedIntro_Wait ================
+; SHARED | BSMODE_NONE-BSMODE_CORRIDOR
+; Do nothing while waiting for the 2nd shutter to close.
+Act_SharedIntro_Wait:
 	ret
-L027DA9:;I
-	ld   a, $0F
+	
+;================ Act_SharedIntro_Init ================
+; SHARED | BSMODE_INIT
+; Boss initialization code.
+; When fighting multiple bosses in sequence (ie: the final boss), wBossMode
+; needs to be manually reset to BSMODE_INIT to retrigger refilling the bar.
+Act_SharedIntro_Init:
+	; Prevent the player from moving as soon as the 2nd shutter closes,
+	; leaving no wiggle room to control the player inbetween.
+	; Controls will only be re-enabled once the entire intro ends.
+	ld   a, PL_MODE_FROZEN
 	ld   [wPlMode], a
+	
+	; Start with the health bar refill.
+	; This is a purely visual effect that doesn't affect the boss' actual health.
 	xor  a
-	ld   [wBossIntroHealth], a
-	ld   [wBossHealthBar], a
-	ld   hl, wStatusBarRedraw
-	set  2, [hl]
-	ld   a, $1E
+	ld   [wBossIntroHealth], a	; Start from empty bar	
+	ld   [wBossHealthBar], a	; ""
+	ld   hl, wStatusBarRedraw	; Request drawing said empty bar
+	set  BARID_BOSS, [hl]		
+	
+	; Wait half a second with the empty bar, while doing nothing.
+	; Ideally, instead of doing nothing, it should have made the boss fall from the top of the screen.
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wShutterNum
+	
+	; Next mode
+	ld   hl, wBossMode
 	inc  [hl]
-	ld   a, $05
+	
+	; Play boss music.
+	; Every boss, including the final boss, uses the same music.
+	ld   a, BGM_BOSS
 	ldh  [hBGMSet], a
 	ret
-L027DC7:;I
+	
+;================ Act_BossIntro_InitAnim ================
+; BOSS-ONLY | BSMODE_INITANIM
+; Delay, then set up intro anim.
+Act_BossIntro_InitAnim:
+	; Wait for that half a second with the empty life bar
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   de, $0002
-	ld   c, $1E
-	call Act_Boss_InitIntro
-	ld   hl, wShutterNum
+	
+	; Set up the boss intro animation
+	; Use sprites $00-$02 at 1/30 speed
+	ld   de, ($00 << 8)|$02
+	ld   c, 30
+	call ActS_InitAnimRange
+	
+	ld   hl, wBossMode
 	inc  [hl]
 	ret
-L027DDB:;I
+	
+;================ Act_WilyIntro_Wait0 ================
+; WILY-ONLY | BSMODE_INITANIM
+; Generic delay, as the Wily bosses don't have intros like the men.
+Act_WilyIntro_Wait0:
+	; Wait that half a second
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   a, $1E
+	
+	; Wait another half a second
+	ld   a, 30
 	ldh  [hActCur+iActTimer0C], a
-	ld   hl, wShutterNum
+	
+	ld   hl, wBossMode
 	inc  [hl]
 	ret
-L027DEB:;I
-	call Act_Boss_PlayIntro
+	
+;================ Act_BossIntro_PlayAnim ================
+; BOSS-ONLY | BSMODE_PLAYANIM
+Act_BossIntro_PlayAnim:
+	; Wait until the boss intro animation finishes
+	call ActS_PlayAnimRange
 	ret  z
+	; Then reset to sprite $01, by convention the intro pose
 	ld   a, $01
 	call ActS_SetSprMapId
-	ld   hl, wShutterNum
+	
+	ld   hl, wBossMode
 	inc  [hl]
 	ret
-L027DF9:;I
+	
+;================ Act_WilyIntro_Wait1 ================
+; WILY-ONLY | BSMODE_PLAYANIM
+; Generic delay, as the Wily bosses don't have intros like the men.
+Act_WilyIntro_Wait1:
+	; Wait that half a second...
 	ldh  a, [hActCur+iActTimer0C]
 	sub  $01
 	ldh  [hActCur+iActTimer0C], a
 	ret  nz
-	ld   hl, wShutterNum
+	
+	ld   hl, wBossMode
 	inc  [hl]
 	ret
-L027E05:;I
-	ld   a, [wBossIntroHealth]
+	
+;================ Act_SharedIntro_RefillBar ================
+; SHARED | BSMODE_REFILL
+; Handle the boss health gauge refill.
+Act_SharedIntro_RefillBar:
+	; Increment health
+	ld   a, [wBossIntroHealth]	; Health++
 	inc  a
 	ld   [wBossIntroHealth], a
-	ld   [wBossHealthBar], a
+	ld   [wBossHealthBar], a	; Set as drawn value
+	
+	; Trigger redraw, pointless unless a new bar is drawn though.
+	; It could have been done alongside setting hSFXSet.
 	ld   hl, wStatusBarRedraw
-	set  2, [hl]
+	set  BARID_BOSS, [hl]
+	
+	; Play the health refill sound for every new bar (every 8 units of health)
 	ld   a, [wBossIntroHealth]
-	and  $07
-	jr   nz, L027E1F
-	ld   a, $0B
+	and  $07					; Health % 8 != 0?
+	jr   nz, .chkEnd			; If so, skip
+	ld   a, SFX_BOSSBAR
 	ldh  [hSFXSet], a
-L027E1F:;R
+.chkEnd:
+	; Wait for the gauge to fully refill
 	ld   a, [wBossIntroHealth]
-	cp   $98
-	ret  c
-	ld   hl, wShutterNum
+	cp   BAR_MAX				; Fully refilled the gauge?
+	ret  c						; If not, return
+	
+	ld   hl, wBossMode		; Otherwise, next mode
 	inc  [hl]
 	ret
-L027E2A:;I
+	
+;================ Act_BossIntro_End ================
+; BOSS-ONLY | BSMODE_END
+; End of the normal boss intro.
+; [POI] When bosses mistakenly return to the intro routine, they execute just this part
+;       as wBossMode is kept to the last value.
+Act_BossIntro_End:
+	; Set to sprite $00, by convention the normal standing pose.
 	ld   a, $00
 	call ActS_SetSprMapId
-	xor  a
-	ld   [wPlMode], a
-	inc  a
+	
+	; Unlock the player controls
+	; This is the source of numerous issues when this is re-executed mid-fight.
+	xor  a ; PL_MODE_GROUND		
+	ld   [wPlMode], a			
+	
+	; Enable the boss damage mode, which allows the generic damage handler to update
+	; the boss' health bar and its level ending explosion.
+	inc  a						
 	ld   [wBossDmgEna], a
+	
+	; Advance routine to the actor-specific code.
+	; By convention, the intro routine is always $00, which will get incremented to $01 now.
 	ldh  [hActCur+iActRtnId], a
 	ret
-L027E3A:;I
+	
+;================ Act_WilyIntro_End ================
+; WILY-ONLY | BSMODE_END
+; End of the Wily boss intro, almost identical to Act_BossIntro_End.
+Act_WilyIntro_End:
+	; Probably not necessary given Wily bosses don't animate in their intros
 	ld   a, $00
 	call ActS_SetSprMapId
-	xor  a
+	
+	xor  a ; PL_MODE_GROUND		; Unlock the player controls
 	ld   [wPlMode], a
-	inc  a
+	
+	inc  a						; Enable the boss damage mode
 	ld   [wBossDmgEna], a
+	
+	; The intro routine for Wily Bosses isn't necessarily executed in routine $00.
+	; Why did this matter enough to split Act_BossIntro_End and Act_WilyIntro_End?
 	ld   hl, hActCur+iActRtnId
 	inc  [hl]
 	ret
-L027E4C:;C
-	call L027EC3
-	ld   de, $7F51
-	jp   L027EDC
-L027E55:;C
-	call L001E03
+	
+; =============== Act_BGBoss_ReqDraw ===============
+; Requests drawing a BG-based miniboss to the tilemap, relative to the actor's location.
+; Used by Tama and Friender and meant to be called by their init routine, so hActCur will
+; point to the miniboss actor slot.
+Act_BGBoss_ReqDraw:
+	;
+	; Tama and Friender follow a convention that lets them get away with sharing the same
+	; initialization code and even the same tilemap.
+	;
+	; Both minibosses are 5x4 tile rectangles, with their graphics tucked in the top-right
+	; corner of the level's GFX set, all using unique tiles. Given levels don't load separate
+	; art sets mid-level, all that's needed is generating the tiles for a tilemap event.
+	;
+	; This is all done all at once in a single event, so there is a limit to how many tiles
+	; it could use.
+	;
+	
+	call Act_BGBoss_GetRect			; Get rectancle bounds
+	ld   de, Tilemap_Act_Miniboss	; DE = Tama/Friender tilemap
+	jp   ActS_WriteTilemapToRect	; Write it to that rectangle
+	
+; =============== Act_Tama_ChkExplode ===============
+; Checks if Tama has been defeated, and if so, makes it explode.
+Act_Tama_ChkExplode:
+	; If Tama dies, clear its BG portion from the tilemap.
+	call ActS_ChkExplodeNoChild		; Is the boss dead?
+	ret  nc							; If not, return
+									; Otherwise...
+	call Act_BGBoss_GetRect			; Get same rectangle bounds from when we wrote the boss to the tilemap
+	ld   de, Tilemap_Act_TamaDead	; Write blank gray tiles to them, matching Top Man's background
+	jr   ActS_WriteTilemapToRect
+	
+; =============== Act_Friender_ChkExplode ===============
+; Checks if Friender has been defeated, and if so, makes it explode.
+; See also: Act_Tama_ChkExplode
+Act_Friender_ChkExplode:
+	; If Friender dies, clear its BG portion from the tilemap
+	call ActS_ChkExplodeNoChild
 	ret  nc
-	call L027EC3
-	ld   de, $7F65
-	jr   L027EDC
-L027E61:;C
-	call L001E03
-	ret  nc
-	call L027EC3
-	ld   de, $7F79
-	jr   L027EDC
-L027E6D:;C
-	ldh  a, [hActCur+iActX]
+	; These tiles match the interior background in Wood Man's stage
+	call Act_BGBoss_GetRect
+	ld   de, Tilemap_Act_FrienderDead
+	jr   ActS_WriteTilemapToRect
+	
+; =============== Act_Goblin_ShowBody ===============
+; Makes the large goblin platform appear, for Air Man's stage.
+; This isn't just a visual effect, the level layout blocks do get updated.
+Act_Goblin_ShowBody:
+	;
+	; TILEMAP UPDATE
+	;
+	;--
+	; Get tilemap rectangle bounds for the Goblin platform.
+	; See also: Act_BGBoss_GetRect
+	ldh  a, [hActCur+iActX]		; X Origin (left): ActX - $14 
 	sub  $14
 	ld   [wTargetRelX], a
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]		; Y Origin (top): ActY - $14
 	sub  $14
 	ld   [wTargetRelY], a
-	ld   a, $06
-	ld   [w_Unk_RectCpRowsLeft], a
-	ld   a, $06
-	ld   [w_Unk_RectCpColsLeft], a
-	ld   de, $7F8D
-	call L027EDC
-	ldh  a, [hScrollXNybLow]
+	ld   a, $06					; Width: 6 tiles
+	ld   [wRectCpWidth], a
+	ld   a, $06					; Height: 6 tiles
+	ld   [wRectCpHeight], a
+	;--
+	; Draw the platform tiles
+	ld   de, Tilemap_Act_Goblin
+	call ActS_WriteTilemapToRect
+	
+	;##
+	;
+	; LEVEL LAYOUT UPDATE
+	;
+	; The blocks placed around the actor are blank, and need to become solid.
+	; The actual blocks used should have block16 data that matches what we just wrote to the tilemap.
+	;
+	
+	;--
+	;
+	; For convenience, the origin was specified in pixels, since it's based on the actor's location.
+	; As we need to write to the level layout, we need an offset to it though.
+	; 
+	
+	; HORIZONTAL COMPONENT / LOW BYTE
+	ldh  a, [hScrollXNybLow]; B = Block scroll offset (pixels)
 	ld   b, a
-	ld   a, [wTargetRelX]
-	sub  $08
-	add  b
-	swap a
-	and  $0F
-	ld   b, a
-	ld   a, [wLvlColL]
-	add  b
-	ld   c, a
-	ld   a, [wTargetRelY]
-	sub  $10
-	swap a
-	and  $0F
-	ld   b, a
-	ld   hl, $C000
+	ld   a, [wTargetRelX]	; A = Origin X (pixels, relative to viewport)
+	sub  OBJ_OFFSET_X		; Account for HW offset
+	add  b					; Account for misaligned scrolling wLvlColL doesn't account for
+	swap a					; Divide by $10 (BLOCK_H) to get the relative column number
+	and  $0F				; ""
+	ld   b, a				; Save it to B
+	ld   a, [wLvlColL]		; Get base column number
+	add  b					; Add the relative one
+	ld   c, a				; Save result to C
+	
+	; VERTICAL COMPONENT / HIGH BYTE
+	ld   a, [wTargetRelY]	; A = Origin Y
+	sub  OBJ_OFFSET_Y		; Account for HW offset
+	swap a					; Divide by $10 (BLOCK_V) to get the row number
+	and  $0F				; ""
+	ld   b, a				; Save result to B
+	;--
+	
+	; Seek DE to that location in the level layout
+	ld   hl, wLvlLayout
 	add  hl, bc
 	ld   e, l
 	ld   d, h
-	ld   hl, $7FB1
-	ld   b, $03
-L027EB3:;R
-	push de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  d
-	ldi  a, [hl]
-	ld   [de], a
-	inc  d
-	ldi  a, [hl]
-	ld   [de], a
-	inc  d
-	pop  de
-	inc  e
-	dec  b
-	jr   nz, L027EB3
+	
+	;
+	; Copy the level layout part to the live level layout.
+	; The blocks are ordered top to bottom, left to right.
+	;
+	ld   hl, LvlPart_Act_Goblin		; HL = Source data
+	ld   b, $03					; B = Number of columns
+.loop:
+	push de			; Save column origin
+		REPT 3
+			ldi  a, [hl]		; Read from source, seek to next
+			ld   [de], a		; Write to dest
+			inc  d				; Move down 1 block
+		ENDR
+	pop  de			; Restore column origin
+	inc  e 			; Move right 1 block, next column
+	dec  b			; Copied all columns?
+	jr   nz, .loop	; If not, loop
 	ret
-L027EC3:;C
-	ldh  a, [hActCur+iActX]
+	
+; =============== Act_BGBoss_GetRect ===============
+; Gets the tilemap rectangle bounds for Tama and Friender.
+; This will be used to tell ActS_WriteTilemapToRect where to start writing the tilemap
+; for those minibosses, and how many tiles to copy.
+Act_BGBoss_GetRect:
+	ldh  a, [hActCur+iActX]	; X Origin (left): ActX - $12
 	sub  $12
 	ld   [wTargetRelX], a
-	ldh  a, [hActCur+iActY]
+	ldh  a, [hActCur+iActY]	; Y Origin (top): ActY - $1C
 	sub  $1C
 	ld   [wTargetRelY], a
-	ld   a, $05
-	ld   [w_Unk_RectCpRowsLeft], a
-	ld   a, $04
-	ld   [w_Unk_RectCpColsLeft], a
+	ld   a, $05				; Width: 5 tiles
+	ld   [wRectCpWidth], a
+	ld   a, $04				; Height: 4 tiles
+	ld   [wRectCpHeight], a
 	ret
-L027EDC:;JCR
-	ldh  a, [hScrollY]
+	
+; =============== ActS_ReqDrawTilemapToRect ===============
+; Requests drawing the specified tilemap to a rectangle area of VRAM.
+; IN
+; - DE: Ptr to source tilemap
+; - wTargetRelX: Dest. rectangle - Horizontal origin (pixels)
+; - wTargetRelY: Dest. rectangle - Vertical origin (pixels)
+; - wRectCpWidth: Dest. rectangle - Width (in tiles)
+; - wRectCpHeight: Dest. rectangle - Height (in tiles)
+ActS_WriteTilemapToRect:
+
+	;
+	; For convenience, the origin was specified in pixels, since it's based on the actor's location.
+	; As we need to write to the tilemap, we need a tilemap destination pointer though.
+	;
+	
+	;
+	; VERTICAL COMPONENT
+	; ScrEv_BGStripTbl[(hScrollY + wTargetRelY - OBJ_OFFSET_Y) / $08]
+	;
+	ldh  a, [hScrollY]		; B = Viewport Y (pixels)
 	ld   b, a
-	ld   a, [wTargetRelY]
-	sub  $10
-	add  b
-	swap a
-	and  $0F
-	sla  a
-	ld   hl, ScrEv_BGStripTbl
+	ld   a, [wTargetRelY]	; A = Origin Y (pixels, relative to viewport)
+	sub  OBJ_OFFSET_Y		; Account for HW offset
+	add  b					; Get absolute coordinate
+	swap a					; Divide by $10 (BLOCK_V) to get block row/strip number
+	and  $0F				; ""
+	sla  a					; *2 for ptr table indexing
+	ld   hl, ScrEv_BGStripTbl	; HL = Tilemap row pointers table
 	ld   b, $00
-	ld   c, a
-	add  hl, bc
-	ldi  a, [hl]
-	ld   [w_Unk_RectCpDestPtrLow], a
+	ld   c, a				; BC = What we calculated before
+	add  hl, bc				; Seek to entry
+	ldi  a, [hl]			; Read the pointer out to wRectCpDestPtr
+	ld   [wRectCpDestPtrLow], a
 	ld   a, [hl]
-	ld   [w_Unk_RectCpDestPtrHigh], a
-	ldh  a, [hScrollX]
+	ld   [wRectCpDestPtrHigh], a
+	
+	;
+	; HORIZONTAL COMPONENT
+	;	
+	ldh  a, [hScrollX]		; B = Viewport X (pixels)
 	ld   b, a
-	ldh  a, [hScrollXNybLow]
+	;--
+	; Readding the lower nybble to hScrollX, in light of the upcoming / $10,
+	; will cause that result to be rounded to the nearest block boundary.
+	;
+	; ie: If hScrollX is $x0-$x7, it will be rounded down (low nybble won't overflow)
+	;     If hScrollX is $x8-$xF, it will be rounded up (low nybble will overflow)
+	ldh  a, [hScrollXNybLow]	; B = Viewport X (pixels, low nybble)
+	add  b						; += hScrollX
+	ld   b, a
+	;--
+	ld   a, [wTargetRelX]	; A = Origin X (pixels, relative to viewport)
+	sub  OBJ_OFFSET_X		; Account for HW offset
+	add  b					; Get absolute coordinate
+	swap a					; Divide by $10 (BLOCK_H) to get column number
+	and  $0F				; ""
+	sla  a					; *2 as a column is 2 tiles wide
+	ld   b, a				; Save offset to B
+	
+	; Move <B> tiles right from the start of the block row.
+	; This will point to the top-left corner of a block, so it will never overflow.
+	ld   a, [wRectCpDestPtrLow]
 	add  b
+	ld   [wRectCpDestPtrLow], a
+	
+	;
+	; With the destination pointer ready, generate the event for drawing the tilemap.
+	; The event will draw it column by column -- top to bottom, left to right.
+	; The tilemap we want to draw, which is only made of raw time IDs, needs to be consistent
+	; with that, by having the tiles in that order and following the width/height of the rectangle.
+	;
+	; This event will be executed all at once next VBLANK, which imposes a limit for how
+	; much can be drawn.
+	;
+	ld   hl, wTilemapBuf		; HL = Ptr to event buffer
+	ld   a, [wRectCpWidth]		; B = Columns remaining
 	ld   b, a
-	ld   a, [wTargetRelX]
-	sub  $08
-	add  b
-	swap a
-	and  $0F
-	sla  a
-	ld   b, a
-	ld   a, [w_Unk_RectCpDestPtrLow]
-	add  b
-	ld   [w_Unk_RectCpDestPtrLow], a
-	ld   hl, wScrEvRows
-	ld   a, [w_Unk_RectCpRowsLeft]
-	ld   b, a
-L027F1C:;R
-	ld   a, [w_Unk_RectCpDestPtrHigh]
+.loop:							; For each column...
+	; Current VRAM location we're pointing at
+	ld   a, [wRectCpDestPtrHigh]
+	ldi  [hl], a				; byte0 - VRAM Address (high)
+	ld   a, [wRectCpDestPtrLow]
+	ldi  [hl], a				; byte1 - VRAM Address (low)
+	
+	; byte2 - Flags + Tile count
+	ld   a, [wRectCpHeight]		; Copy wRectCpHeight tiles
+	or   BG_MVDOWN				; Write top to bottom
 	ldi  [hl], a
-	ld   a, [w_Unk_RectCpDestPtrLow]
-	ldi  [hl], a
-	ld   a, [w_Unk_RectCpColsLeft]
-	or   $80
-	ldi  [hl], a
+	
+	; byte3+ - Payload
+	; Copy <wRectCpHeight> tiles from the source into the payload, as-is
 	push bc
-	ld   a, [w_Unk_RectCpColsLeft]
-	ld   b, a
-L027F2F:;R
-	ld   a, [de]
-	ldi  [hl], a
-	inc  de
-	dec  b
-	jr   nz, L027F2F
+		ld   a, [wRectCpHeight]
+		ld   b, a
+	.loopCol:
+		ld   a, [de]
+		ldi  [hl], a
+		inc  de
+		dec  b
+		jr   nz, .loopCol
 	pop  bc
-	ld   a, [w_Unk_RectCpDestPtrLow]
-	and  $E0
+	
+	;##
+	;
+	; Seek to the next column on the right, while accounting for the tilemap wrapping around.
+	; This is slightly involved:
+	; wRectCpDestPtrLow = (wRectCpDestPtrLow & $E0) | (wRectCpDestPtrLow++ & $1F)
+	;
+	;--
+	; Accounting for wraparound wipes the upper three bits, so they need to be preserved.
+	; These map to the low byte of the vertical component / row offset.
+	; C = wRectCpDestPtrLow & $E0
+	ld   a, [wRectCpDestPtrLow]	
+	and  $FF^(BG_TILECOUNT_H-1)
 	ld   c, a
-	ld   a, [w_Unk_RectCpDestPtrLow]
-	inc  a
-	and  $1F
-	or   c
-	ld   [w_Unk_RectCpDestPtrLow], a
-	dec  b
-	jr   nz, L027F1C
-	xor  a
+	;--
+	ld   a, [wRectCpDestPtrLow]	; Get column origin ptr
+	inc  a						; Seek one tile right
+	and  BG_TILECOUNT_H-1		; Account for row wraparound
+	or   c						; Add back the lost bits
+	ld   [wRectCpDestPtrLow], a
+	;##
+	
+	dec  b						; Handled all columns?
+	jr   nz, .loop				; If not, loop
+	
+	xor  a						; Write terminator
 	ldi  [hl], a
-	inc  a
+	inc  a						; Trigger event
 	ld   [wTilemapEv], a
+	
+	; Set C flag, for compatibility with a check the calling code makes
 	scf  
 	ret
-L027F51: db $0B
+	
+Tilemap_Act_Miniboss: db $0B
 L027F52: db $1B
 L027F53: db $2B
 L027F54: db $3B
@@ -9469,7 +14807,7 @@ L027F61: db $0F
 L027F62: db $1F
 L027F63: db $2F
 L027F64: db $3F
-L027F65: db $71
+Tilemap_Act_TamaDead: db $71
 L027F66: db $71
 L027F67: db $71
 L027F68: db $71
@@ -9489,7 +14827,7 @@ L027F75: db $71
 L027F76: db $71
 L027F77: db $71
 L027F78: db $71
-L027F79: db $2A
+Tilemap_Act_FrienderDead: db $2A
 L027F7A: db $3A
 L027F7B: db $2A
 L027F7C: db $3A
@@ -9509,7 +14847,7 @@ L027F89: db $2A
 L027F8A: db $3A
 L027F8B: db $2A
 L027F8C: db $3A
-L027F8D: db $0A
+Tilemap_Act_Goblin: db $0A
 L027F8E: db $1A
 L027F8F: db $2A
 L027F90: db $3A
@@ -9545,7 +14883,7 @@ L027FAD: db $21
 L027FAE: db $31
 L027FAF: db $01
 L027FB0: db $03
-L027FB1: db $22
+LvlPart_Act_Goblin: db $22
 L027FB2: db $24
 L027FB3: db $34
 L027FB4: db $23

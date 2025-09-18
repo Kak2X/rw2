@@ -124,7 +124,7 @@ WpnCtrl_Default:
 	jp   nz, WpnCtrlS_End	; If so, all three shots are on-screen, return
 	
 .spawn:
-	ld   a, SHOT_UNK_PROCFLAG|WPN_P ; Shot ID
+	ld   a, SHOT0_PROC|WPN_P ; Shot ID
 	ld   c, SHOTSPR_P ; Sprite ID
 	; Fall-through
 	
@@ -155,7 +155,7 @@ WpnCtrlS_SpawnShotFwd:
 	; HORIZONTAL OFFSET - 14px in front of the player
 	; The +1 discrepancy when facing right is due to the player sprite being visually offset 1 pixel there.
 	ld   b, -PLCOLI_H-$08	; B = 14px to the left
-	or   a ; PLDIR_L		; Facing left?
+	or   a ; DIR_L		; Facing left?
 	jr   z, .setShot3		; If so, skip
 	ld   b, PLCOLI_H+$08+1	; B = 15px to the right
 .setShot3:
@@ -256,7 +256,7 @@ WpnCtrl_Sakugarne:
 	ret
 .dmg:
 	; Spawn the shot
-	ld   a, SHOT_UNK_PROCFLAG|WPN_SG
+	ld   a, SHOT0_PROC|WPN_SG
 	ldi  [hl], a		; iShotId
 	xor  a
 	ldi  [hl], a ; iShotWkTimer
@@ -305,7 +305,7 @@ WpnCtrl_ChkSpawnHelper:
 	
 	; Don't spawn it if one is already active.
 	; (this includes different helpers when teleporting out)
-	ld   a, [wWpnHelperActive]
+	ld   a, [wWpnHelperWarpRtn]
 	or   a ; AHW_NONE
 	ret  nz
 	
@@ -324,7 +324,7 @@ WpnCtrl_ChkSpawnHelper:
 	; Spawn 24 pixels in front of the player
 	ld   b, $18				; B = 24px to the right
 	ld   a, [wPlDirH]
-	and  PLDIR_R			; Facing right?
+	and  DIR_R			; Facing right?
 	jr   nz, .setX			; If so, skip
 	ld   b, $E8				; B = 24px to the left
 .setX:
@@ -334,8 +334,8 @@ WpnCtrl_ChkSpawnHelper:
 	
 	call ActS_Spawn			; Did it spawn?
 	ret  c					; If not, return
-	ld   a, AHW_MODE_1	; Otherwise, flag that an helper is onscreen, so no more can spawn
-	ld   [wWpnHelperActive], a
+	ld   a, AHW_WARPIN_INIT	; Otherwise, flag that an helper is onscreen, so no more can spawn
+	ld   [wWpnHelperWarpRtn], a
 	ret
 	
 ; =============== WpnCtrl_TopSpin ===============
@@ -378,7 +378,7 @@ WpnCtrl_TopSpin:
 	; player's position on its own, and is the part that deals damage.
 	;
 	ld   hl, wShot0					; Fixed slot
-	ld   a, SHOT_UNK_PROCFLAG|WPN_TP
+	ld   a, SHOT0_PROC|WPN_TP
 	ld   [wWpnTpActive], a			; Enable Top Spin mode, which hides the normal player sprite
 	ldi  [hl], a ; iShotId
 	xor  a
@@ -386,7 +386,7 @@ WpnCtrl_TopSpin:
 	
 	; Face same direction as player
 	ld   a, [wPlDirH]
-	and  PLDIR_R
+	and  DIR_R
 	ldi  [hl], a ; iShotDir
 	
 	; Not deflected
@@ -442,7 +442,7 @@ WpnCtrl_AirShooter:
 	ld   c, $03			; C = Shots left
 	ld   hl, wShot0		; HL = From the first slot
 .loop:
-	ld   a, SHOT_UNK_PROCFLAG|WPN_AR
+	ld   a, SHOT0_PROC|WPN_AR
 	ldi  [hl], a ; iShotId
 	
 	; Set the shot number, needed to help distinguish between the three as each travels at its own speed. 
@@ -450,7 +450,7 @@ WpnCtrl_AirShooter:
 	ldi  [hl], a ; iShotWkTimer
 	
 	ld   a, [wPlDirH]
-	and  PLDIR_R	; A = Shot direction
+	and  DIR_R	; A = Shot direction
 	ldi  [hl], a ; iShotDir
 	
 	; Spawn 14 pixels in front of the player
@@ -529,7 +529,7 @@ WpnCtrl_LeafShield:
 	ld   c, $04			; C = Leaves left
 	ld   hl, wShot0		; From the first slot...
 .loop:
-	ld   a, SHOT_UNK_PROCFLAG|WPN_WD
+	ld   a, SHOT0_PROC|WPN_WD
 	ldi  [hl], a ; iShotId
 	
 	; iShotWkTimer = C - 1
@@ -600,7 +600,7 @@ WpnCtrl_MetalBlade:
 	
 .spawn:
 	; Spawn the Metal Blade projectile.
-	ld   a, SHOT_UNK_PROCFLAG|WPN_ME
+	ld   a, SHOT0_PROC|WPN_ME
 	ldi  [hl], a ; iShotId
 	
 	xor  a
@@ -618,39 +618,39 @@ WpnCtrl_MetalBlade:
 	jr   nz, .chkDirEx						; If so, jump
 .chkDir:
 	; Forward depends on the player's direction
-	ld   a, [wPlDirH]	; C = wPlDirH & PLDIR_R
-	and  PLDIR_R
+	ld   a, [wPlDirH]	; C = wPlDirH & DIR_R
+	and  DIR_R
 	ld   c, a
 	jr   .setDir
 .chkDirEx:
 	; Otherwise, perform the detailed check starting from diagonals.
-	ld   c, MEDIR_DR			; C = MEDIR_DR
+	ld   c, DIR_DR			; C = DIR_DR
 	cp   KEY_DOWN|KEY_RIGHT		; Holding Down-Right?
 	jr   z, .dirFound			; If so, jump (key found)
-	dec  c 						; C = MEDIR_DL
+	dec  c 						; C = DIR_DL
 	cp   KEY_DOWN|KEY_LEFT		; ...
 	jr   z, .dirFound
-	dec  c						; C = MEDIR_UR
+	dec  c						; C = DIR_UR
 	cp   KEY_UP|KEY_RIGHT
 	jr   z, .dirFound
-	dec  c						; C = MEDIR_UL
+	dec  c						; C = DIR_UL
 	cp   KEY_UP|KEY_LEFT
 	jr   z, .dirFound
 	
 	; Then all individual directions, bit by bit
-	dec  c						; C = MEDIR_D
+	dec  c						; C = DIR_D
 	rla  ; KEYB_DOWN			; Shift KEYB_DOWN into the carry
 	jr   c, .dirFound			; Is it set? If so, jump
-	dec  c						; C = MEDIR_U
+	dec  c						; C = DIR_U
 	rla  ; KEYB_UP
 	jr   c, .dirFound
 	
-	; The bits here are stored in a different order between MEDIR_* and KEY_*,
+	; The bits here are stored in a different order between DIR_* and KEY_*,
 	; requiring a small switchup.
-	dec  c						; C = MEDIR_R
+	dec  c						; C = DIR_R
 	rla  ; KEYB_LEFT			; Is the left button pressed set?
-	jr   nc, .dirFound			; If *NOT*, we're holding right (keep MEDIR_R)
-	dec  c						; Otherwise, C = MEDIR_L
+	jr   nc, .dirFound			; If *NOT*, we're holding right (keep DIR_R)
+	dec  c						; Otherwise, C = DIR_L
 .dirFound:
 	ld   a, c
 .setDir:
@@ -731,7 +731,7 @@ WpnCtrl_CrashBomb:
 	jp   c, WpnCtrlS_End
 	
 	; Only fired forward
-	ld   a, SHOT_UNK_PROCFLAG|WPN_CR ; Shot ID
+	ld   a, SHOT0_PROC|WPN_CR ; Shot ID
 	ld   c, SHOTSPR_CRMOVE ; Sprite ID
 	jp   WpnCtrlS_SpawnShotFwd
 	
@@ -800,14 +800,14 @@ WpnCtrl_NeedleCannon:
 	
 .spawn:
 	; Spawn the shot.
-	ld   a, SHOT_UNK_PROCFLAG|WPN_NE
+	ld   a, SHOT0_PROC|WPN_NE
 	ldi  [hl], a ; iShotId
 	xor  a
 	ldi  [hl], a ; iShotNeTimer
 	
 	; Face same direction as player
 	ld   a, [wPlDirH]
-	and  PLDIR_R
+	and  DIR_R
 	ldi  [hl], a ; iShotDir
 	
 	; X POSITION
@@ -885,7 +885,7 @@ WpnCtrl_HardKnuckle:
 	;--
 	
 	; Shoot the fist forward
-	ld   a, SHOT_UNK_PROCFLAG|WPN_HA ; Shot ID
+	ld   a, SHOT0_PROC|WPN_HA ; Shot ID
 	ld   c, SHOTSPR_HA ; Sprite ID
 	jp   WpnCtrlS_SpawnShotFwd
 	
@@ -917,7 +917,7 @@ WpnCtrl_MagnetMissile:
 	jp   c, WpnCtrlS_End
 	
 	; This is fired forward
-	ld   a, SHOT_UNK_PROCFLAG|WPN_MG ; A = Shot ID
+	ld   a, SHOT0_PROC|WPN_MG ; A = Shot ID
 	ld   c, SHOTSPR_MGH ; C = Sprite ID
 	jp   WpnCtrlS_SpawnShotFwd
 
@@ -1019,7 +1019,7 @@ WpnS_ExecCode:
 	
 	; Otherwise, execute the normal shot's code
 	ldh  a, [hShotCur+iShotId]	; A = iShotId
-	and  $FF^SHOT_UNK_PROCFLAG	; Filter out flag
+	and  $FF^SHOT0_PROC			; Filter out flag
 	rst  $00 ; DynJump
 	dw Wpn_Default       ; WPN_P 
 	dw Wpn_Default       ; WPN_RC ;X
@@ -1122,7 +1122,7 @@ Wpn_TopSpin:
 	; Sync direction from player.
 	; The effects of doing this are basically unnoticeable due to the very fast animation.
 	ld   a, [wPlDirH]
-	and  PLDIR_R				; Filter L/R bit
+	and  DIR_R				; Filter L/R bit
 	ldh  [hShotCur+iShotDir], a
 	
 	; Sync position
@@ -1175,7 +1175,7 @@ Wpn_AirShooter:
 	;
 	ld   hl, hShotCur+iShotXSub
 	ldh  a, [hShotCur+iShotDir]	; # Get direction
-	or   a						; # Facing right? (iShotDir != PLDIR_L)
+	or   a						; # Facing right? (iShotDir != DIR_L)
 	ld   a, [hl]				; Read cur subpixels
 	jr   nz, .moveR				; # If so, jump
 .moveL:
@@ -1439,16 +1439,16 @@ Wpn_LeafShield_Main:
 	
 	; Otherwise, throw the shield in the respective direction.
 	; Check the individual direction by shifting key bits into the carry.
-	ld   b, MEDIR_D		; B = MEDIR_D
+	ld   b, DIR_D		; B = DIR_D
 	rla 				; KEY_DOWN is set?
 	jr   c, .setDir		; If so, move down
-	dec  b				; B = MEDIR_U
+	dec  b				; B = DIR_U
 	rla  				; KEY_UP is set?
 	jr   c, .setDir		; If so, move up
-	dec  b				; B = MEDIR_R
+	dec  b				; B = DIR_R
 	rla  				; KEY_LEFT is set?
-	jr   nc, .setDir	; If *NOT*, move right (B = MEDIR_R confirmed)
-	dec  b				; Otherwise, B = MEDIR_L
+	jr   nc, .setDir	; If *NOT*, move right (B = DIR_R confirmed)
+	dec  b				; Otherwise, B = DIR_L
 .setDir:
 	ld   a, b
 	ldh  [hShotCur+iShotDir], a
@@ -1508,14 +1508,14 @@ Wpn_MetalBlade:
 	; Move 2px/frame according to its direction
 	ldh  a, [hShotCur+iShotDir]
 	rst  $00 ; DynJump
-	dw .moveL ; MEDIR_L
-	dw .moveR ; MEDIR_R
-	dw .moveU ; MEDIR_U
-	dw .moveD ; MEDIR_D
-	dw .moveUL ; MEDIR_UL
-	dw .moveUR ; MEDIR_UR
-	dw .moveDL ; MEDIR_DL
-	dw .moveDR ; MEDIR_DR
+	dw .moveL ; DIR_L
+	dw .moveR ; DIR_R
+	dw .moveU ; DIR_U
+	dw .moveD ; DIR_D
+	dw .moveUL ; DIR_UL
+	dw .moveUR ; DIR_UR
+	dw .moveDL ; DIR_DL
+	dw .moveDR ; DIR_DR
 
 .moveL:
 	ld   hl, hShotCur+iShotX	; iShotX -= 2
@@ -1928,9 +1928,9 @@ Wpn_MagnetMissile:
 	ldh  a, [hShotCur+iShotY]	; A = iShotY
 	inc  l 						; Seek HL to iActY
 	cp   [hl]					; iShotY > iActY? (Shot is below actor?)
-	ld   a, MEDIR_U				; # A = MEDIR_U
-	jr   nc, .setDirV			; If so, jump (shot should move up, keep MEDIR_U)
-	inc  a						; # A = MEDIR_D (the actor is below, move shot down)
+	ld   a, DIR_U				; # A = DIR_U
+	jr   nc, .setDirV			; If so, jump (shot should move up, keep DIR_U)
+	inc  a						; # A = DIR_D (the actor is below, move shot down)
 .setDirV:
 	ldh  [hShotCur+iShotDir], a
 	
@@ -1968,7 +1968,7 @@ Wpn_MagnetMissile:
 	;
 	ld   hl, hShotCur+iShotY	; Seek HL to iShotY
 	ldh  a, [hShotCur+iShotDir]
-	rra							; MEDIR_D is $03, when >> 1'd it will set the carry
+	rra							; DIR_D is $03, when >> 1'd it will set the carry
 	jr   c, .moveD				; Is it set? If so, jump
 .moveU:
 	dec  [hl]					; iShotY -= 2
@@ -2061,7 +2061,7 @@ WpnS_DrawSprMap:
 	
 	; Determine the shot's direction
 	ldh  a, [hShotCur+iShotDir]	; # Read direction
-	dec  a						; # Z Flag = Facing right? (PLDIR_R decremented to 0)
+	dec  a						; # Z Flag = Facing right? (DIR_R decremented to 0)
 	ldi  a, [hl]				; Read byte1 while we're here
 	jr   nz, .setX				; # If not, jump (facing left, keep raw byte1)
 .invX:
@@ -2084,7 +2084,7 @@ WpnS_DrawSprMap:
 	; Flags = (byte3 | wPlSprFlags) (facing left)
 	; Flags = (byte3 | wPlSprFlags) ^ SPR_XFLIP (facing right)
 	ldh  a, [hShotCur+iShotDir]	; # Read direction
-	dec  a						; # Z Flag = Facing right? (PLDIR_R decremented to 0)
+	dec  a						; # Z Flag = Facing right? (DIR_R decremented to 0)
 	ldi  a, [hl]				; Read byte3 while we're here
 	jr   nz, .setFlags			; # If not, jump (facing left, keep raw byte3)
 	xor  SPR_XFLIP				; Horizontally flip the individual tile
@@ -4663,7 +4663,7 @@ L01521F:;C
 	call WaitFrames
 	xor  a
 	ld   [$CD0D], a
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	xor  a
 	ldi  [hl], a
 	ld   a, $70
@@ -4694,7 +4694,7 @@ L01524D:;R
 L01525D:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
 	ld   [wTargetRelX], a
@@ -4719,9 +4719,9 @@ L01525D:;R
 	ld   a, [$CCF5]
 	xor  [hl]
 	ld   [$CCF4], a
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	call L015ACF
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	cp   $18
 	jr   z, L0152BB
 	ld   a, [$CCF8]
@@ -4742,7 +4742,7 @@ L0152BB:;R
 	call StartLCDOperation
 	ld   a, $78
 	call WaitFrames
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	xor  a
 	ldi  [hl], a
 	ld   a, $98
@@ -4767,7 +4767,7 @@ L0152BB:;R
 L0152E8:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
 	ld   [wTargetRelX], a
@@ -4784,7 +4784,7 @@ L0152E8:;R
 	ld   a, [hl]
 	xor  $FF
 	ld   [$CCF4], a
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	call L015ACF
 	ld   hl, $CCF6
 	inc  [hl]
@@ -4797,7 +4797,7 @@ L0152E8:;R
 L015329:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
 	ld   [wTargetRelX], a
@@ -4821,7 +4821,7 @@ L015329:;R
 	ld   [$CCF4], a
 	ld   a, h
 	ld   [$CCF5], a
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	call L015ACF
 	ld   hl, $CCF7
 	dec  [hl]
@@ -4831,7 +4831,7 @@ L015329:;R
 L01536E:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
 	ld   [wTargetRelX], a
@@ -4852,7 +4852,7 @@ L01536E:;R
 	ld   [$CCF4], a
 	ld   a, h
 	ld   [$CCF5], a
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	call L015ACF
 	ld   hl, $CCF6
 	inc  [hl]
@@ -4870,7 +4870,7 @@ L0153BA:;R
 	dec  [hl]
 	xor  a
 	ldh  [hWorkOAMPos], a
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
 	ld   [wTargetRelX], a
@@ -4887,7 +4887,7 @@ L0153BA:;R
 	ld   a, [hl]
 	xor  $FF
 	ld   [$CCF4], a
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	call L015ACF
 	ld   hl, $CCF7
 	dec  [hl]
@@ -4922,7 +4922,7 @@ L01541E:;R
 	ld   [wTargetRelX], a
 	cp   $40
 	jr   nz, L01541E
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	ld   a, [wTargetRelY]
 	ldi  [hl], a
 	ld   a, [wTargetRelX]
@@ -4934,9 +4934,9 @@ L01541E:;R
 L015448:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
-	ld   a, [$CCEE]
+	ld   a, [wWilyShipY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	ld   [wTargetRelX], a
 	ld   hl, $627D
 	xor  a
@@ -4960,9 +4960,9 @@ L015448:;R
 L015483:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
-	ld   a, [$CCEE]
+	ld   a, [wWilyShipY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	ld   [wTargetRelX], a
 	ld   hl, $627D
 	xor  a
@@ -4980,17 +4980,17 @@ L015483:;R
 	cp   $A0
 	adc  $00
 	ld   [$CCF0], a
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	inc  a
-	ld   [$CCEF], a
+	ld   [wWilyShipX], a
 	cp   $C0
 	jr   nz, L015483
 L0154C5:;R
 	xor  a
 	ldh  [hWorkOAMPos], a
-	ld   a, [$CCEE]
+	ld   a, [wWilyShipY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	ld   [wTargetRelX], a
 	ld   hl, $627D
 	xor  a
@@ -5052,7 +5052,7 @@ L01551D:;C
 	call GfxCopy_Req
 	ld   a, $01
 	ldh  [hBGMSet], a
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	xor  a
 	ld   de, $80C0
 	ldi  [hl], a
@@ -5105,7 +5105,7 @@ L01551D:;C
 	ld   a, $FF
 	ld   [$CCF5], a
 	ld   a, $02
-	ld   [$CCFD], a
+	ld   [wWilyPhaseDone], a
 	ld   a, $FE
 	ld   [$CCFE], a
 	ld   a, $04
@@ -5114,7 +5114,7 @@ L01551D:;C
 	ld   [$CCFF], a
 	call L01576E
 	xor  a
-	ld   [$CCFD], a
+	ld   [wWilyPhaseDone], a
 	ld   hl, $5E0C
 	ld   a, l
 	ld   [$CD02], a
@@ -5146,7 +5146,7 @@ L01551D:;C
 	ld   a, $80
 	ld   [$CCFF], a
 	call L01576E
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	add  $08
 	ld   [$CCF7], a
 	ld   a, [$CCF1]
@@ -5161,9 +5161,9 @@ L01551D:;C
 	ld   a, $80
 	ld   [$CCFF], a
 	call L01576E
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	add  $10
-	ld   [$CCEF], a
+	ld   [wWilyShipX], a
 	ld   a, $01
 	ld   [$CCF5], a
 	ld   a, $02
@@ -5176,11 +5176,11 @@ L01551D:;C
 	ld   a, $10
 	ld   [$CCFF], a
 	call L01576E
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	ld   [$CD06], a
 	ld   a, [$CCF1]
 	ld   [$CD07], a
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	xor  a
 	ldi  [hl], a
 	ldi  [hl], a
@@ -5225,7 +5225,7 @@ L015684:;R
 	call L015A39
 	xor  a
 	ld   [$CD0D], a
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	ld   b, $04
 L0156AE:;R
 	push bc
@@ -5244,7 +5244,7 @@ L0156AE:;R
 	jr   nz, L0156AE
 	call OAM_ClearRest
 	rst  $08 ; Wait Frame
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	ld   b, $04
 L0156CE:;R
 	inc  hl
@@ -5271,7 +5271,7 @@ L0156CE:;R
 	call StartLCDOperation
 	ld   a, $02
 	ldh  [hBGMSet], a
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	xor  a
 	ld   de, $8040
 	ldi  [hl], a
@@ -5338,7 +5338,7 @@ L01574A:;R
 	ret
 L01576E:;CR
 	call L01578D
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	call L015ACF
 	ld   hl, $CCF6
 	call L015ACF
@@ -5354,7 +5354,7 @@ L01576E:;CR
 L01578D:;C
 	xor  a
 	ldh  [hWorkOAMPos], a
-	ld   a, [$CCEF]
+	ld   a, [wWilyShipX]
 	ld   [wTargetRelY], a
 	ld   a, [$CCF1]
 	ld   [wTargetRelX], a
@@ -5490,14 +5490,14 @@ L015887:;R
 	dec  b
 	jr   nz, L015887
 	xor  a
-	ld   [$CCEE], a
+	ld   [wWilyShipY], a
 	ld   a, $40
 	ld   [$CCF6], a
 	ld   a, $B0
 	ld   [$CCF7], a
 L0158A1:;R
 	ld   hl, $659F
-	ld   a, [$CCEE]
+	ld   a, [wWilyShipY]
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
@@ -5520,7 +5520,7 @@ L0158B4:;R
 	ld   a, [$CCF7]
 	ld   [wTargetRelX], a
 	ld   hl, $65CC
-	ld   a, [$CCEE]
+	ld   a, [wWilyShipY]
 	call L015A39
 	call OAM_ClearRest
 	rst  $08 ; Wait Frame
@@ -5535,7 +5535,7 @@ L0158B4:;R
 	ld   a, [hl]
 	cp   $C0
 	jr   nz, L0158B4
-	ld   hl, $CCEE
+	ld   hl, wWilyShipY
 	inc  [hl]
 	ld   a, [hl]
 	cp   $26
@@ -5771,7 +5771,7 @@ L015A50:;R
 	ldh  [hWorkOAMPos], a
 	ret
 L015A6F:;C
-	ld   a, [$CCEE]
+	ld   a, [wWilyShipY]
 	add  a
 	ld   hl, $661A
 	ld   b, $00
