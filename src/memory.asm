@@ -531,3 +531,22 @@ DEF iShotCrTimer     EQU iShotWkTimer ; Explosion timer
 DEF iShotNeTimer     EQU iShotWkTimer ; How many frames have passed since the shot spawned
 DEF iShotHaTimer     EQU iShotWkTimer ; How many frames have passed since the shot spawned (up to $10)
 DEF iShotMgMoveV     EQU iShotWkTimer ; If set, Magnet Missile is moving vertically (has locked in)
+
+
+; Password dot locations
+DEF iDotA1 EQU $00
+DEF iDotA2 EQU $01
+DEF iDotA3 EQU $02
+DEF iDotA4 EQU $03
+DEF iDotB1 EQU $04
+DEF iDotB2 EQU $05
+DEF iDotB3 EQU $06
+DEF iDotB4 EQU $07
+DEF iDotC1 EQU $08
+DEF iDotC2 EQU $09
+DEF iDotC3 EQU $0A
+DEF iDotC4 EQU $0B
+DEF iDotD1 EQU $0C
+DEF iDotD2 EQU $0D
+DEF iDotD3 EQU $0E
+DEF iDotD4 EQU $0F

@@ -4478,7 +4478,7 @@ L04517C: db $FF;X
 L04517D: db $FF;X
 L04517E: db $FF;X
 L04517F: db $FF;X
-L045180: db $98
+TilemapDef_GetWpn: db $98
 L045181: db $00
 L045182: db $60
 L045183: db $06

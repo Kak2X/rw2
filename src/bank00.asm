@@ -6368,7 +6368,7 @@ ActS_DespawnAll:
 	ld   [wWpnHelperWarpRtn], a		; Rush/SG no longer there, can be recalled
 	ld   [wWpnSGRide], a			; Disable pogo movement mode
 	
-	; Remove all weapon shots/actors.
+	; Remove all weapon shots.
 	
 	; Top Spin is melee weapon, and its "shot" is allowed to move through rooms.
 	ld   a, [wWpnId]
@@ -9140,13 +9140,13 @@ Game_Main:
 	pop  af
 	call Pl_ResetAllProgress
 	
-	call Module_Title		; Wait for response
-	jr   z, .toStageSel		; GAME START selected? If so, jump
+	call Module_Title				; Wait for response
+	jr   z, Game_Main_ToStageSel	; GAME START selected? If so, jump
 .toPassword:
 	call Module_Password 	; Is the password invalid?
 	jr   c, Game_Main		; If so, return to the title screen
 	
-	; Otherwise, decide where to go to next
+	; Otherwise, decide where to go to next.
 	
 	; If all 8 bosses are defeated, warp to the pre-Quint room
 	ld   a, [wWpnUnlock0]
@@ -9165,11 +9165,17 @@ Game_Main:
 	cp   WPU_CR|WPU_ME|WPU_WD|WPU_AR
 	jr   z, Game_Main_ToWilyCastle
 	
-.toStageSel:
+	; Fall-through the first set otherwise.
+	; The level end modes for each of these can chain into the next.
+	
+; =============== Game_Main_ToStageSel ===============
+; Currently at the first set of bosses.
+; These are chosen through a character select screen, with ammo being refilled after every stage.
+Game_Main_ToStageSel:
 	call Module_StageSel
 	
 	; Prepare for gameplay.
-	
+.startLvl:	
 	; Start from the actual first room.
 	; Room ID $00, by convention, is kept completely empty.
 	ld   a, $01
@@ -9179,31 +9185,48 @@ Game_Main:
 	call Module_Game_InitScrOff
 	call Module_Game_InitScrOn
 	
-L0026AC:;R
+.toGame:
+	; Handle gameplay loop until someone dies
 	call Module_Game
-	cp   $02
-	jr   z, L0026CC
-	call L002862
-	jr   c, L0026AC
+	cp   LVLEND_BOSSDEAD		; Did the boss explode?
+	jr   z, .bossDead			; If so, jump
+	
+.plDead:
+	; The player has died, animate his explosion animation. 
+	; It also takes care of reloading the level, taking permadespawns into account.
+	; In case we ran out of lives, the game over sequence runs under Module_Game_PlDead.
+	call Module_Game_PlDead			; Did we game over?
+	jr   c, .toGame					; If not, respawn
+	; A -> Stage Select
 	ld   a, [wGameOverSel]
-	bit  1, a
-	jr   z, Game_Main.toStageSel
-	ld   a, $01
+	bit  KEYB_B, a					; Pressed B?
+	jr   z, Game_Main_ToStageSel	; If not, we pressed A. Return to the stage select.
+	; B -> Continue
+	; Fully reload the level, identically to .startLvl
+	ld   a, $01						
 	ld   [wLvlRoomId], a
 	call Module_Game_InitScrOff
 	call Module_Game_InitScrOn
-	jr   L0026AC
-L0026CC:;R
-	call L00299F
-	call L002A6F
-	call L002FAA
-	call L014F69 ; BANK $01
-	call Pl_RefillAllWpn
+	jr   .toGame
+	
+.bossDead:
+	; Boss has died (1st boss)
+	call Module_Game_BossDead
+	call Lvl_SetCompleted
+	call Module_GetWpn
+	call Module_PasswordView ; BANK $01
+	call Pl_RefillAllWpn	; Refill weapons
+	
+	; If the first set of bosses is defeated, advance to Wily's Castle
 	ld   a, [wWpnUnlock0]
-	and  $1E
-	cp   $1E
-	jr   nz, Game_Main.toStageSel
-Game_Main_ToWilyCastle:;X
+	and  WPU_CR|WPU_ME|WPU_WD|WPU_AR	; Filter only 1st set
+	cp   WPU_CR|WPU_ME|WPU_WD|WPU_AR	; Defeated all of them?
+	jr   nz, Game_Main_ToStageSel		; If not, return to the stage select
+	
+; =============== Game_Main_ToWilyCastle ===============
+; Just accessed Wily Castle, so show the cutscene.
+; From this point onward, no ammo is refilled after every stage.	
+Game_Main_ToWilyCastle:
 	call L003156
 	call L003174
 	call StartLCDOperation
@@ -9231,7 +9254,7 @@ L00271F:;R
 	call Module_Game
 	cp   $02
 	jr   z, L00273F
-	call L002862
+	call Module_Game_PlDead
 	jr   c, L00271F
 	ld   a, [wGameOverSel]
 	bit  1, a
@@ -9242,10 +9265,10 @@ L00271F:;R
 	call Module_Game_InitScrOn
 	jr   L00271F
 L00273F:;R
-	call L00299F
-	call L002A6F
-	call L002FAA
-	call L014F69 ; BANK $01
+	call Module_Game_BossDead
+	call Lvl_SetCompleted
+	call Module_GetWpn
+	call Module_PasswordView ; BANK $01
 	ld   a, [wWpnUnlock0]
 	cp   $FF
 	jr   nz, Game_Main_ToTeleport
@@ -9285,7 +9308,7 @@ L00277F: db $2A;X
 L002780: db $18;X
 L002781: db $E0;X
 L002782:;R
-	call L002FAA
+	call Module_GetWpn
 L002785:;R
 	call L01521F ; BANK $01
 	ld   a, $01
@@ -9300,7 +9323,7 @@ L002798:;R
 	call Module_Game
 	cp   $02
 	jr   z, L0027BD
-	call L002862
+	call Module_Game_PlDead
 	jr   c, L002798
 	ld   a, [wGameOverSel]
 	bit  1, a
@@ -9311,7 +9334,7 @@ L002798:;R
 	call Module_Game_InitScrOn
 	jr   L002798
 L0027BD:;R
-	call L00299F
+	call Module_Game_BossDead
 	call L01551D ; BANK $01
 	call L015827 ; BANK $01
 L0027C6: db $C3;X
@@ -9321,7 +9344,8 @@ L0027C8: db $27;X
 ; =============== Module_Game ===============
 ; Gameplay loop.
 ; OUT
-; - A: End result
+; - A: Reason the level has ended (wLvlEnd)
+;      When exiting the subroutine, it can only happen the moment the player or boss explode.
 Module_Game:
 	rst  $08 ; Wait Frame
 	
@@ -9413,6 +9437,10 @@ Module_Game:
 		ld   [MBC1RomBank], a
 	pop  af
 	
+	;
+	; With actors processed and drawn, there are no further sprite mappings to draw this frame.
+	; Finalize any remaining OBJ slots to $00, to avoid showing any leftovers from the last frame.
+	;
 	call OAM_ClearRest
 	
 	;
@@ -9434,158 +9462,264 @@ Module_Game:
 	;
 	ld   a, [wLvlEnd]
 	or   a					; Anything written to wLvlEnd?
-	jr   z, Module_Game		; If not, loop
-	push af
-		call Pl_StopTpAttack
-		call WpnS_SaveCurAmmo
+	jr   z, Module_Game		; If not, loop back
+	
+	push af ; Save wLvlEnd
+		call Pl_StopTpAttack	; Weapon shots are still processed when dead, but cancel out Top Spin due to its overriding of the player sprite.
+		call WpnS_SaveCurAmmo	; Force save current ammo, as normally this is only done when pausing 
 		xor  a
-		ld   [wPlSprFlags], a
+		ld   [wPlSprFlags], a	; Reset miscellanous flags
 		ld   [wLvlWater], a
 		ld   [wActScrollX], a
-	pop  af
-	cp   $03
-	ret  c
-	swap a
-	dec  a
-	and  $03
-	ld   [wLvlId], a
-	ld   a, $01
+	pop  af ; A = wLvlEnd
+	
+	;
+	; Determine level end type.
+	;
+	
+	; If someone exploded, exit out from the main gameplay loop entirely,
+	; as the explosion/death sequence is handled separately to avoid handling the player.
+	cp   LVLEND_BOSSDEAD+1		; wLvlEnd < $03?
+	ret  c						; If so, return the wLvlEnd
+	
+	; All modes > $03 are used for the instant level transitions used by teleporters in Wily Castle.
+	; These take the format of (LVL_* + 1) << 4, so to extract the level ID, do the opposite operations:
+	swap a				; >>= 4
+	dec  a				; - 1
+	and  $03			; Only the first four levels can be used for this (which, by ID, are the RM3 bosses)
+	ld   [wLvlId], a	; Set that as level ID
+	
+	ld   a, $01			; Return to the first room
 	ld   [wLvlRoomId], a
-	call Module_Game_InitScrOff
-	call Module_Game_InitScrOn
-	jp   Module_Game
-L002862:;C
+	
+	call Module_Game_InitScrOff	; Redo the full level initialization sequence
+	call Module_Game_InitScrOn	; ""
+	
+	jp   Module_Game	; Back to the gameplay loop as if nothing happened
+	
+; =============== Module_Game_PlDead ===============
+; Gameplay loop when the player explodes.
+; OUT
+; - C Flag: If set, the player has not game overed.
+; - wGameOverSel: Game Over selection, if the above is clear.
+Module_Game_PlDead:
+	
+	;
+	; Draw an empty health bar for the player.
+	;
 	xor  a
-	ld   [wPlHealthInc], a
-	ld   [wWpnAmmoInc], a
-	ld   [wPlHealthBar], a
-	ld   hl, wStatusBarRedraw
-	set  0, [hl]
-	ld   b, $B4
-L002873:;R
+	ld   [wPlHealthInc], a		; Stop health refills, if any (Game_TickTime still called)
+	ld   [wWpnAmmoInc], a		; Stop ammo refills, if any ""
+	ld   [wPlHealthBar], a		; Zero out visible health
+	ld   hl, wStatusBarRedraw	; Draw empty health bar
+	set  BARID_PL, [hl]
+	
+	;
+	; Handle the death sequence.
+	; This mainly animates the slow large explosions, which unlike other games *always* happen on death.
+	; Typically other games would skip it for pit deaths, but not this one (also because pits really are spikes).
+	;
+	ld   b, 60*3			; Do the effect for 3 seconds
+.loop:						; As the timer ticks down to 0...
 	push bc
-	ld   a, b
-	cp   $B4
-	jr   z, L00287F
-	cp   $5A
-	jr   z, L002887
-	jr   L002896
-L00287F:;R
-	ld   a, SND_MUTE
-	ldh  [hBGMSet], a
-	ld   a, SFX_EXPLODE
-	ldh  [hSFXSet], a
-L002887:;R
-	ld   a, [wExplodeOrgX]
-	ld   [wActSpawnX], a
-	ld   a, [wExplodeOrgY]
-	ld   [wActSpawnY], a
-	call ActS_SpawnLargeExpl
-L002896:;R
-	rst  $08 ; Wait Frame
-	xor  a
-	ldh  [hWorkOAMPos], a
-	call WpnS_Do ; BANK $01
-	push af
-		ld   a, BANK(ActS_Do) ; BANK $02
-		ldh  [hRomBankLast], a
-		ldh  [hRomBank], a
-		ld   [MBC1RomBank], a
-	pop  af
-	call ActS_Do
-	push af
-		ld   a, $01
-		ldh  [hRomBankLast], a
-		ldh  [hRomBank], a
-		ld   [MBC1RomBank], a
-	pop  af
-	call OAM_ClearRest
-	call Game_TickTime
-	pop  bc
-	dec  b
-	jr   nz, L002873
-	ld   a, [wPlLives]
+		ld   a, b			
+		cp   60*3			; immediately -> spawn 1st explosion, with SFX
+		jr   z, .explode0
+		cp   60*1+30		; after 1.5 seconds -> spawn 2nd explosion, with no SFX
+		jr   z, .explode1
+		jr   .playExpl
+	.explode0:
+		; The first explosion that spawns also plays its respective sound effect
+		ld   a, SND_MUTE		; And kill the level music
+		ldh  [hBGMSet], a
+		ld   a, SFX_EXPLODE
+		ldh  [hSFXSet], a
+	.explode1:
+		; Use the origin coordinates set when we died.
+		ld   a, [wExplodeOrgX]
+		ld   [wActSpawnX], a
+		ld   a, [wExplodeOrgY]
+		ld   [wActSpawnY], a
+		call ActS_SpawnLargeExpl
+		
+	.playExpl:
+		rst  $08 ; Wait Frame
+		
+		;
+		; Process/draw moving entities such as weapon shots and actors, just not the player.
+		;
+		
+		xor  a						; Start drawing sprites
+		ldh  [hWorkOAMPos], a
+		
+		call WpnS_Do ; BANK $01		; Process/draw shots
+		push af
+			ld   a, BANK(ActS_Do) ; BANK $02
+			ldh  [hRomBankLast], a
+			ldh  [hRomBank], a
+			ld   [MBC1RomBank], a
+		pop  af
+		
+		call ActS_Do				; Process/draw actors, including the explosion
+		
+		push af
+			ld   a, $01
+			ldh  [hRomBankLast], a
+			ldh  [hRomBank], a
+			ld   [MBC1RomBank], a
+		pop  af
+		
+		call OAM_ClearRest			; Drawn everything
+		call Game_TickTime			; Tick gameplay clock
+		
+	pop  bc				; B = Timer
+	dec  b				; Has it elapsed?
+	jr   nz, .loop		; If not, keep showing the anim
+	
+	;
+	; Explosion animation has ended.
+	; If we ran out of lives, show the password screen (then game over).
+	;
+	ld   a, [wPlLives]	; Lives--
 	sub  $01
-	ld   [wPlLives], a
-	jr   c, L00292C
-	ld   a, [wLvlId]
-	add  a
-	add  a
-	or   $03
-	ld   hl, $3C42
+	ld   [wPlLives], a	; Did we ran out? (underflowed)
+	jr   c, .gameOver		; If so, jump
+	
+	;
+	; Otherwise, respawn at the appropriate checkpoint.
+	; Every level has exactly four checkpoints assigned to it, of which:
+	; - The first one is typically the start of the level
+	; - The last one is assumed to be inside a boss corridor
+	;
+	; This data is stored inside a table indexed by level ID.
+	; The four room IDs are ordered from lowest to highest, so we read them in reverse order,
+	; stopping at the first that's behind the one the player reached. If all checks fail, peter out at the first checkpoint.
+	;
+	; This has a few implications on the level design, as room transitions need to take checkpoints in mind
+	; when the path forward involves moving left, due to the linear nature of the level layout.
+	;
+	; There's also an oversight in here, which does need the player to commit to it though.
+	; Nowhere in here does the game keep track of the last checkpoint reached, all calculations are around the player's position
+	; within the level, so if you die to a checkpoint, respawn, then move behind the checkpoint and die again, you get sent further back.
+	;
+	
+	ld   a, [wLvlId]	; A = Level ID
+	add  a				; *4 as that's the entry size (how many checkpoints a level can have)
+	add  a				; (that will make bits0-1 empty)
+	or   $03			; Start checking from the last entry
+	ld   hl, Lvl_CheckpointTbl
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
+	add  hl, bc			; Seek HL to last entry
+	;--
+	; Calculate the room ID, identically to Game_StartRoomTrs
+	; A = Room ID (wLvlColL / $0A)
+.getRoomNum:
 	ld   b, $00
 	ld   a, [wLvlColL]
-L0028DD:;R
-	cp   $0A
-	jr   c, L0028E6
+.divLoop:
+	cp   ROOM_COLCOUNT
+	jr   c, .divDone
 	inc  b
-	sub  $0A
-	jr   L0028DD
-L0028E6:;R
+	sub  ROOM_COLCOUNT
+	jr   .divLoop
+.divDone:
 	ld   a, b
-	cp   [hl]
-	jr   nc, L002908
+	;--
+	; Check from latest to earliest checkpoint, the first one that's smaller than our room ID.
+	cp   [hl]			; RoomId >= Checkpoint3?
+	jr   nc, .setBoss	; If so, use it
+	dec  hl				; Seek to previous checkpoint
+	cp   [hl]			; RoomId >= Checkpoint2?
+	jr   nc, .setRoom	; ...
 	dec  hl
-	cp   [hl]
-	jr   nc, L0028F3
-	dec  hl
-	cp   [hl]
-	jr   nc, L0028F3
-	dec  hl
-L0028F3:;R
-	ld   a, [hl]
+	cp   [hl]			; RoomId >= Checkpoint1?
+	jr   nc, .setRoom	; ...
+	dec  hl				; Otherwise, use the first checkpoint (typically the start of the level)
+.setRoom:
+	;
+	; Normal respawn.
+	;
+	ld   a, [hl]		; Respawn at that room
 	ld   [wLvlRoomId], a
-	ld   a, $01
+	
+	; Reload the level with the respawn flag set, to preserve collected/permanently despawned items
+	ld   a, $01			
 	ld   [wPlRespawn], a
-	call Module_Game_InitScrOff
-	call Module_Game_InitScrOn
+		call Module_Game_InitScrOff
+		call Module_Game_InitScrOn
 	xor  a
 	ld   [wPlRespawn], a
-	scf  
+	
+	scf  ; C flag = Set
 	ret
-L002908:;R
-	ld   a, [hl]
+	
+.setBoss:
+	;
+	; Boss corridor respawn, mostly the same as normal respawns.
+	;
+	ld   a, [hl]		; Respawn at that room
 	ld   [wLvlRoomId], a
-	ld   a, $01
+	
+	ld   a, $01			; Reload level as respawn
 	ld   [wPlRespawn], a
-	call Module_Game_InitScrOff
-	ld   b, $10
-L002916:;R
-	push bc
-		call Game_AutoScrollR
-	pop  bc
-	dec  b
-	jr   nz, L002916
-	call Module_Game_InitScrOn
-	ld   a, BSMODE_CORRIDOR
-	ld   [wBossMode], a
+		call Module_Game_InitScrOff
+		;--
+		; For inexplicable reasons, by conventions the boss corridors are not perfectly aligned 
+		; to room boundaries, with the room before being 1 block longer than it should.
+		; On top of not making it possible to use screen locks with the 1st shutter, it also 
+		; forces us to adjust the screen right by those 16 pixels.
+		ld   b, $10
+	.bsShLoop:
+		push bc
+			call Game_AutoScrollR	; Move 1px right
+		pop  bc
+		dec  b						; Moved all 16px?
+		jr   nz, .bsShLoop			; If not, loop
+		;--
+		call Module_Game_InitScrOn
+		
+		; Set the appropriate boss mode, this locks the screen and makes
+		; closing the 2nd shutter activate the boss.
+		ld   a, BSMODE_CORRIDOR
+		ld   [wBossMode], a
 	xor  a
 	ld   [wPlRespawn], a
-	scf  
+	
+	scf  ; C flag = Set
 	ret
-L00292C:;R
-	ld   a, $04
+	
+.gameOver:
+	;
+	; No more lives left, do the game over sequence.
+	;
+	
+	; PASSWORD SCREEN
+	ld   a, BGM_PASSWORD
 	ldh  [hBGMSet], a
-	call L014F69 ; BANK $01
-	call Pl_ResetLivesAndWpnAmmo
-	ld   a, GFXSET_GAMEOVER
+	call Module_PasswordView ; BANK $01
+	
+	; GAME OVER
+	call Pl_ResetLivesAndWpnAmmo	; Reset lives/ammo to default
+	ld   a, GFXSET_GAMEOVER			; Load Game Over font...
 	call GFXSet_Load
-	ld   de, $2953
+	ld   de, TilemapDef_GameOver	; ...and the tilemap
 	call LoadTilemapDef
 	call StartLCDOperation
-L002944:;R
+.gmoLoop:
 	rst  $08 ; Wait Frame
 	call JoyKeys_Refresh
+	; Wait in a loop until either A or B are pressed.
+	; A -> Stage Select
+	; B -> Continue
 	ldh  a, [hJoyNewKeys]
-	and  $03
-	jr   z, L002944
-	ld   [wGameOverSel], a
-	xor  a
+	and  KEY_B|KEY_A				; A or B pressed?
+	jr   z, .gmoLoop				; If not, loop
+	ld   [wGameOverSel], a			; Save selection as keys
+	xor  a  ; C flag = Clear
 	ret
-L002953: db $98
+	
+TilemapDef_GameOver: db $98
 L002954: db $44
 L002955: db $0C
 L002956: db $20
@@ -9661,162 +9795,247 @@ L00299B: db $45
 L00299C: db $20
 L00299D: db $20
 L00299E: db $00
-L00299F:;C
+
+; =============== Module_Game_BossDead ===============
+; Gameplay loop when the boss explodes.
+Module_Game_BossDead:
+
+	; Stop moving and fall down
 	xor  a
 	ldh  [hJoyKeys], a
 	ldh  [hJoyNewKeys], a
 	ld   [wPlMode], a
-	ld   [wBossHealthBar], a
-	ld   hl, wStatusBarRedraw
-	set  2, [hl]
+	
+	;
+	; Draw an empty health bar for the boss.
+	;
+	ld   [wBossHealthBar], a	; Draw empty health bar
+	ld   hl, wStatusBarRedraw	; Trigger redraw
+	set  BARID_BOSS, [hl]
+	
+	; Cutscene modes don't handle actor collision, so clear them all as they won't get updated.
 	dec  a
 	ld   [wActHurtSlotPtr], a
 	ld   [wActPlatColiSlotPtr], a
 	ld   [wActRjStandSlotPtr], a
 	ld   [wActHelperColiSlotPtr], a
-	call L002A81
-	ld   a, $00
+	; Also deleting all actors.
+	call ActS_ForceDespawnAll
+	
+	ld   a, SND_MUTE		; Stop the music straight away
 	ldh  [hBGMSet], a
-	ld   b, $C0
-L0029C5:;R
+	
+	;
+	; Handle the explosion animation for ~3 seconds, similarly to the player but simpler.
+	;
+	ld   b, $C0				; Do the effect for ~3 seconds
+.loop:
 	ld   a, b
 	push bc
-	and  $3F
-	jr   nz, L0029DE
-	ld   a, $06
-	ldh  [hSFXSet], a
-	ld   a, [wExplodeOrgX]
-	ld   [wActSpawnX], a
-	ld   a, [wExplodeOrgY]
-	ld   [wActSpawnY], a
-	call ActS_SpawnLargeExpl
-L0029DE:;R
-	call L002A97
+		; Every ~1 second, spawn another set of explosions
+		and  $3F			; Timer % $40 != 0?
+		jr   nz, .doGame	; If so, skip
+		
+		ld   a, SFX_EXPLODE		; Play explosion sound on every spawn
+		ldh  [hSFXSet], a
+		ld   a, [wExplodeOrgX]	; Use the boss coordinates as origin
+		ld   [wActSpawnX], a
+		ld   a, [wExplodeOrgY]
+		ld   [wActSpawnY], a
+		call ActS_SpawnLargeExpl
+	.doGame:
+		call NonGame_Do
 	pop  bc
-	dec  b
-	jr   nz, L0029C5
-	ld   a, $06
+	dec  b					; All ~3 seconds passed?
+	jr   nz, .loop			; If not, loop
+	
+	;
+	; Wait for two seconds while the jingle plays.
+	;
+	ld   a, BGM_STAGECLEAR
 	ldh  [hBGMSet], a
-	ld   b, $78
-	call L002A90
-L0029EE:;R
-	ld   b, $10
+	ld   b, 60*2
+	call NonGame_DoFor
+	
+	;
+	; Move the player towards the center of the screen.
+	; This is just enough to support the flat boss rooms used in the game,
+	; so if you put blocks in the way you softlock.
+	;
+.chkPlCenter:
+	ld   b, KEY_RIGHT		; B = Move right
 	ld   a, [wPlRelX]
-	cp   $58
-	jr   z, L002A03
-	jr   c, L0029FB
-	ld   b, $20
-L0029FB:;R
-	ld   a, b
+	cp   OBJ_OFFSET_X+(SCREEN_GAME_H/2)	; Are we at the center already? (PlX == $58)
+	jr   z, .jumpHi			; If so, we're done
+	jr   c, .movePlCenter	; Are we to the left? (PlX < $58) If so, confirm moving right.
+	ld   b, KEY_LEFT		; B = Move left (PlX > $58)
+.movePlCenter:
+	ld   a, b				; Fake joypad input
 	ldh  [hJoyKeys], a
-	call L002A97
-	jr   L0029EE
-L002A03:;R
-	ld   a, $02
+	call NonGame_Do			; Execute pseudo-gameplay
+	jr   .chkPlCenter		; Loop back
+	
+	;
+	; At the center of the screen, perform an high jump (which can't be cut early).
+	; It is important the jump can't be cut early, since we can get away with zeroing out joypad input.
+	;
+.jumpHi:
+	ld   a, PL_MODE_FULLJUMP	; Non-cancellable jump
 	ld   [wPlMode], a
-	ld   a, $03
+	ld   a, $03					; At 3.5px/frame
 	ld   [wPlSpdY], a
 	ld   a, $80
 	ld   [wPlSpdYSub], a
-	xor  a
+	xor  a						; Stop horizontal movement
 	ldh  [hJoyKeys], a
 	ldh  [hJoyNewKeys], a
-L002A17:;R
-	call L002A97
+	
+	; Continue with the jump as normal until we start falling, then freeze.
+.waitFall:
+	call NonGame_Do
 	ld   a, [wPlMode]
-	cp   $03
-	jr   nz, L002A17
-	ld   a, $0F
+	cp   PL_MODE_FALL			; Starting to fall down?
+	jr   nz, .waitFall			; If not, loop
+	
+	;
+	; Play the weapon absorbtion sequence.
+	; This is merely the large explosion with alternate positions / speed values. 
+	;
+	ld   a, PL_MODE_FROZEN		; Freeze player during this
 	ld   [wPlMode], a
-	ld   b, $B4
-L002A28:;R
+	DEF TIME = 60*3
+	ld   b, TIME				; For 3 seconds...
+.abLoop:
 	ld   a, b
 	push bc
-	cp   $B4
-	jr   z, L002A44
-	cp   $96
-	jr   z, L002A4D
-	cp   $78
-	jr   z, L002A44
-	cp   $5A
-	jr   z, L002A4D
-	cp   $3C
-	jr   z, L002A44
-	cp   $1E
-	jr   z, L002A4D
-	jr   L002A50
-L002A44:;R
-	call ActS_SpawnAbsorb
-	ld   a, $0F
-	ldh  [hSFXSet], a
-	jr   L002A50
-L002A4D:;R
-	call L002A81
-L002A50:;R
-	call L002A97
+		; Every half a second, alternate between spawning and despawning the absorption effects.
+		cp   TIME-(30*0)		; 0
+		jr   z, .abSpawn
+		cp   TIME-(30*1)		; 0.5
+		jr   z, .abKill
+		cp   TIME-(30*2)		; 1.0
+		jr   z, .abSpawn
+		cp   TIME-(30*3)		; 1.5
+		jr   z, .abKill
+		cp   TIME-(30*4)		; 2
+		jr   z, .abSpawn
+		cp   TIME-(30*5)		; 2.5
+		jr   z, .abKill
+		jr   .abPlay
+	.abSpawn:
+		call ActS_SpawnAbsorb		; Spawn the 8 explosion actors
+		ld   a, SFX_WEAPONABSORB	; Play respective SFX
+		ldh  [hSFXSet], a
+		jr   .abPlay
+	.abKill:
+		call ActS_ForceDespawnAll	; Delete all actors
+	.abPlay:
+		call NonGame_Do				; Update screen
 	pop  bc
-	dec  b
-	jr   nz, L002A28
-	ld   a, $03
+	dec  b						; Done with the animation?
+	jr   nz, .abLoop			; If not, loop
+	
+	;
+	; Unlock player movement and wait for him to land on the ground.
+	;
+	ld   a, PL_MODE_FALL		; Unlock player
 	ld   [wPlMode], a
-L002A5C:;R
-	call L002A97
+.waitGrd:
+	call NonGame_Do				; Update player
 	ld   a, [wPlMode]
-	or   a
-	jr   nz, L002A5C
-	ld   a, $15
+	or   a						; wPlMode != PL_MODE_GROUND?
+	jr   nz, .waitGrd			; If so, loop
+	
+	;
+	; Then start teleporting out.
+	; By the end of the two seconds, the player should have finished teleporting out.
+	;
+	ld   a, PL_MODE_WARPOUTINIT
 	ld   [wPlMode], a
-	ld   b, $78
-	jp   L002A90
-L002A6F:;C
-	ld   a, [wLvlId]
-	ld   hl, $3C1A
+	ld   b, 60*2
+	jp   NonGame_DoFor
+	
+; =============== Lvl_SetCompleted ===============
+; Marks the current level as completed, which unlocks its associated weapon.
+Lvl_SetCompleted:
+	; Read completion bit off the table, indexed by level ID
+	ld   a, [wLvlId]			; HL = &Lvl_ClearBitTbl[wLvlId]
+	ld   hl, Lvl_ClearBitTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
-	ld   a, [wWpnUnlock0]
+	; Set that bit to wWpnUnlock0
+	ld   a, [wWpnUnlock0]		; wWpnUnlock0 |= *HL
 	or   [hl]
 	ld   [wWpnUnlock0], a
 	ret
-L002A81:;C
-	ld   bc, $1000
-	ld   de, $0010
-	ld   hl, wAct
-L002A8A:;R
-	ld   [hl], c
-	add  hl, de
-	dec  b
-	jr   nz, L002A8A
+	
+; =============== ActS_ForceDespawnAll ===============
+; Forcibly despawns all actors in an unsafe way.
+; Only use when it's not necessary to respawn anything from the actor layout,
+; such as when all actors despawn after killing a boss.
+ActS_ForceDespawnAll:
+	; Clear iActId from every slot
+	ld   bc, ($10 << 8)|$00		; B = Number of slots, C = $00
+	ld   de, iActEnd			; DE = Slot size ($10) 
+	ld   hl, wAct+iActId		; HL = Ptr to first actor
+.loop:
+	ld   [hl], c				; Write $00 to iActId
+	add  hl, de					; Seek to next slot
+	dec  b						; Done this for all slots?
+	jr   nz, .loop				; If not, loop
 	ret
-L002A90:;JCR
-	call L002A97
+	
+; =============== NonGame_DoFor ===============
+; Runs the pseudo-gameplay loop for the specified amount of frames.
+; IN
+; - B: Number of frames
+NonGame_DoFor:
+	call NonGame_Do
 	dec  b
-	jr   nz, L002A90
+	jr   nz, NonGame_DoFor
 	ret
-L002A97:;C
+	
+; =============== NonGame_Do ===============
+; Pseudo-gameplay.
+; Cut down version of the gameplay loop (Module_Game) with no player interaction that executes for a single frame.
+; This makes it useful for cutscene modes, as it lets the caller determine when to exit out of "gameplay" rather
+; than doing it indirectly through actors.
+;
+; As it's meant for cutscene modes, this does not poll for player controls, typically they are faked by the caller.
+NonGame_Do:
 	push hl
 	push de
 	push bc
-	rst  $08 ; Wait Frame
-	xor  a
-	ldh  [hWorkOAMPos], a
-	call Game_Do
-	call WpnS_Do ; BANK $01
-	push af
-	ld   a, BANK(ActS_Do); BANK $02
-	ldh  [hRomBankLast], a
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
-	pop  af
-	call ActS_Do
-	push af
-	ld   a, $01
-	ldh  [hRomBankLast], a
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
-	pop  af
-	call OAM_ClearRest
-	call Game_TickTime
+		rst  $08 ; Wait Frame
+		
+		; [BUG] This is forgetting to animate palettes.
+		;       It's why defeating Metal Man stops the conveyor belt's animation.
+		; [POI] Player-actor collision is ignored. Not needed during cutscenes anyway.
+		
+		; Prepare for drawing any sprites
+		xor  a
+		ldh  [hWorkOAMPos], a
+		call Game_Do ; Run gameplay
+		call WpnS_Do ; BANK $01 ; Process on-screen shots 
+		
+		; Run actor code
+		push af
+			ld   a, BANK(ActS_Do); BANK $02
+			ldh  [hRomBankLast], a
+			ldh  [hRomBank], a
+			ld   [MBC1RomBank], a
+		pop  af
+		call ActS_Do
+		push af
+			ld   a, $01
+			ldh  [hRomBankLast], a
+			ldh  [hRomBank], a
+			ld   [MBC1RomBank], a
+		pop  af
+		
+		call OAM_ClearRest	; Rest wait
+		call Game_TickTime	; Tick gameplay clock & process refills
 	pop  bc
 	pop  de
 	pop  hl
@@ -10223,8 +10442,8 @@ Module_StageSel:
 	;
 	
 	; Find the completion bit to this stage
-	; B = StageSel_LvlBitTbl[wLvlId]
-	ld   hl, StageSel_LvlBitTbl
+	; B = Lvl_ClearBitTbl[wLvlId]
+	ld   hl, Lvl_ClearBitTbl
 	ld   b, $00
 	ld   c, a
 	add  hl, bc	
@@ -10953,350 +11172,213 @@ StageSel_PicPosPtrTbl:
 	dw $9C63 ; WOOD MAN / MAGNET MAN
 	dw $9C6D ; AIR MAN / NEEDLE MAN
 	
-L002FAA:;C
+; =============== Module_GetWpn ===============
+; Get Weapon screen.
+Module_GetWpn:
+	;--
+	;
+	; Load VRAM
+	;
+	
 	ld   a, GFXSET_GETWPN
 	call GFXSet_Load
+	
 	push af
-	ld   a, $04
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(TilemapDef_GetWpn) ; BANK $04
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   de, $5180
+	ld   de, TilemapDef_GetWpn
 	call LoadTilemapDef
 	push af
-	ldh  a, [hRomBankLast]
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
+	
 	call StartLCDOperation
-	ld   a, $07
+	;--
+	
+	ld   a, BGM_WEAPONGET
 	ldh  [hBGMSet], a
-	ld   b, $60
+	
+	;
+	; Scroll the Rockman/Rush picture to the left until it's fully onscreen.
+	; Scrolled 0.25px/frame to the right for 96 frames - 24px right in total.
+	;
+	ld   b, $60			; For $60 frames...
 	ld   hl, hScrollX
-L002FD3:;R
-	inc  [hl]
-	ld   a, $04
+.scrollPic:
+	inc  [hl]			; Move viewport 1px to the right (scroll 1px left)
+	ld   a, $04			; Wait 4 frames
 	call WaitFrames
-	dec  b
-	jr   nz, L002FD3
-	ld   a, $3C
+	dec  b				; Done moving?
+	jr   nz, .scrollPic	; If not, loop
+	; Wait a second after finishing moving
+	ld   a, 60
 	call WaitFrames
-	ld   hl, $305A
-	ld   de, $98CC
-	call L00300A
-	ld   a, [wLvlId]
+	
+	;
+	; Write the unlock text to the tilemap, one character at a time.
+	;
+	
+	; This is split into two parts, the common "YOU GOT" string and a level-specific one with the weapon's name.
+	; Start with the former.
+	ld   hl, Txt_GetWpn_YouGot	; HL = String source ptr
+	ld   de, $98CC		; DE = Tilemap destination ptr 
+	call GetWpn_WriteTxt		
+	
+	; Then the level specific one.
+	; HL = GetWpn_LvlTextPtrTbl[wLvlId * 2]
+	ld   a, [wLvlId]	; A = wLvlId * 2
 	add  a
-	ld   hl, $3063
+	ld   hl, GetWpn_LvlTextPtrTbl	; HL = Table base
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ld   e, [hl]
+	add  hl, bc			; Index it
+	ld   e, [hl]		; Read ptr out to HL
 	inc  hl
 	ld   d, [hl]
 	ld   l, e
 	ld   h, d
-	ld   de, $98EC
-	call L00300A
-	ld   a, $B4
+	
+	ld   de, $98EC		; DE = Tilemap destination ptr 
+	call GetWpn_WriteTxt
+	
+	; Wait 5 seconds on the fully realized screen
+	ld   a, 60*3
 	call WaitFrames
-	ld   a, $78
+	ld   a, 60*2
 	jp   WaitFrames
-L00300A:;C
+	
+; =============== GetWpn_WriteTxt ===============
+; Writes an ASCII $2E-terminated string to the tilemap, one character at a time.
+; IN
+; - DE: Row pointer
+GetWpn_WriteTxt:
+	; Save base tilemap pointer.
 	ld   a, e
 	ld   [wGetWpnDestPtr_Low], a
 	ld   a, d
 	ld   [wGetWpnDestPtr_High], a
-L003012:;R
-	ldi  a, [hl]
-	ld   b, a
-	cp   $2E
-	ret  z
-	cp   $20
-	jr   z, L003052
-	cp   $2F
-	jr   nz, L003033
-	ld   a, [wGetWpnDestPtr_Low]
-	add  $20
+	
+.readChar:
+	ldi  a, [hl]		; Read character, seek to next
+	ld   b, a			; Save copy here
+	cp   $2E			; Reached terminator?
+	ret  z				; If so, return
+	cp   $20			; Reached space character?
+	jr   z, .wait		; If so, skip updating the tilemap
+	cp   $2F			; Reached a newline character?
+	jr   nz, .chNorm	; If *not*, we have a normal character. Jump.
+	
+.chkNewline:
+	; Move the base tilemap pointer one tile down, and use it as new current pointer.
+	ld   a, [wGetWpnDestPtr_Low]	; wGetWpnDestPtr += $20
+	add  BG_TILECOUNT_H
 	ld   [wGetWpnDestPtr_Low], a
-	ld   e, a
+	ld   e, a						; DE = wGetWpnDestPtr
 	ld   a, [wGetWpnDestPtr_High]
 	adc  $00
 	ld   [wGetWpnDestPtr_High], a
 	ld   d, a
-	jr   L003012
-L003033:;R
-	ld   a, d
-	ld   [wScrEvRows], a
+	jr   .readChar
+.chNorm:
+
+	;
+	; Generate the event for writing a single tile, then trigger it.
+	;
+
+	; bytes0-1: Destination pointer
+	ld   a, d						; From DE
+	ld   [wTilemapBuf+iTilemapDefPtr_High], a
 	ld   a, e
-	ld   [$DD01], a
-	ld   a, $01
+	ld   [wTilemapBuf+iTilemapDefPtr_Low], a
+	
+	; byte2: Writing mode + Number of bytes to write
+	ld   a, $01						; Write one tile only
 	ld   [wTilemapBuf+iTilemapDefOpt], a
-	ld   a, b
-	or   $80
+	
+	; byte3+: payload
+	; While the font is stored as ASCII in ROM and in VRAM it's loaded in the 2nd section at that location,
+	; said section itself starts at $80, shifting them that much.
+	ld   a, b						; Read character
+	or   $80						; += 2nd section base
 	ld   [wTilemapBuf+iTilemapDefPayload], a
+	
+	; Write terminator
 	xor  a
-	ld   [$DD04], a
-	inc  a
+	ld   [wTilemapBuf+iTilemapDefPayload+1], a
+	
+	inc  a							; Trigger event
 	ld   [wTilemapEv], a
-	ld   a, $0B
+	ld   a, SFX_BOSSBAR				; Play text writer sound
 	ldh  [hSFXSet], a
-L003052:;R
-	ld   a, $06
+	
+.wait:
+	ld   a, $06			; Wait 6 frames between text printings
 	call WaitFrames
-	inc  de
-	jr   L003012
-L00305A: db $20
-L00305B: db $59
-L00305C: db $4F
-L00305D: db $55
-L00305E: db $20
-L00305F: db $47
-L003060: db $4F
-L003061: db $54
-L003062: db $2E
-L003063: db $75
-L003064: db $30
-L003065: db $87
-L003066: db $30
-L003067: db $95
-L003068: db $30
-L003069: db $A9
-L00306A: db $30
-L00306B: db $BC
-L00306C: db $30
-L00306D: db $DF
-L00306E: db $30
-L00306F: db $04
-L003070: db $31
-L003071: db $15
-L003072: db $31
-L003073: db $38
-L003074: db $31
-L003075: db $20
-L003076: db $20
-L003077: db $48
-L003078: db $41
-L003079: db $52
-L00307A: db $44
-L00307B: db $2F
-L00307C: db $20
-L00307D: db $20
-L00307E: db $20
-L00307F: db $4B
-L003080: db $4E
-L003081: db $55
-L003082: db $43
-L003083: db $4B
-L003084: db $4C
-L003085: db $45
-L003086: db $2E
-L003087: db $20
-L003088: db $20
-L003089: db $54
-L00308A: db $4F
-L00308B: db $50
-L00308C: db $2F
-L00308D: db $20
-L00308E: db $20
-L00308F: db $20
-L003090: db $53
-L003091: db $50
-L003092: db $49
-L003093: db $4E
-L003094: db $2E
-L003095: db $20
-L003096: db $20
-L003097: db $4D
-L003098: db $41
-L003099: db $47
-L00309A: db $4E
-L00309B: db $45
-L00309C: db $54
-L00309D: db $2F
-L00309E: db $20
-L00309F: db $20
-L0030A0: db $20
-L0030A1: db $4D
-L0030A2: db $49
-L0030A3: db $53
-L0030A4: db $53
-L0030A5: db $49
-L0030A6: db $4C
-L0030A7: db $45
-L0030A8: db $2E
-L0030A9: db $20
-L0030AA: db $20
-L0030AB: db $4E
-L0030AC: db $45
-L0030AD: db $45
-L0030AE: db $44
-L0030AF: db $4C
-L0030B0: db $45
-L0030B1: db $2F
-L0030B2: db $20
-L0030B3: db $20
-L0030B4: db $20
-L0030B5: db $43
-L0030B6: db $41
-L0030B7: db $4E
-L0030B8: db $4E
-L0030B9: db $4F
-L0030BA: db $4E
-L0030BB: db $2E
-L0030BC: db $20
-L0030BD: db $20
-L0030BE: db $43
-L0030BF: db $4C
-L0030C0: db $41
-L0030C1: db $53
-L0030C2: db $48
-L0030C3: db $2F
-L0030C4: db $20
-L0030C5: db $20
-L0030C6: db $20
-L0030C7: db $42
-L0030C8: db $4F
-L0030C9: db $4D
-L0030CA: db $42
-L0030CB: db $2F
-L0030CC: db $2F
-L0030CD: db $20
-L0030CE: db $20
-L0030CF: db $20
-L0030D0: db $41
-L0030D1: db $4E
-L0030D2: db $44
-L0030D3: db $2F
-L0030D4: db $20
-L0030D5: db $52
-L0030D6: db $55
-L0030D7: db $53
-L0030D8: db $48
-L0030D9: db $20
-L0030DA: db $43
-L0030DB: db $4F
-L0030DC: db $49
-L0030DD: db $4C
-L0030DE: db $2E
-L0030DF: db $20
-L0030E0: db $20
-L0030E1: db $4D
-L0030E2: db $45
-L0030E3: db $54
-L0030E4: db $41
-L0030E5: db $4C
-L0030E6: db $2F
-L0030E7: db $20
-L0030E8: db $20
-L0030E9: db $20
-L0030EA: db $42
-L0030EB: db $4C
-L0030EC: db $41
-L0030ED: db $44
-L0030EE: db $45
-L0030EF: db $2F
-L0030F0: db $2F
-L0030F1: db $20
-L0030F2: db $20
-L0030F3: db $20
-L0030F4: db $41
-L0030F5: db $4E
-L0030F6: db $44
-L0030F7: db $2F
-L0030F8: db $52
-L0030F9: db $55
-L0030FA: db $53
-L0030FB: db $48
-L0030FC: db $20
-L0030FD: db $4D
-L0030FE: db $41
-L0030FF: db $52
-L003100: db $49
-L003101: db $4E
-L003102: db $45
-L003103: db $2E
-L003104: db $20
-L003105: db $20
-L003106: db $4C
-L003107: db $45
-L003108: db $41
-L003109: db $46
-L00310A: db $2F
-L00310B: db $20
-L00310C: db $20
-L00310D: db $20
-L00310E: db $53
-L00310F: db $48
-L003110: db $49
-L003111: db $45
-L003112: db $4C
-L003113: db $44
-L003114: db $2E
-L003115: db $20
-L003116: db $20
-L003117: db $41
-L003118: db $49
-L003119: db $52
-L00311A: db $2F
-L00311B: db $20
-L00311C: db $20
-L00311D: db $20
-L00311E: db $53
-L00311F: db $48
-L003120: db $4F
-L003121: db $4F
-L003122: db $54
-L003123: db $45
-L003124: db $52
-L003125: db $2F
-L003126: db $2F
-L003127: db $20
-L003128: db $20
-L003129: db $20
-L00312A: db $41
-L00312B: db $4E
-L00312C: db $44
-L00312D: db $2F
-L00312E: db $20
-L00312F: db $52
-L003130: db $55
-L003131: db $53
-L003132: db $48
-L003133: db $20
-L003134: db $4A
-L003135: db $45
-L003136: db $54
-L003137: db $2E
-L003138: db $20
-L003139: db $20
-L00313A: db $51
-L00313B: db $55
-L00313C: db $49
-L00313D: db $4E
-L00313E: db $54
-L00313F: db $2F
-L003140: db $20
-L003141: db $20
-L003142: db $20
-L003143: db $49
-L003144: db $54
-L003145: db $45
-L003146: db $4D
-L003147: db $2F
-L003148: db $2F
-L003149: db $2F
-L00314A: db $20
-L00314B: db $20
-L00314C: db $53
-L00314D: db $41
-L00314E: db $4B
-L00314F: db $55
-L003150: db $47
-L003151: db $41
-L003152: db $52
-L003153: db $4E
-L003154: db $45
-L003155: db $2E
+	
+	inc  de				; Move 1 tile right
+	jr   .readChar		; Read next character
+	
+SETCHARMAP getwpn
+Txt_GetWpn_YouGot:
+	db " YOU GOT\0"
+	
+; =============== GetWpn_LvlTextPtrTbl ===============
+; Maps levels to their weapon unlock string.
+GetWpn_LvlTextPtrTbl:
+	dw Txt_GetWpn_Hard   ; LVL_HARD     
+	dw Txt_GetWpn_Top    ; LVL_TOP      
+	dw Txt_GetWpn_Magnet ; LVL_MAGNET   
+	dw Txt_GetWpn_Needle ; LVL_NEEDLE   
+	dw Txt_GetWpn_Crash  ; LVL_CRASH    
+	dw Txt_GetWpn_Metal  ; LVL_METAL    
+	dw Txt_GetWpn_Wood   ; LVL_WOOD     
+	dw Txt_GetWpn_Air    ; LVL_AIR      
+	dw Txt_GetWpn_Quint  ; LVL_CASTLE   
+
+Txt_GetWpn_Hard:
+	db "  HARD\n"
+	db "   KNUCKLE\0"
+Txt_GetWpn_Top:
+	db "  TOP\n" 
+	db "   SPIN\0"
+Txt_GetWpn_Magnet:
+	db "  MAGNET\n"
+	db "   MISSILE\0"
+Txt_GetWpn_Needle:
+	db "  NEEDLE\n"
+	db "   CANNON\0"
+Txt_GetWpn_Crash:
+	db "  CLASH\n"
+	db "   BOMB\n"
+	db "\n"
+	db "   AND\n"
+	db " RUSH COIL\0"
+Txt_GetWpn_Metal:
+	db "  METAL\n"
+	db "   BLADE\n"
+	db "\n"
+	db "   AND\n"
+	db "RUSH MARINE\0"
+Txt_GetWpn_Wood: 
+	db "  LEAF\n"
+	db "   SHIELD\0"
+Txt_GetWpn_Air:
+	db "  AIR\n"
+	db "   SHOOTER\n"
+	db "\n"
+	db "   AND\n"
+	db " RUSH JET\0"
+Txt_GetWpn_Quint: 
+	db "  QUINT\n"
+	db "   ITEM\n"
+	db "\n"
+	db "\n"
+	db "  SAKUGARNE\0"
+
 L003156:;C
 	ld   a, GFXSET_CASTLE
 	call GFXSet_Load
@@ -11371,17 +11453,17 @@ L0031BE:;C
 	ldh  [hJoyNewKeys], a
 	ldh  [hJoyKeys], a
 L0031C3:;R
-	call L002A97
+	call NonGame_Do
 	ld   a, [wPlMode]
 	or   a
 	jr   nz, L0031C3
 	ld   b, $3C
-	call L002A90
+	call NonGame_DoFor
 	ld   b, $06
 L0031D3:;R
 	push bc
 	ld   b, $1E
-	call L002A90
+	call NonGame_DoFor
 	ld   a, [wPlDirH]
 	xor  $01
 	ld   [wPlDirH], a
@@ -11391,18 +11473,18 @@ L0031D3:;R
 	ld   a, $20
 	ldh  [hJoyKeys], a
 	ld   b, $50
-	call L002A90
+	call NonGame_DoFor
 	xor  a
 	ldh  [hJoyKeys], a
 L0031F1:;R
-	call L002A97
+	call NonGame_Do
 	ld   a, [wPlMode]
 	or   a
 	jr   nz, L0031F1
 	ld   a, $01
 	ld   [wPlDirH], a
 	ld   b, $B4
-	call L002A90
+	call NonGame_DoFor
 	ld   b, $02
 L003206:;R
 	push bc
@@ -11412,17 +11494,17 @@ L003206:;R
 	ld   b, $80
 L00320F:;R
 	call L00329F
-	call L002A97
+	call NonGame_Do
 	dec  b
 	jr   nz, L00320F
 	ld   a, $10
 	ldh  [hJoyKeys], a
 	ld   b, $10
-	call L002A90
+	call NonGame_DoFor
 	xor  a
 	ldh  [hJoyKeys], a
 	ld   b, $1E
-	call L002A90
+	call NonGame_DoFor
 	pop  bc
 	dec  b
 	jr   nz, L003206
@@ -11430,7 +11512,7 @@ L00320F:;R
 	ldh  [hJoyKeys], a
 L003231:;R
 	call L00329F
-	call L002A97
+	call NonGame_Do
 	ld   a, [wPlRelX]
 	cp   $50
 	jr   c, L003231
@@ -11451,17 +11533,17 @@ L003231:;R
 	ld   [wActSpawnX], a
 	call ActS_Spawn
 	ld   b, $0F
-	call L002A90
+	call NonGame_DoFor
 	ld   a, $60
 	ld   [wActSpawnX], a
 	call ActS_Spawn
 	ld   b, $0F
-	call L002A90
+	call NonGame_DoFor
 	ld   a, $58
 	ld   [wActSpawnX], a
 	call ActS_Spawn
 	ld   b, $3C
-	call L002A90
+	call NonGame_DoFor
 	ld   hl, $32B7
 	ld   de, wScrEvRows
 	ld   bc, $000F
@@ -11471,7 +11553,7 @@ L003231:;R
 	xor  a
 	ld   [wPlMode], a
 	ld   b, $08
-	jp   L002A90
+	jp   NonGame_DoFor
 L00329F:;C
 	ld   a, [wUnk_CF79_FlipTimer]
 	and  $07
@@ -14162,9 +14244,9 @@ StageSel_BossGfxTbl:
 	db ACTGFX_WOODMAN   ; LVL_WOOD  
 	db ACTGFX_AIRMAN    ; LVL_AIR   
 
-; =============== StageSel_LvlBitTbl ===============
+; =============== Lvl_ClearBitTbl ===============
 ; Maps each stage to its own completion bit in wWpnUnlock0.
-StageSel_LvlBitTbl: 
+Lvl_ClearBitTbl: 
 	db WPU_HA ; LVL_HARD
 	db WPU_TP ; LVL_TOP
 	db WPU_MG ; LVL_MAGNET
@@ -14211,46 +14293,21 @@ Lvl_BGMTbl:
 	db BGM_WILYCASTLE ; LVL_CASTLE 
 	db BGM_TITLE      ; LVL_STATION
 	
-L003C42: db $01;X
-L003C43: db $0B;X
-L003C44: db $11;X
-L003C45: db $15;X
-L003C46: db $01
-L003C47: db $0A
-L003C48: db $10
-L003C49: db $16
-L003C4A: db $01
-L003C4B: db $07
-L003C4C: db $0E
-L003C4D: db $16
-L003C4E: db $01;X
-L003C4F: db $06;X
-L003C50: db $11;X
-L003C51: db $17
-L003C52: db $01;X
-L003C53: db $08
-L003C54: db $0E
-L003C55: db $17
-L003C56: db $01
-L003C57: db $07
-L003C58: db $12
-L003C59: db $17
-L003C5A: db $01
-L003C5B: db $09
-L003C5C: db $10
-L003C5D: db $15
-L003C5E: db $01
-L003C5F: db $09
-L003C60: db $09
-L003C61: db $16
-L003C62: db $04;X
-L003C63: db $20;X
-L003C64: db $20;X
-L003C65: db $20;X
-L003C66: db $01
-L003C67: db $0A
-L003C68: db $0A
-L003C69: db $16
+; =============== Lvl_BGMTbl ===============
+; Assigns checkpoints to each level, as room IDs.
+; Each level has a fixed number of four checkpoints, which MUST be sequential.
+; To have less checkpoints, entries are either duplicated or marked with $20, which is higher than the last reachable room ID.
+Lvl_CheckpointTbl:
+	db $01,$0B,$11,$15 ; LVL_HARD
+	db $01,$0A,$10,$16 ; LVL_TOP
+	db $01,$07,$0E,$16 ; LVL_MAGNET
+	db $01,$06,$11,$17 ; LVL_NEEDLE
+	db $01,$08,$0E,$17 ; LVL_CRASH
+	db $01,$07,$12,$17 ; LVL_METAL
+	db $01,$09,$10,$15 ; LVL_WOOD
+	db $01,$09,$09,$16 ; LVL_AIR
+	db $04,$20,$20,$20 ; LVL_CASTLE
+	db $01,$0A,$0A,$16 ; LVL_STATION
 
 ; =============== Lvl_WaterFlagTbl ===============
 ; Marks which levels have water.

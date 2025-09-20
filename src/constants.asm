@@ -576,24 +576,6 @@ DEF SHOTSPR_TP2      EQU $1A ; Top Spin #2
 DEF SHOTSPR_TP3      EQU $1B ; Top Spin #3
 DEF SHOTSPR_SG       EQU $1C ; Sakugarne (invisible)
 
-; Password dot locations
-DEF iDotA1 EQU $00
-DEF iDotA2 EQU $01
-DEF iDotA3 EQU $02
-DEF iDotA4 EQU $03
-DEF iDotB1 EQU $04
-DEF iDotB2 EQU $05
-DEF iDotB3 EQU $06
-DEF iDotB4 EQU $07
-DEF iDotC1 EQU $08
-DEF iDotC2 EQU $09
-DEF iDotC3 EQU $0A
-DEF iDotC4 EQU $0B
-DEF iDotD1 EQU $0C
-DEF iDotD2 EQU $0D
-DEF iDotD3 EQU $0E
-DEF iDotD4 EQU $0F
-
 ; Pause bar bullshit
 DEF iPBar_Ptr EQU $00
 DEF iPBar_Tiles EQU $02
