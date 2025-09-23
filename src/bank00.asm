@@ -2968,7 +2968,7 @@ Game_Init:
 	bit  WPUB_AR, a
 	jr   z, .setPlPos
 	set  WPUB_RJ, [hl]
-	; NOTE: The Sakugarne unlock is set later on, at ???
+	; NOTE: The Sakugarne unlock is set right before loading the final level.
 	
 .setPlPos:
 	;
@@ -9125,6 +9125,7 @@ ActS_ArcPathTbl:
 	db $AB,$A8,$A5,$A1,$9E,$9A,$96,$93,$8F,$8B,$88,$84,$80,$7C,$78,$74 ; $3x
 	db $70,$6C,$68,$64,$60,$5C,$58,$53,$4F,$4B,$47,$42,$3E,$3A,$35,$31 ; $4x
 	db $2C,$28,$24,$1F,$1B,$16,$12,$0D,$09                             ; $5x
+.end:
 	; [POI] Table gets cut off, last two values are unused
 	db $04,$00
 
@@ -9227,119 +9228,175 @@ Game_Main_ToStageSel:
 ; Just accessed Wily Castle, so show the cutscene.
 ; From this point onward, no ammo is refilled after every stage.	
 Game_Main_ToWilyCastle:
-	call L003156
-	call L003174
+
+	;
+	; Display the Wily Castle cutscene
+	;
+	call WilyCastle_LoadVRAM	; Prepare VRAM
+	call WilyCastle_DrawRockman
 	call StartLCDOperation
-	ld   a, $10
+	ld   a, BGM_WILYINTRO		; Play BGM
 	ldh  [hBGMSet], a
-	call FlashBGPalLong
-	ld   a, $01
+	call FlashBGPalLong			; Display for 9 seconds
+	
+	;
+	; Load in the Wily Castle level, starting with an in-engine cutscene.
+	; The cutscene is executed under pseudo-gameplay, and when it finishes
+	; it directly transitions to gameplay.
+	;
+	ld   a, $01				; From first room
 	ld   [wLvlRoomId], a
-	ld   a, $08
+	ld   a, LVL_CASTLE		; In Wily Castle
 	ld   [wLvlId], a
-	call Module_Game_InitScrOff
+	
+	call Module_Game_InitScrOff	; Load the level
 	call Module_Game_InitScrOn
-	call L0031BE
-	call L0032C6
-	jr   L00271F
-Game_Main_ToTeleport:;R
-	ld   a, $03
+	call WilyCastle_DoCutscene
+	;--
+	; [BUG] This cannot be called at this point, and it won't do anything anyway as no boss from the 2nd set is defeated yet.
+	call WilyCastle_CloseWonTeleporters
+	;--
+	jr   Game_Main_ToTeleport.toGame
+	
+; =============== Game_Main_ToTeleport ===============
+; Directly returned to the teleporter room in Wily's Castle.
+; This happens after exiting any of the 2nd set of levels.
+Game_Main_ToTeleport:
+	ld   a, $03			; Third room is the teleporter room
 	ld   [wLvlRoomId], a
-	ld   a, $08
+	ld   a, LVL_CASTLE	; In Wily Castle
 	ld   [wLvlId], a
+	; Load the level...
 	call Module_Game_InitScrOff
-	call L0032C6
+	call WilyCastle_CloseWonTeleporters	; ...showing closed teleporters
 	call Module_Game_InitScrOn
-L00271F:;R
+	
+.toGame:
+	; Handle gameplay loop until someone dies
 	call Module_Game
-	cp   $02
-	jr   z, L00273F
-	call Module_Game_PlDead
-	jr   c, L00271F
+	cp   LVLEND_BOSSDEAD		; Did the boss explode?
+	jr   z, .bossDead			; If so, jump
+	
+.plDead:
+	; The player has died 
+	call Module_Game_PlDead			; Did we game over?
+	jr   c, .toGame					; If not, respawn
+	; A -> Stage Select
 	ld   a, [wGameOverSel]
-	bit  1, a
-	jr   z, Game_Main_ToTeleport
-	ld   a, $01
+	bit  KEYB_B, a					; Pressed B?
+	jr   z, Game_Main_ToTeleport	; If not, we pressed A. Return to the teleporter room
+	; B -> Continue
+	; Fully reload the current level
+	ld   a, $01						
 	ld   [wLvlRoomId], a
 	call Module_Game_InitScrOff
 	call Module_Game_InitScrOn
-	jr   L00271F
-L00273F:;R
+	jr   .toGame
+	
+.bossDead:
+	; Boss has died (2nd boss)
 	call Module_Game_BossDead
 	call Lvl_SetCompleted
 	call Module_GetWpn
 	call Module_PasswordView ; BANK $01
+	; (No weapon refill)
+	
+	; If the second set of bosses is also defeated, advance to the Quint fight
 	ld   a, [wWpnUnlock0]
-	cp   $FF
-	jr   nz, Game_Main_ToTeleport
-Game_Main_ToPreQuint:;X
-	ld   a, $04
+	cp   WPU_MG|WPU_HA|WPU_NE|WPU_TP|WPU_CR|WPU_ME|WPU_WD|WPU_AR	; Defeated every bormal boss?
+	jr   nz, Game_Main_ToTeleport		; If not, return to the teleport room
+	; Fall-through
+	
+; =============== Game_Main_ToPreQuint ===============
+; Directly returned to the teleporter room in Wily's Castle, when all bosses are defeated.
+Game_Main_ToPreQuint:
+	;
+	; When all bosses are defeated, we spawn in a separate copy of the teleporter room
+	; where all doors are closed and there's an hole in the ground to the Quint Fight.
+	;
+	; The closed teleporters here use actual blocks rather than being just something 
+	; drawn to the tilemap over open teleporters... and inconsistently they are solid here.
+	;
+	ld   a, $04				; 1 room after the normal teleporter room
 	ld   [wLvlRoomId], a
-	ld   a, $08
+	ld   a, LVL_CASTLE		; In Wily Castle
 	ld   [wLvlId], a
 	call Module_Game_InitScrOff
 	call Module_Game_InitScrOn
+	
+.toGame:
+	; Handle gameplay loop until someone dies
 	call Module_Game
-	cp   $02
-	jr   z, L002782
-L002769: db $CD;X
-L00276A: db $62;X
-L00276B: db $28;X
-L00276C: db $38;X
-L00276D: db $F4;X
-L00276E: db $FA;X
-L00276F: db $6E;X
-L002770: db $CF;X
-L002771: db $CB;X
-L002772: db $4F;X
-L002773: db $28;X
-L002774: db $DD;X
-L002775: db $3E;X
-L002776: db $04;X
-L002777: db $EA;X
-L002778: db $0B;X
-L002779: db $CF;X
-L00277A: db $CD;X
-L00277B: db $C7;X
-L00277C: db $2A;X
-L00277D: db $CD;X
-L00277E: db $DE;X
-L00277F: db $2A;X
-L002780: db $18;X
-L002781: db $E0;X
-L002782:;R
-	call Module_GetWpn
-L002785:;R
-	call L01521F ; BANK $01
-	ld   a, $01
-	ld   [wLvlRoomId], a
-	ld   a, $09
-	ld   [wLvlId], a
-	call Module_Game_InitScrOff
-	call Module_Game_InitScrOn
-L002798:;R
-	ld   hl, wWpnUnlock1
-	set  3, [hl]
-	call Module_Game
-	cp   $02
-	jr   z, L0027BD
-	call Module_Game_PlDead
-	jr   c, L002798
+	cp   LVLEND_BOSSDEAD
+	jr   z, .bossDead
+.plDead:
+	; The player has died 
+	call Module_Game_PlDead			; Did we game over?
+	jr   c, .toGame					; If not, respawn
+	; A -> Stage Select
+	;      Does the same thing as continuing
 	ld   a, [wGameOverSel]
-	bit  1, a
-	jr   z, L002785
-	ld   a, $01
+	bit  KEYB_B, a					; Pressed B?
+	jr   z, Game_Main_ToPreQuint	; If not, we pressed A. Return to the teleporter room
+	; B -> Continue
+	ld   a, $04						
 	ld   [wLvlRoomId], a
 	call Module_Game_InitScrOff
 	call Module_Game_InitScrOn
-	jr   L002798
-L0027BD:;R
+	jr   .toGame
+.bossDead:
+	call Module_GetWpn
+	; Fall-through to cutscene
+	
+; =============== Game_Main_ToWilyStation ===============
+; Start with the final level, Wily Station, and displaying its cutscene.
+Game_Main_ToWilyStation:
+	; Show cutscene
+	call Module_WilyStationCutscene ; BANK $01
+	
+	; Spawn at the final level
+	ld   a, $01
+	ld   [wLvlRoomId], a
+	ld   a, LVL_STATION
+	ld   [wLvlId], a
+	call Module_Game_InitScrOff
+	call Module_Game_InitScrOn
+.toGame:
+	; When loading a level, Game_Init recalculates wWpnUnlock1, but it skips touching the Sakugarne bit
+	; since it's not tied to having obtained any other weapon (can't check for all 8 weapons either).
+	; A level ID check could have been made there to avoid splitting up the wWpnUnlock1 writes, but they didn't.
+	ld   hl, wWpnUnlock1
+	set  WPUB_SG, [hl]
+	
+	; Handle gameplay loop until someone dies
+	call Module_Game
+	cp   LVLEND_BOSSDEAD		; Did the boss explode?
+	jr   z, .bossDead			; If so, jump
+	
+.plDead:
+	; The player has died 
+	call Module_Game_PlDead			; Did we game over?
+	jr   c, .toGame					; If not, respawn
+	; A -> Stage Select
+	;      Shows the cutscene again, that's the only difference compared to continuing
+	ld   a, [wGameOverSel]
+	bit  KEYB_B, a					; Pressed B?
+	jr   z, Game_Main_ToWilyStation	; If not, we pressed A. Return to the station cutscene
+	; B -> Continue
+	ld   a, $01						
+	ld   [wLvlRoomId], a
+	call Module_Game_InitScrOff
+	call Module_Game_InitScrOn
+	jr   .toGame
+.bossDead:
+	; Run the normal boss defeat code, which is why Rockman tries to absorb Wily's missile
 	call Module_Game_BossDead
-	call L01551D ; BANK $01
-	call L015827 ; BANK $01
-L0027C6: db $C3;X
-L0027C7: db $C6;X
-L0027C8: db $27;X
+	; Run ending and credits scenes
+	call Module_Ending ; BANK $01
+	call Module_Credits ; BANK $01
+	; [POI] We never get here, the credits never return.
+.end:
+	jp   .end
 
 ; =============== Module_Game ===============
 ; Gameplay loop.
@@ -9999,10 +10056,12 @@ NonGame_DoFor:
 ; =============== NonGame_Do ===============
 ; Pseudo-gameplay.
 ; Cut down version of the gameplay loop (Module_Game) with no player interaction that executes for a single frame.
-; This makes it useful for cutscene modes, as it lets the caller determine when to exit out of "gameplay" rather
-; than doing it indirectly through actors.
+; This makes it useful for cutscene modes, as it lets the caller determine when to pause of exit out of "gameplay"
+; rather than doing it indirectly through actors. Note that when doing so, whatever sprites set by the last call 
+; to NonGame_Do stay on screen, which is useful for freeze pausing. 
 ;
 ; As it's meant for cutscene modes, this does not poll for player controls, typically they are faked by the caller.
+; Note that when this subroutine isn't called, the previous sprites stay on screen.
 NonGame_Do:
 	push hl
 	push de
@@ -10013,9 +10072,10 @@ NonGame_Do:
 		;       It's why defeating Metal Man stops the conveyor belt's animation.
 		; [POI] Player-actor collision is ignored. Not needed during cutscenes anyway.
 		
-		; Prepare for drawing any sprites
+		; Prepare for drawing any sprites, overwriting what was there before.
 		xor  a
 		ldh  [hWorkOAMPos], a
+		
 		call Game_Do ; Run gameplay
 		call WpnS_Do ; BANK $01 ; Process on-screen shots 
 		
@@ -11379,199 +11439,293 @@ Txt_GetWpn_Quint:
 	db "\n"
 	db "  SAKUGARNE\0"
 
-L003156:;C
+; =============== WilyCastle_LoadVRAM ===============
+; Loads the Wily Castle scene, used for two cutscenes.
+WilyCastle_LoadVRAM:
 	ld   a, GFXSET_CASTLE
 	call GFXSet_Load
+	
 	push af
-	ld   a, $04
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(TilemapDef_WilyCastle) ; BANK $04
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   de, $53C0
+	ld   de, TilemapDef_WilyCastle
 	call LoadTilemapDef
 	push af
-	ldh  a, [hRomBankLast]
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L003174:;C
-	ld   hl, $3180
+	
+; =============== WilyCastle_DrawRockman ===============
+; Draws Rockman's sprite for the Wily Castle cutscene.
+; Presumably because it's a fixed sprite that doesn't animate,
+; it's defined as raw OBJ data rather than as a sprite mapping.
+WilyCastle_DrawRockman:
+	ld   hl, WilyCastle_RockmanSpr
 	ld   de, wWorkOAM
-	ld   bc, $0020
+	ld   bc, WilyCastle_RockmanSpr.end-WilyCastle_RockmanSpr
 	jp   CopyMemory
-L003180: db $70
-L003181: db $80
-L003182: db $30
-L003183: db $00
-L003184: db $70
-L003185: db $88
-L003186: db $31
-L003187: db $00
-L003188: db $78
-L003189: db $80
-L00318A: db $40
-L00318B: db $00
-L00318C: db $78
-L00318D: db $88
-L00318E: db $41
-L00318F: db $00
-L003190: db $80
-L003191: db $80
-L003192: db $6B
-L003193: db $00
-L003194: db $80
-L003195: db $88
-L003196: db $6C
-L003197: db $00
-L003198: db $88
-L003199: db $80
-L00319A: db $7B
-L00319B: db $00
-L00319C: db $88
-L00319D: db $88
-L00319E: db $7C
-L00319F: db $00
-L0031A0:;C
+; =============== WilyCastle_RockmanSpr ===============
+WilyCastle_RockmanSpr: 
+	db $70,$80,$30,$00
+	db $70,$88,$31,$00
+	db $78,$80,$40,$00
+	db $78,$88,$41,$00
+	db $80,$80,$6B,$00
+	db $80,$88,$6C,$00
+	db $88,$80,$7B,$00
+	db $88,$88,$7C,$00
+.end:
+
+; =============== WilyStation_LoadVRAM ===============
+; Loads the Wily Station scene.
+WilyStation_LoadVRAM:
 	ld   a, GFXSET_STATION
 	call GFXSet_Load
 	push af
-	ld   a, $04
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ld   a, BANK(TilemapDef_WilyStation) ; BANK $04
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
-	ld   de, $5540
+	ld   de, TilemapDef_WilyStation
 	call LoadTilemapDef
 	push af
-	ldh  a, [hRomBankLast]
-	ldh  [hRomBank], a
-	ld   [MBC1RomBank], a
+		ldh  a, [hRomBankLast]
+		ldh  [hRomBank], a
+		ld   [MBC1RomBank], a
 	pop  af
 	ret
-L0031BE:;C
+	
+; =============== WilyCastle_DoCutscene ===============
+; In-engine cutscene at the start of the Wily Castle level.
+; While there are a few actors associated to this, them and the player are controlled by this subroutine.
+WilyCastle_DoCutscene:
+	; Start from clean key state.
 	xor  a
 	ldh  [hJoyNewKeys], a
 	ldh  [hJoyKeys], a
-L0031C3:;R
+	
+	;
+	; ROOM $01 - Empty room.
+	;
+	
+.waitFallR1:
+	; Wait until the player lands on the ground
 	call NonGame_Do
 	ld   a, [wPlMode]
-	or   a
-	jr   nz, L0031C3
-	ld   b, $3C
+	or   a					; wPlMode != PL_MODE_GROUND?
+	jr   nz, .waitFallR1	; If so, loop
+	
+	; Pause for a second
+	ld   b, 60
 	call NonGame_DoFor
-	ld   b, $06
-L0031D3:;R
+	
+	; Look back and forth 6 times (in practice 5, see below), turning around every half-a-second.
+	; Note that by default the player faces right, so this would end with the player facing right...
+	ld   b, $06				; B = Times left
+.lookLoop:
 	push bc
-	ld   b, $1E
-	call NonGame_DoFor
-	ld   a, [wPlDirH]
-	xor  $01
-	ld   [wPlDirH], a
+		ld   b, 30			; Wait half a second
+		call NonGame_DoFor
+		ld   a, [wPlDirH]	; Turn around
+		xor  DIR_R
+		ld   [wPlDirH], a
 	pop  bc
-	dec  b
-	jr   nz, L0031D3
-	ld   a, $20
+	dec  b					; Did that 6 times?
+	jr   nz, .lookLoop		; If not, loop
+	
+	; ...but as soon as we turned right before the end of the loop, immediately start moving left.
+	; This hides the last turn, effectively it's the same as turning 5 times with a delay of half-a-second before moving.
+
+	; Move towards the hole on the floor, to transition to the next room.
+	ld   a, KEY_LEFT		; Move left...
 	ldh  [hJoyKeys], a
-	ld   b, $50
+	ld   b, $50				; For ~1.5 seconds
 	call NonGame_DoFor
+	
+	
+	;
+	; ROOM $02 - Wily's trap.
+	;
+	; This room contains an instance of Act_WilyCastleCutscene on the right side of the screen,
+	; which handles drawing Dr. Wily. That actor has absolutely no code though, it's all driven 
+	; by this cutscene to avoid splitting up the cutscene code.
+	; Since there are no other actors at first, it is assumed to be on the first slot.
+	;
+	
+	; Wait until the player lands on the ground.
+	; The vertical transition happens during this.
 	xor  a
 	ldh  [hJoyKeys], a
-L0031F1:;R
+.waitFallR2:
 	call NonGame_Do
 	ld   a, [wPlMode]
-	or   a
-	jr   nz, L0031F1
-	ld   a, $01
+	or   a					; wPlMode != PL_MODE_GROUND?
+	jr   nz, .waitFallR2	; If so, loop
+	
+	; Pause for 3 seconds looking at Wily
+	ld   a, DIR_R			; Face right upon landing.
 	ld   [wPlDirH], a
-	ld   b, $B4
+	ld   b, 60*3
 	call NonGame_DoFor
-	ld   b, $02
-L003206:;R
+	
+	;
+	; Start inching forward, as Wily starts inching back.
+	; For now, these actions are alternated.
+	;
+	ld   b, $02		; For two times...
+.altMvLoop:
 	push bc
-	xor  a
-	ldh  [hJoyKeys], a
-	ld   [wUnk_CF79_FlipTimer], a
-	ld   b, $80
-L00320F:;R
-	call L00329F
-	call NonGame_Do
-	dec  b
-	jr   nz, L00320F
-	ld   a, $10
-	ldh  [hJoyKeys], a
-	ld   b, $10
-	call NonGame_DoFor
-	xor  a
-	ldh  [hJoyKeys], a
-	ld   b, $1E
-	call NonGame_DoFor
+		; Reset player and Wily movement
+		xor  a
+		ldh  [hJoyKeys], a
+		ld   [wWilyWalkTimer], a
+		
+		; Move Wily back for ~2 seconds at 0.125px/frame (in total, 1 block back)
+		ld   b, $80			; For 128 frames...
+	.altWlLoop:
+		call WilyCastle_DoCutscene_MoveWily
+		call NonGame_Do
+		dec  b				; Done moving?
+		jr   nz, .altWlLoop	; If not, loop
+		
+		; Move player 1 block right
+		ld   a, KEY_RIGHT
+		ldh  [hJoyKeys], a
+		ld   b, $10
+		call NonGame_DoFor
+		; Followed by an half-second pause
+		xor  a
+		ldh  [hJoyKeys], a
+		ld   b, 30
+		call NonGame_DoFor
 	pop  bc
-	dec  b
-	jr   nz, L003206
-	ld   a, $10
+	dec  b				; Repeated the above twice?
+	jr   nz, .altMvLoop	; If not, loop
+	
+	
+	;
+	; Move both the player and Wily right at the same time, 
+	; until we reach the 2-block wide trap.
+	;	
+	ld   a, KEY_RIGHT		; Move right
 	ldh  [hJoyKeys], a
-L003231:;R
-	call L00329F
-	call NonGame_Do
+.sngMvLoop:
+	call WilyCastle_DoCutscene_MoveWily	; Move Wily right
+	call NonGame_Do						; Move Rockman right
+	; It would have been slighly better had the trap activated at the center of the screen,
+	; but the trap blocks are not solid, even before the explosion starts.
 	ld   a, [wPlRelX]
-	cp   $50
-	jr   c, L003231
-	ld   a, $0F
+	cp   OBJ_OFFSET_X+$48				; Reached the trap? (X position $50)				
+	jr   c, .sngMvLoop					; If not, continue moving
+	
+	;
+	; Stepped on the trap, make the two blocks on the ground explode.
+	;
+	
+	ld   a, PL_MODE_FROZEN	; Freeze the player while doing this
 	ld   [wPlMode], a
-	ld   hl, $4F00
-	ld   de, $8500
-	ld   bc, $0B08
+	
+	; The graphics used by the explosion, for some reason, are part of the weapon GFX set containing Needle Cannon and
+	; Metal Blade's shot graphics. Those strips are 16 tiles long, with the first half dedicated to these explosions.
+	; Perhaps for that reason, the first 8 bytes of that get loaded to VRAM where the weapon graphics should be.
+	ld   hl, GFX_Wpn_MeNe ; Source GFX ptr
+	ld   de, $8500 ; VRAM Destination ptr
+	ld   bc, (BANK(GFX_Wpn_MeNe) << 8)|$08 ; B = Source GFX bank number (BANK $02) C = Number of tiles to copy
 	call GfxCopy_Req
 	rst  $20 ; Wait GFX load
-	ld   a, $7B
+	
+	; Spawn three explosions over the trap blocks.
+	; Not spawned all at once since it wouldn't look good if their animations were in sync.
+	
+	; Shared properties.
+	ld   a, ACT_GROUNDEXPL		; Spawn weird explosion
 	ld   [wActSpawnId], a
-	xor  a
+	xor  a						; Not part of actor layout
 	ld   [wActSpawnLayoutPtr], a
-	ld   a, $88
+	ld   a, $88					; Y Position: Middle of lowest block
 	ld   [wActSpawnY], a
-	ld   a, $50
+	
+	; LEFT BLOCK
+	ld   a, $50					; X Position: Center of left block
 	ld   [wActSpawnX], a
 	call ActS_Spawn
-	ld   b, $0F
+	ld   b, $0F					; Wait 15 frames before spawning the next one
 	call NonGame_DoFor
-	ld   a, $60
+	
+	; RIGHT BLOCK
+	ld   a, $60					; X Position: Center of right block
 	ld   [wActSpawnX], a
 	call ActS_Spawn
-	ld   b, $0F
+	ld   b, $0F					; Wait 15 frames before spawning the next one
 	call NonGame_DoFor
-	ld   a, $58
+	
+	; BETWEEN BLOCKS
+	ld   a, $58					; X Position: Center of the screen
 	ld   [wActSpawnX], a
 	call ActS_Spawn
-	ld   b, $3C
+	ld   b, 60					; Wait a second before moving on
 	call NonGame_DoFor
-	ld   hl, $32B7
+	
+	;
+	; Make the trap blocks visually disappear.
+	; As the blocks were solid to begin with, this doesn't need to actually alter the level layout.
+	;
+	ld   hl, TilemapDef_WilyCastle_TrapGone
 	ld   de, wScrEvRows
-	ld   bc, $000F
+	ld   bc, TilemapDef_WilyCastle_TrapGone_End-TilemapDef_WilyCastle_TrapGone
 	call CopyMemory
-	ld   a, $01
+	ld   a, $01					; Trigger event
 	ld   [wTilemapEv], a
-	xor  a
+	
+	;
+	; Unlock the player controls.
+	;
+	; This is kinda poorly done. Setting PL_MODE_GROUND while in the air, with the cutscene having 
+	; overridden hJoyNewKeys to be 0, would allow the player to make a full jump by holding A, escaping 
+	; out of the trap. To prevent that, the player controls are still locked for 8 frames.
+	;
+	; [BUG] 8 frames however is not enough time to trigger the vertical transition.
+	;       The player can hold START to enter the pause screen as soon as possible, switch weapons
+	;       and see glitched explosion graphics since they were loaded to that area of VRAM.
+	;
+	xor  a ; PL_MODE_GROUND		
 	ld   [wPlMode], a
 	ld   b, $08
 	jp   NonGame_DoFor
-L00329F:;C
-	ld   a, [wUnk_CF79_FlipTimer]
+	
+; =============== WilyCastle_DoCutscene_MoveWily ===============
+; Makes Wily take a step backwards every 8 frames (0.125px/frame).
+; Every step taken advances the walk cycle.
+WilyCastle_DoCutscene_MoveWily:
+	; Every 8 frames....
+	ld   a, [wWilyWalkTimer]
 	and  $07
-	jr   nz, L0032B2
-	ld   h, $CD
-	ld   l, $02
+	jr   nz, .incTimer
+	
+	ld   h, HIGH(wAct)	; HL = Wily's iActSprMap
+	ld   l, iActSprMap
+	
+	; Cycle between sprites $00 - $01
 	ld   a, [hl]
 	xor  $08
 	ld   [hl], a
-	inc  l
-	inc  l
-	inc  l
-	inc  [hl]
-L0032B2:;R
-	ld   hl, wUnk_CF79_FlipTimer
+	
+	; Wily is facing Rockman, who's on the left.
+	; To move backwards, move 1px to the right.
+	inc  l ; iActLayoutPtr
+	inc  l ; iActXSub
+	inc  l ; iActX
+	inc  [hl]			; iActX++
+.incTimer:
+	ld   hl, wWilyWalkTimer
 	inc  [hl]
 	ret
-L0032B7: db $9B
+	
+TilemapDef_WilyCastle_TrapGone: db $9B
 L0032B8: db $C8
 L0032B9: db $04
 L0032BA: db $18
@@ -11586,71 +11740,129 @@ L0032C2: db $29
 L0032C3: db $28
 L0032C4: db $29
 L0032C5: db $00
-L0032C6:;C
-	ld   b, $00
+TilemapDef_WilyCastle_TrapGone_End:
+
+; =============== WilyCastle_CloseWonTeleporters ===============
+; Closes teleporter doors leading to already completed levels.
+;
+; This is purely a visual effect, the actor associated to the teleporter room (Act_TeleporterRoom)
+; is what handles warping and performs the level completion checks on its own.
+; Should only be called when the screen is disabled and the teleporter room is already drawn to the tilemap.
+WilyCastle_CloseWonTeleporters:
+	ld   b, $00						; B = Coords ID (top-left)
 	ld   a, [wWpnUnlock0]
-	and  $40
-	call nz, L0032EF
-	ld   b, $01
+	and  WPU_HA						; Cleared Hard Man's stage?
+	call nz, WilyCastle_CloseDoor	; If so, close this teleporter
+	
+	ld   b, $01						; B = Top-right
 	ld   a, [wWpnUnlock0]
-	and  $01
-	call nz, L0032EF
-	ld   b, $02
+	and  WPU_TP						; Cleared Top Man's stage?
+	call nz, WilyCastle_CloseDoor	; ...
+	
+	ld   b, $02						; B = Bottom-left
 	ld   a, [wWpnUnlock0]
-	and  $80
-	call nz, L0032EF
-	ld   b, $03
+	and  WPU_MG						; Cleared Magnet Man's stage?
+	call nz, WilyCastle_CloseDoor	; ...
+	
+	ld   b, $03						; B = Bottom-right
 	ld   a, [wWpnUnlock0]
-	and  $20
-	call nz, L0032EF
+	and  WPU_NE						; Cleared Needle Man's stage?
+	call nz, WilyCastle_CloseDoor	; ...
+	
 	ret
-L0032EF:;C
-	ld   a, b
+	
+; =============== WilyCastle_CloseDoor ===============
+; Closes a specific teleporter door.
+; IN
+; - B: Teleporter ID
+WilyCastle_CloseDoor:
+
+	;
+	; The closed teleporter door takes up a 6x4 area in the tilemap.
+	; It's a 6-tile wide strip vertically repeated 4 times, so we can use events to write it like that.
+	;
+	; As we expect the screen to be disabled, we can apply them instantly.
+	;
+
+	; Get starting position in the tilemap for drawing the closed door.
+	; DE = WilyCastle_DoorTilemapPtr[B * 2]
+	ld   a, b			; Index = B * 2
 	add  a
-	ld   hl, $3321
+	ld   hl, WilyCastle_DoorTilemapPtr	; HL = Table base
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ld   e, [hl]
+	add  hl, bc			; Offset it it
+	ld   e, [hl]		; Read out to DE
 	inc  hl
 	ld   d, [hl]
-	ld   b, $06
-	ld   hl, $3329
-L003300:;R
-	push hl
-	push de
-	push bc
-	ld   c, [hl]
-	ld   hl, wScrEvRows
-	ld   [hl], d
-	inc  hl
-	ld   [hl], e
-	inc  hl
-	ld   a, $C4
-	ldi  [hl], a
-	ld   a, c
-	ldi  [hl], a
-	xor  a
-	ld   [hl], a
-	ld   de, wScrEvRows
-	call LoadTilemapDef
-	pop  bc
-	pop  de
-	inc  de
-	pop  hl
-	inc  hl
-	dec  b
-	jr   nz, L003300
+	
+	ld   b, $06								; B = Columns left to draw
+	ld   hl, Tilemap_WilyCastle_ClosedDoor	; HL = Ptr to first tile ID
+	
+.loop:	; For each column...
+	push hl ; Save ptr to tile ID
+		push de ; Save tilemap ptr to column origin (topmost tile)
+		push bc ; Save tiles left
+		
+			ld   c, [hl]			; C = Tile ID to write
+			
+			;--
+			;
+			; Generate the event
+			;
+			ld   hl, wTilemapBuf	; HL = Where to write the event
+			
+			; bytes0-1: Destination pointer
+			; This is the tilemap pointer we indexed from WilyCastle_DoorTilemapPtr.
+			ld   [hl], d		
+			inc  hl
+			ld   [hl], e
+			inc  hl
+			
+			; byte2: Writing mode + Number of bytes to write
+			ld   a, BG_MVDOWN|BG_REPEAT|$04
+			ldi  [hl], a			; Repeat tile 4 times vertically
+			
+			; byte3+: payload
+			ld   a, c				; The tile ID read from the table
+			ldi  [hl], a
+			
+			; Write terminator
+			xor  a
+			ld   [hl], a
+			;--
+			
+			; Instantly apply the event to the tilemap, since the screen is disabled.
+			ld   de, wTilemapBuf
+			call LoadTilemapDef
+		
+		;
+		; Advance to next entry.
+		;
+		pop  bc ; B = Tiles left
+		
+		; Destination tilemap pointer
+		pop  de	; Reset to start of the column
+		inc  de ; Move 1 tile right
+	; Source tile ID table
+	pop  hl	; Get ptr to tile ID
+	inc  hl ; Seek to next one
+	
+	dec  b			; Wrote all tiles?
+	jr   nz, .loop	; If not, loop
 	ret
-L003321: db $40
-L003322: db $98
-L003323: db $4E
-L003324: db $98
-L003325: db $40
-L003326: db $99
-L003327: db $4E;X
-L003328: db $99;X
-L003329: db $2A
+	
+; =============== WilyCastle_DoorTilemapPtr ===============
+; Starting tilemap position for the door blocks in the teleport room.
+; This assumes that the room is loaded to the upper half of the tilemap, meaning its ID should not be divisible by 2.
+WilyCastle_DoorTilemapPtr: 
+	dw $9840 ; $00 (top-left, Hard)
+	dw $984E ; $01 (top-right, Top)
+	dw $9940 ; $02 (bottom-left, Magnet)
+	dw $994E ; $03 (bottom-right, Needle)
+
+; =============== Tilemap_WilyCastle_ClosedDoor ===============
+Tilemap_WilyCastle_ClosedDoor: db $2A
 L00332A: db $72
 L00332B: db $0D
 L00332C: db $0E
@@ -13403,7 +13615,7 @@ Pause_Do:
 	;--
 	
 	ld   de, $8500 ; VRAM Destination ptr
-	ld   bc, (BANK(L0B4500) << 8)|$10 ; BANK $0B ; Source GFX bank number, Number of tiles to copy
+	ld   bc, (BANK(GFX_Wpn_P) << 8)|$10 ; BANK $0B ; Source GFX bank number, Number of tiles to copy
 	call GfxCopy_Req
 	
 	ld   a, SFX_TELEPORTOUT
@@ -13509,18 +13721,18 @@ Pause_CopyFontTileGFX:
 ;
 ; To save space, graphics for multiple weapons may be stored into the same art set.
 Pause_WpnGfxPtrTbl:
-	db HIGH(L0B4500) ; WPN_P 
-	db HIGH(GFX_Space1OBJ) ; WPN_RC
-	db HIGH(L0B4900) ; WPN_RM
-	db HIGH(L0B4A00) ; WPN_RJ
-	db HIGH(L0B4B00) ; WPN_TP
-	db HIGH(L0B4E00) ; WPN_AR
+	db HIGH(GFX_Wpn_P) ; WPN_P 
+	db HIGH(GFX_Space1OBJ) ; WPN_RC ; TODO: GFX_Wpn_RcWdHa as alternate label
+	db HIGH(GFX_Wpn_Rm) ; WPN_RM
+	db HIGH(GFX_Wpn_Rj) ; WPN_RJ
+	db HIGH(GFX_Wpn_Tp) ; WPN_TP
+	db HIGH(GFX_Wpn_Ar) ; WPN_AR
 	db HIGH(GFX_Space1OBJ) ; WPN_WD
-	db HIGH(L0B4F00) ; WPN_ME
+	db HIGH(GFX_Wpn_MeNe) ; WPN_ME
 	db HIGH(GFX_Wpn_Sg) ; WPN_CR
-	db HIGH(L0B4F00) ; WPN_NE
+	db HIGH(GFX_Wpn_MeNe) ; WPN_NE
 	db HIGH(GFX_Space1OBJ) ; WPN_HA
-	db HIGH(L0B4E00) ; WPN_MG
+	db HIGH(GFX_Wpn_Ar) ; WPN_MG
 	db HIGH(GFX_Wpn_Sg) ; WPN_SG (wWpnSGRide = $00)
 	db HIGH(GFX_Wpn_SgRide) ; WPN_SG (wWpnSGRide = $01)
 
@@ -14193,29 +14405,29 @@ ENDM
 ; Sets of actor graphics usable during levels.
 ; These each set has a fixed size of $800 bytes.
 ActS_GFXSetTbl:
-	mGfxDef2 GFX_Player    ; $00 ; ACTGFX_PLAYER    ; 
-	mGfxDef2 GFX_Space1OBJ ; $01 ; ACTGFX_SPACE1    ; [POI] Only loaded manually, not through here
-	mGfxDef2 L084000       ; $02 ; ACTGFX_02        ; 
-	mGfxDef2 L084800       ; $03 ; ACTGFX_03        ; 
-	mGfxDef2 L085000       ; $04 ; ACTGFX_04        ; 
-	mGfxDef2 L085800       ; $05 ; ACTGFX_05        ; 
-	mGfxDef2 GFX_MagnetMan ; $06 ; ACTGFX_MAGNETMAN ; 
-	mGfxDef2 L086800       ; $07 ; ACTGFX_07        ; 
-	mGfxDef2 GFX_NeedleMan ; $08 ; ACTGFX_NEEDLEMAN ; 
-	mGfxDef2 L087800       ; $09 ; ACTGFX_09        ; 
-	mGfxDef2 GFX_CrashMan  ; $0A ; ACTGFX_CRASHMAN  ; 
-	mGfxDef2 L094800       ; $0B ; ACTGFX_0B        ; 
-	mGfxDef2 GFX_MetalMan  ; $0C ; ACTGFX_METALMAN  ; 
-	mGfxDef2 L095800       ; $0D ; ACTGFX_0D        ; 
-	mGfxDef2 GFX_WoodMan   ; $0E ; ACTGFX_WOODMAN   ; 
-	mGfxDef2 L096800       ; $0F ; ACTGFX_0F        ; 
-	mGfxDef2 GFX_AirMan    ; $10 ; ACTGFX_AIRMAN    ; 
-	mGfxDef2 L0B6800       ; $11 ; ACTGFX_11        ; 
-	mGfxDef2 L0B6800       ; $12 ; ACTGFX_12        ; 
-	mGfxDef2 L0B5000       ; $13 ; ACTGFX_13        ; 
-	mGfxDef2 GFX_HardMan   ; $14 ; ACTGFX_HARDMAN   ; 
-	mGfxDef2 GFX_TopMan    ; $15 ; ACTGFX_TOPMAN    ; 
-													; 
+	mGfxDef2 GFX_Player       ; $00 ; ACTGFX_PLAYER    ; 
+	mGfxDef2 GFX_Space1OBJ    ; $01 ; ACTGFX_SPACE1    ; [POI] Only loaded manually, not through here. It also overlaps with GFX_Wpn_RcWdHa.
+	mGfxDef2 GFX_ActLvlHard   ; $02 ; ACTGFX_LVLHARD   ; 
+	mGfxDef2 GFX_Bikky        ; $03 ; ACTGFX_BIKKY     ; 
+	mGfxDef2 GFX_ActLvlTop    ; $04 ; ACTGFX_LVLTOP    ; 
+	mGfxDef2 GFX_ActLvlMagnet ; $05 ; ACTGFX_LVLMAGNET ; 
+	mGfxDef2 GFX_MagnetMan    ; $06 ; ACTGFX_MAGNETMAN ; 
+	mGfxDef2 GFX_ActLvlNeedle ; $07 ; ACTGFX_LVLNEEDLE ; 
+	mGfxDef2 GFX_NeedleMan    ; $08 ; ACTGFX_NEEDLEMAN ; 
+	mGfxDef2 GFX_ActLvlCrash  ; $09 ; ACTGFX_LVLCRASH  ; 
+	mGfxDef2 GFX_CrashMan     ; $0A ; ACTGFX_CRASHMAN  ; 
+	mGfxDef2 GFX_ActLvlMetal  ; $0B ; ACTGFX_LVLMETAL  ; 
+	mGfxDef2 GFX_MetalMan     ; $0C ; ACTGFX_METALMAN  ; 
+	mGfxDef2 GFX_ActLvlWood   ; $0D ; ACTGFX_LVLWOOD   ; 
+	mGfxDef2 GFX_WoodMan      ; $0E ; ACTGFX_WOODMAN   ; 
+	mGfxDef2 GFX_ActLvlAir    ; $0F ; ACTGFX_LVLAIR    ; 
+	mGfxDef2 GFX_AirMan       ; $10 ; ACTGFX_AIRMAN    ; 
+	mGfxDef2 GFX_Wily         ; $11 ; ACTGFX_WILY0     ;
+	mGfxDef2 GFX_Wily         ; $12 ; ACTGFX_WILY1     ; [POI] Clone of the above 
+	mGfxDef2 GFX_Quint        ; $13 ; ACTGFX_QUINT     ; 
+	mGfxDef2 GFX_HardMan      ; $14 ; ACTGFX_HARDMAN   ; 
+	mGfxDef2 GFX_TopMan       ; $15 ; ACTGFX_TOPMAN    ;
+	
 ; =============== Lvl_GFXSetTbl ===============
 ; Maps each stage to their graphics.
 ; These have a fixed size of $500 bytes, as the remaining $300 are taken up by GFX_LvlShared.

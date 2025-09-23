@@ -2046,7 +2046,7 @@ L0947FC: db $00
 L0947FD: db $00
 L0947FE: db $00
 L0947FF: db $00
-L094800: db $FF
+GFX_ActLvlMetal: db $FF
 L094801: db $00
 L094802: db $FF
 L094803: db $00
@@ -6142,7 +6142,7 @@ L0957FC: db $00
 L0957FD: db $00
 L0957FE: db $00
 L0957FF: db $00
-L095800: db $00
+GFX_ActLvlWood: db $00
 L095801: db $00
 L095802: db $00
 L095803: db $00
@@ -10238,7 +10238,7 @@ L0967FC: db $00
 L0967FD: db $00
 L0967FE: db $00
 L0967FF: db $00
-L096800: db $00
+GFX_ActLvlAir: db $00
 L096801: db $00
 L096802: db $00
 L096803: db $00

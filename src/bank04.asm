@@ -5054,7 +5054,7 @@ L0453BC: db $FF;X
 L0453BD: db $FF;X
 L0453BE: db $FF;X
 L0453BF: db $FF;X
-L0453C0: db $98
+TilemapDef_WilyCastle: db $98
 L0453C1: db $00
 L0453C2: db $54
 L0453C3: db $00
@@ -5438,7 +5438,7 @@ L04553C: db $FF;X
 L04553D: db $FF;X
 L04553E: db $FF;X
 L04553F: db $FF;X
-L045540: db $98
+TilemapDef_WilyStation: db $98
 L045541: db $00
 L045542: db $14
 L045543: db $20

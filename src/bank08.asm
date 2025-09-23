@@ -1,4 +1,4 @@
-L084000: db $00
+GFX_ActLvlHard: db $00
 L084001: db $00
 L084002: db $00
 L084003: db $00
@@ -2046,7 +2046,7 @@ L0847FC: db $00
 L0847FD: db $00
 L0847FE: db $00
 L0847FF: db $00
-L084800: db $00
+GFX_Bikky: db $00
 L084801: db $00
 L084802: db $00
 L084803: db $00
@@ -4094,7 +4094,7 @@ L084FFC: db $00
 L084FFD: db $00
 L084FFE: db $00
 L084FFF: db $00
-L085000: db $00
+GFX_ActLvlTop: db $00
 L085001: db $00
 L085002: db $00
 L085003: db $00
@@ -6142,7 +6142,7 @@ L0857FC: db $00
 L0857FD: db $00
 L0857FE: db $00
 L0857FF: db $00
-L085800: db $00
+GFX_ActLvlMagnet: db $00
 L085801: db $00
 L085802: db $00
 L085803: db $00
@@ -10238,7 +10238,7 @@ L0867FC: db $00
 L0867FD: db $00
 L0867FE: db $00
 L0867FF: db $00
-L086800: db $97
+GFX_ActLvlNeedle: db $97
 L086801: db $7F
 L086802: db $97
 L086803: db $7F
@@ -14334,7 +14334,7 @@ L0877FC: db $00
 L0877FD: db $00
 L0877FE: db $00
 L0877FF: db $00
-L087800: db $00
+GFX_ActLvlCrash: db $00
 L087801: db $00
 L087802: db $00
 L087803: db $00

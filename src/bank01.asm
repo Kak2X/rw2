@@ -4804,1144 +4804,2143 @@ Game_Unused_RefillCur:
 	rst  $18 ; Wait bar update
 	ret
 	
-L01521F:;C
-	call L003156
+; =============== Module_WilyStationCutscene ===============
+; Cutscene showing Wily escaping from the Castle into the Station.
+Module_WilyStationCutscene:
+
+WilyStation_Sc1:
+	;
+	; SCENE 1
+	;
+	; Wily flies away from the Castle.
+	;
+	call WilyCastle_LoadVRAM
 	call StartLCDOperation
-	ld   a, $11
+	ld   a, BGM_WILYCASTLE
 	ldh  [hBGMSet], a
-	ld   a, $78
+	
+	; Wait for 2 seconds
+	ld   a, 60*2
 	call WaitFrames
+	
+	; Don't flip any sprites
 	xor  a
-	ld   [$CD0D], a
-	ld   hl, wWilyShipY
+	ld   [wScBaseSprFlags], a
+	
+	;
+	; Spawn Wily's spaceship.
+	; This does not use the normal actor system, instead it has its own version specific to cutscenes,
+	; where everything is spawned/handled manually and expects to be loaded to fixed slots.
+	;
+	DEF tActWily = wScAct0
+	ld   hl, tActWily
 	xor  a
-	ldi  [hl], a
-	ld   a, $70
-	ldi  [hl], a
+	; The spaceship spawns from one of the skull's eyes.
+	; Y Position: $70
+	ldi  [hl], a ; iScActYSub
+	ld   a, OBJ_OFFSET_Y+$60
+	ldi  [hl], a ; iScActY
+	; X Position: $40
 	xor  a
-	ldi  [hl], a
-	ld   a, $40
-	ldi  [hl], a
-	ld   bc, $FFC0
-	ld   [hl], c
+	ldi  [hl], a ; iScActXSub
+	ld   a, OBJ_OFFSET_X+$38
+	ldi  [hl], a ; iScActX
+	; Vertical speed: 0.25px/frame up
+	ld   bc, -$0040
+	ld   [hl], c ; iScActSpdYSub = $C0
 	inc  hl
-	ld   [hl], b
+	ld   [hl], b ; iScActSpdY = $FF
 	inc  hl
+	; Horizontal speed: Calculated later
 	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   [$CCF8], a
-L01524D:;R
-	ld   a, [$CCF8]
-	dec  a
-	rrca 
-	and  $01
-	dec  a
-	ld   [$CCF5], a
-	ld   a, $2D
-	ld   [$CCF7], a
-L01525D:;R
-	xor  a
+	ldi  [hl], a ; iScActSpdXSub = $00
+	ldi  [hl], a ; iScActSpdX = $00
+	
+	; Start at the first hotspot
+	ldi  [hl], a ; wScWilyArcIdx
+	ld   [wScWilyHotspotNum], a
+	
+.nextHotspot:	
+	;
+	; Wily's Spaceship moves back and forth horizontally in a sine wave pattern.
+	;
+	; To do this, we're reusing the sine arc table (ActS_ArcPathTbl) to gradually speed up and down,
+	; using a small arc (advancing the index twice, akipping half of the values)
+	; As the values for speeding up and down can be mirrored, only half of them are defined in the table.
+	; 
+	; With Wily starting from the center, that means we have the following hotspots (wScWilyHotspotNum):
+	;  ID |    POS |   DIR | SPEED
+	; $00 | Center | Right |  Down
+	; $01 |  Right |  Left |    Up
+	; $02 | Center |  Left |  Down
+	; $03 |   Left | Right |    Up
+	; [loops]
+	; 
+	; Notice the direction changing every 2 hotspots, but offset by 1 since we're starting from the center,
+	; while the speed changes every other hotspot.
+	;
+	
+	
+	; Calculate the high byte of the speed (pixel speed), from the hotspot number.
+	; As we're moving slower than 1px/frame, this directly maps to the hotspot direction:
+	; - $00 when moving right
+	; - $FF when moving left
+	ld   a, [wScWilyHotspotNum]
+	dec  a				; -1 as we start from the center
+	rrca				; /2 as the direction changes every 2 hotspots
+	and  $01			; %2 as "" (right -> $01, left -> $00)
+	dec  a				; Shift the result down (right -> $00, left -> $FF)
+	ld   [tActWily+iScActSpdX], a
+	
+	; After $2D frames we reach the next hotspot.
+	; As we're advancing indexes twice each time, that's the half of the length of the path table (+1)
+	DEF TURNTIMER = (ActS_ArcPathTbl.end-ActS_ArcPathTbl)/2 + 1
+	ld   a, TURNTIMER
+	ld   [wScWilyArcLeft], a
+	
+.sineLoop:
+
+	;--
+	;
+	; DRAW SPRITES
+	;
+
+	xor  a				; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   a, [wWilyShipX]
+	
+	; Draw the small Wily Spaceship.
+	; Even though multiple sizes exist, the game only ever draws the third one.
+	ld   a, [tActWily+iScActY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCF1]
+	ld   a, [tActWily+iScActX]
 	ld   [wTargetRelX], a
-	ld   hl, $6275
+	ld   hl, SprMapPtrTbl_ScWilyShipSm
 	ld   a, $02
-	call L015A39
-	call OAM_ClearRest
+	call Sc_DrawSprMap
+	
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   a, [$CCF8]
-	inc  a
-	and  $01
-	dec  a
-	add  a
-	ld   hl, $CCF6
-	add  [hl]
+	;--
+	
+	;
+	; UPDATE HORIZONTAL SPEED
+	;
+	; In practice:
+	; - If speeding up, wScWilyArcIdx += 2
+	; - If speeding down, wScWilyArcIdx -= 2
+	; Then the speed is read from ActS_ArcPathTbl[wScWilyArcIdx], and adjusted for the current direction.
+	; As wScWilyArcIdx doesn't get reset between hotspots and speeding up is alternated with speeding down,
+	; the index will move back and forth from $00 to $58 without going out of range.
+	;
+	; The way the wScWilyArcIdx is updated is more complicated than it has any right to be.
+	; Instead of precalculating the offset (+2 or -2) into a separate variable before .sineLoop and just updating the index by that,
+	; *every frame* it does two sets of calculations:
+	; - One that only returns +2 on even hotspots
+	; - One that only returns -2 on odd hotspots
+	; Worth noting the +2 happens only after moving Wily, meaning outdated values are used when moving right.
+	;
+	
+	;--
+	; On odd hotspots, decrement the index by -2.
+	; When (wScWilyHotspotNum % 2) == 1 -> wScWilyArcIdx -= 2
+	ld   a, [wScWilyHotspotNum]
+	inc  a		; +1 as we start from the center (and inverts odd/even)
+	and  $01	; %2 as speed dir changes every other hotspot (odd: $00, even: $01)
+	dec  a		; -1 for decrementing the index (odd: $FF, even: $00)
+	add  a		; *2 as we skip speed (odd: $FE, even: $00)
+	; wScWilyArcIdx += A
+	ld   hl, wScWilyArcIdx
+	add  [hl]	; Only does anything in the odd case
 	ld   [hl], a
-	ld   hl, ActS_ArcPathTbl
-	ld   a, [$CCF6]
-	ld   b, $00
+	;--
+	
+	; Seek HL to the current speed
+	ld   hl, ActS_ArcPathTbl	; HL = ActS_ArcPathTbl
+	ld   a, [wScWilyArcIdx]
+	ld   b, $00					; BC = wScWilyArcIdx
 	ld   c, a
-	add  hl, bc
-	ld   a, [$CCF5]
+	add  hl, bc					; Seek to HL[BC]
+	
+	; The speed read from the table is relative to moving right.
+	; When moving left, it needs to be reversed since there's no concept of directions here.
+	; Since iScActSpdX is guaranteed to be either $00 or $FF, xoring the read value with that mostly works out:
+	; - When moving right it will be $00, so the speed value is untouched.
+	; - When moving left it will be $FF, so the speed value is reversed.
+	;   However, not doing the mandatory "inc a" means Wily will gradually drift over to the left.
+	ld   a, [tActWily+iScActSpdX]
 	xor  [hl]
-	ld   [$CCF4], a
-	ld   hl, wWilyShipY
-	call L015ACF
-	ld   a, [wWilyShipX]
-	cp   $18
-	jr   z, L0152BB
-	ld   a, [$CCF8]
-	inc  a
-	and  $01
-	add  a
-	ld   hl, $CCF6
-	add  [hl]
+	ld   [tActWily+iScActSpdXSub], a
+	
+	;
+	; MOVE WILY
+	;
+	ld   hl, tActWily			; Move the Wily actor
+	call ScAct_ApplySpeed
+	
+	; When Wily's Spaceship nearly moves offscreen above, advance to the next scene
+	ld   a, [tActWily+iScActY]
+	cp   OBJ_OFFSET_Y+$08		; iScActY == $18?
+	jr   z, WilyStation_Sc2		; If so, jump
+	
+	;
+	; TICK TIMERS
+	;
+	
+	;--
+	; On even hotspots, increment the index by +2.
+	; The same as the the one for -2, except we never decremented the result so it increases it.
+	; When (wScWilyHotspotNum % 2) == 0, wScWilyArcIdx += 2
+	ld   a, [wScWilyHotspotNum]
+	inc  a		; +1 as we start from the center (and inverts odd/even)
+	and  $01	; %2 as speed dir changes every other hotspot (odd: $00, even: $01)
+	add  a		; *2 as we skip speed (odd: $00, even: $02)
+	; wScWilyArcIdx += A
+	ld   hl, wScWilyArcIdx
+	add  [hl]	; Only does anything in the even case
 	ld   [hl], a
-	ld   hl, $CCF7
-	dec  [hl]
-	jr   nz, L01525D
-	ld   hl, $CCF8
-	inc  [hl]
-	jr   L01524D
-L0152BB:;R
-	call L0031A0
+	;--
+	
+	ld   hl, wScWilyArcLeft
+	dec  [hl]					; Reached the next hotspot?
+	jr   nz, .sineLoop			; If not, loop
+	
+	ld   hl, wScWilyHotspotNum
+	inc  [hl]					; Increment hotspot number
+	jr   .nextHotspot			; Recalculate direction
+	
+WilyStation_Sc2:
+	;
+	; SCENE 2
+	;
+	; Wily flies into the Station.
+	;
+	call WilyStation_LoadVRAM
 	call StartLCDOperation
-	ld   a, $78
+	
+	; Wait for 2 seconds
+	ld   a, 60*2
 	call WaitFrames
-	ld   hl, wWilyShipY
+	
+	;
+	; Spawn Wily's spaceship.
+	; The spaceship is handled like in the first scene, except there's no looping logic.
+	; Every hotspot has its own code, leading to big copypaste.
+	;
+	DEF tActWily = wScAct0
+	ld   hl, tActWily
 	xor  a
-	ldi  [hl], a
-	ld   a, $98
-	ldi  [hl], a
+	; The spaceship spawns from offscreen below
+	; Y Position: $98
+	ldi  [hl], a ; iScActYSub
+	ld   a, OBJ_OFFSET_Y+$88
+	ldi  [hl], a ; iScActY
+	; X Position: $40
 	xor  a
-	ldi  [hl], a
-	ld   a, $40
-	ldi  [hl], a
-	ld   bc, $FFC0
-	ld   [hl], c
+	ldi  [hl], a ; iScActXSub
+	ld   a, OBJ_OFFSET_X+$38
+	ldi  [hl], a ; iScActX
+	; Vertical speed: 0.25px/frame up
+	ld   bc, -$0040
+	ld   [hl], c ; iScActSpdYSub = $C0
 	inc  hl
-	ld   [hl], b
+	ld   [hl], b ; iScActSpdY = $FF
 	inc  hl
+	; Horizontal speed: Calculated later
 	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
+	ldi  [hl], a ; iScActSpdXSub = $00
+	ldi  [hl], a ; iScActSpdX = $00
+	; Start from start of the arc
+	ldi  [hl], a ; wScWilyArcIdx
+	
+	;##
+	;
+	; SCENE 2a - Move Wily left, slowing down
+	;	
+	
+	; Start moving left
 	ld   a, $FF
-	ld   [$CCF5], a
-	ld   a, $2D
-	ld   [$CCF7], a
-L0152E8:;R
-	xor  a
+	ld   [tActWily+iScActSpdX], a
+	ld   a, TURNTIMER
+	ld   [wScWilyArcLeft], a
+	
+.loopL0:
+	;--
+	;
+	; DRAW SPRITES
+	;
+
+	xor  a					; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   a, [wWilyShipX]
+	
+	; Draw the small Wily Spaceship.
+	ld   a, [tActWily+iScActY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCF1]
+	ld   a, [tActWily+iScActX]
 	ld   [wTargetRelX], a
-	ld   hl, $6275
+	ld   hl, SprMapPtrTbl_ScWilyShipSm
 	ld   a, $02
-	call L015A39
-	call OAM_ClearRest
+	call Sc_DrawSprMap
+	
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   hl, ActS_ArcPathTbl
-	ld   a, [$CCF6]
-	ld   b, $00
+	;--
+	
+	;
+	; MOVE WILY
+	;
+	
+	; Use horizontal speed from ActS_ArcPathTbl[wScWilyArcIdx]
+	ld   hl, ActS_ArcPathTbl	; HL = ActS_ArcPathTbl
+	ld   a, [wScWilyArcIdx]
+	ld   b, $00					; BC = wScWilyArcIdx
 	ld   c, a
-	add  hl, bc
+	add  hl, bc					; Seek to HL[BC]
+	ld   a, [hl]				; Read entry
+	xor  $FF					; Reverse speed for moving left
+	ld   [tActWily+iScActSpdXSub], a
+	
+	; Move the Wily actor
+	ld   hl, tActWily
+	call ScAct_ApplySpeed
+	
+	; Slow down over time
+	ld   hl, wScWilyArcIdx		; wScWilyArcIdx++
+	inc  [hl]
+	inc  [hl]
+	
+	;
+	; TICK TIMERS
+	;
+	
+	ld   hl, wScWilyArcLeft
+	dec  [hl]					; Reached the next hotspot?
+	jr   nz, .loopL0			; If not, loop
+	
+	;##
+	;
+	; SCENE 2b - Move Wily right, at double speed, speeding up
+	;
+	
+	ld   a, TURNTIMER
+	ld   [wScWilyArcLeft], a
+.loopR0:
+	;--
+	;
+	; DRAW SPRITES
+	;
+
+	xor  a					; Start drawing sprites
+	ldh  [hWorkOAMPos], a
+	
+	; Draw the small Wily Spaceship.
+	ld   a, [tActWily+iScActY]
+	ld   [wTargetRelY], a
+	ld   a, [tActWily+iScActX]
+	ld   [wTargetRelX], a
+	ld   hl, SprMapPtrTbl_ScWilyShipSm
+	ld   a, $02
+	call Sc_DrawSprMap
+	
+	call OAM_ClearRest		; Done drawing
+	rst  $08 ; Wait Frame
+	;--
+	
+	;
+	; MOVE WILY
+	;
+	
+	; Speed up over time
+	ld   hl, wScWilyArcIdx	; wScWilyArcIdx -= 2
+	dec  [hl]
+	dec  [hl]
+	
+	; Use horizontal speed
+	; iScActSpdX* = ActS_ArcPathTbl[wScWilyArcIdx] * 2
 	ld   a, [hl]
-	xor  $FF
-	ld   [$CCF4], a
-	ld   hl, wWilyShipY
-	call L015ACF
-	ld   hl, $CCF6
-	inc  [hl]
-	inc  [hl]
-	ld   hl, $CCF7
-	dec  [hl]
-	jr   nz, L0152E8
-	ld   a, $2D
-	ld   [$CCF7], a
-L015329:;R
-	xor  a
-	ldh  [hWorkOAMPos], a
-	ld   a, [wWilyShipX]
-	ld   [wTargetRelY], a
-	ld   a, [$CCF1]
-	ld   [wTargetRelX], a
-	ld   hl, $6275
-	ld   a, $02
-	call L015A39
-	call OAM_ClearRest
-	rst  $08 ; Wait Frame
-	ld   hl, $CCF6
-	dec  [hl]
-	dec  [hl]
-	ld   a, [hl]
-	ld   hl, ActS_ArcPathTbl
-	ld   b, $00
+	ld   hl, ActS_ArcPathTbl	; HL = ActS_ArcPathTbl
+	ld   b, $00					; BC = wScWilyArcIdx
 	ld   c, a
-	add  hl, bc
-	ld   l, [hl]
+	add  hl, bc					; Index it
+	; The *2 means we can go faster than 1px/frame, so also set iScActSpdX
+	ld   l, [hl]				; Read byte to HL
 	ld   h, $00
-	add  hl, hl
+	add  hl, hl					; *2, for double speed
 	ld   a, l
-	ld   [$CCF4], a
+	ld   [tActWily+iScActSpdXSub], a
 	ld   a, h
-	ld   [$CCF5], a
-	ld   hl, wWilyShipY
-	call L015ACF
-	ld   hl, $CCF7
-	dec  [hl]
-	jr   nz, L015329
-	ld   a, $2D
-	ld   [$CCF7], a
-L01536E:;R
-	xor  a
+	ld   [tActWily+iScActSpdX], a
+	
+	; Move the Wily actor
+	ld   hl, tActWily
+	call ScAct_ApplySpeed
+	
+	;
+	; TICK TIMERS
+	;
+	
+	ld   hl, wScWilyArcLeft
+	dec  [hl]					; Reached the next hotspot?
+	jr   nz, .loopR0			; If not, loop
+	
+	;##
+	;
+	; SCENE 2c - Move Wily right, at double speed, slowing down
+	;
+	ld   a, TURNTIMER
+	ld   [wScWilyArcLeft], a
+.loopR1:
+	;--
+	;
+	; DRAW SPRITES
+	;
+
+	xor  a					; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   a, [wWilyShipX]
+	
+	; Draw the small Wily Spaceship.
+	ld   a, [tActWily+iScActY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCF1]
+	ld   a, [tActWily+iScActX]
 	ld   [wTargetRelX], a
-	ld   hl, $6275
+	ld   hl, SprMapPtrTbl_ScWilyShipSm
 	ld   a, $02
-	call L015A39
-	call OAM_ClearRest
+	call Sc_DrawSprMap
+	
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   hl, ActS_ArcPathTbl
-	ld   a, [$CCF6]
-	ld   b, $00
+	;--
+	
+	;
+	; MOVE WILY
+	;
+	
+	; Use horizontal speed
+	; iScActSpdX* = ActS_ArcPathTbl[wScWilyArcIdx] * 2
+	ld   hl, ActS_ArcPathTbl	; HL = ActS_ArcPathTbl
+	ld   a, [wScWilyArcIdx]
+	ld   b, $00					; BC = wScWilyArcIdx
 	ld   c, a
-	add  hl, bc
-	ld   l, [hl]
+	add  hl, bc					; Index it
+	; The *2 means we can go faster than 1px/frame, so also set iScActSpdX
+	ld   l, [hl]				; Read byte to HL
 	ld   h, $00
-	add  hl, hl
+	add  hl, hl					; *2, for double speed
 	ld   a, l
-	ld   [$CCF4], a
+	ld   [tActWily+iScActSpdXSub], a
 	ld   a, h
-	ld   [$CCF5], a
-	ld   hl, wWilyShipY
-	call L015ACF
-	ld   hl, $CCF6
+	ld   [tActWily+iScActSpdX], a
+	
+	; Move the Wily actor
+	ld   hl, tActWily
+	call ScAct_ApplySpeed
+	
+	; Slow down over time
+	ld   hl, wScWilyArcIdx		; wScWilyArcIdx++
 	inc  [hl]
 	inc  [hl]
-	ld   hl, $CCF7
-	dec  [hl]
-	jr   nz, L01536E
+	
+	;
+	; TICK TIMERS
+	;
+	
+	ld   hl, wScWilyArcLeft
+	dec  [hl]					; Reached the next hotspot?
+	jr   nz, .loopR1			; If not, loop
+	
+	;##
+	;
+	; SCENE 2d - Move Wily left, speeding up
+	;
+	
+	; Start moving left
 	ld   a, $FF
-	ld   [$CCF5], a
-	ld   a, $2D
-	ld   [$CCF7], a
-L0153BA:;R
-	ld   hl, $CCF6
+	ld   [tActWily+iScActSpdX], a
+	ld   a, TURNTIMER
+	ld   [wScWilyArcLeft], a
+.loopL1:
+	; Speed up over time
+	ld   hl, wScWilyArcIdx	; wScWilyArcIdx -= 2
 	dec  [hl]
 	dec  [hl]
-	xor  a
+	
+	;--
+	;
+	; DRAW SPRITES
+	;
+
+	xor  a					; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   a, [wWilyShipX]
+	
+	; Draw the small Wily Spaceship.
+	ld   a, [tActWily+iScActY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCF1]
+	ld   a, [tActWily+iScActX]
 	ld   [wTargetRelX], a
-	ld   hl, $6275
+	ld   hl, SprMapPtrTbl_ScWilyShipSm
 	ld   a, $02
-	call L015A39
-	call OAM_ClearRest
+	call Sc_DrawSprMap
+	
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   hl, ActS_ArcPathTbl
-	ld   a, [$CCF6]
-	ld   b, $00
+	;--
+	
+	;
+	; MOVE WILY
+	;
+	
+	; Use horizontal speed from ActS_ArcPathTbl[wScWilyArcIdx]
+	ld   hl, ActS_ArcPathTbl	; HL = ActS_ArcPathTbl
+	ld   a, [wScWilyArcIdx]
+	ld   b, $00					; BC = wScWilyArcIdx
 	ld   c, a
-	add  hl, bc
-	ld   a, [hl]
-	xor  $FF
-	ld   [$CCF4], a
-	ld   hl, wWilyShipY
-	call L015ACF
-	ld   hl, $CCF7
-	dec  [hl]
-	jr   nz, L0153BA
+	add  hl, bc					; Seek to HL[BC]
+	ld   a, [hl]				; Read entry
+	xor  $FF					; Reverse speed for moving left
+	ld   [tActWily+iScActSpdXSub], a
+	
+	; Move the Wily actor
+	ld   hl, tActWily
+	call ScAct_ApplySpeed
+	
+	;
+	; TICK TIMERS
+	;
+	
+	ld   hl, wScWilyArcLeft
+	dec  [hl]					; Reached the next hotspot?
+	jr   nz, .loopL1			; If not, loop
+	
+	;##
+	;
+	; SCENE 2e - Wily entered through the skull's eye.
+	;            Display the spaceship without drawing Wily for 2 seconds.
+	;
+	
+	; Delete Wily sprite
 	xor  a
 	ldh  [hWorkOAMPos], a
 	call OAM_ClearRest
+	; Apply changes
 	rst  $08 ; Wait Frame
-	ld   a, $78
+	
+	; Wait for 2 seconds
+	ld   a, 60*2
 	call WaitFrames
+	
+WilyStation_Sc3:
+	;
+	; SCENE 3
+	;
+	; Rockman enters the Wily Station from the main entrance.
+	;
+	
 	ld   a, GFXSET_SPACE
 	call GFXSet_Load
-	ld   de, $5AEA
+	ld   de, TilemapDef_WilyStationEntrance
 	call LoadTilemapDef
+	; Put the entrance offscreen to the right
 	ld   a, $F0
 	ldh  [hScrollX], a
 	call StartLCDOperation
-	ld   a, $80
+	;--
+	
+	;
+	; SCENE 3a - Move Rockman right until the screen is about to scroll
+	;
+	
+	; Set spawn coordinates for the player.
+	; As this is the only sprite in this scene, its coordinates are directly written to wTargetRel*
+	ld   a, OBJ_OFFSET_Y+$70	; Y position: $80 (around the bottom)
 	ld   [wTargetRelY], a
-	ld   a, $00
+	ld   a, OBJ_OFFSET_X-$08	; X position: $00 (offscreen left)
 	ld   [wTargetRelX], a
-L01541E:;R
-	xor  a
+.loopA:
+	;--
+	;
+	; DRAW SPRITES
+	;	
+	xor  a					; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   hl, $627D
+
+	
+	; Draw Rush Marine with Rockman inside.
+	ld   hl, SprMapPtrTbl_ScPl
 	xor  a
-	call L015A39
-	call OAM_ClearRest
+	call Sc_DrawSprMap
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   a, [wTargetRelX]
+	;--
+	
+	;
+	; MOVE PLAYER
+	;	
+	
+	; Move player 1px/frame right
+	ld   a, [wTargetRelX]	; PlX++
 	inc  a
 	ld   [wTargetRelX], a
-	cp   $40
-	jr   nz, L01541E
-	ld   hl, wWilyShipY
-	ld   a, [wTargetRelY]
+	cp   $40				; Reached X position $40?
+	jr   nz, .loopA			; If not, loop
+	
+	;##
+	;
+	; SCENE 3b - Scroll the entrance to the Wily Station into view
+	;
+	
+	; Sync over the current player location
+	ld   hl, wScSt3PlY
+	ld   a, [wTargetRelY]		; wScSt3PlY = wTargetRelY
 	ldi  [hl], a
-	ld   a, [wTargetRelX]
+	ld   a, [wTargetRelX]		; wScSt3PlX = wTargetRelX
 	ldi  [hl], a
-	ld   a, $88
+	; Set initial jaw location (offscreen, right)
+	ld   a, OBJ_OFFSET_Y+$78	; wScSt3SkullJawY
 	ldi  [hl], a
-	ld   a, $D0
+	ld   a, OBJ_OFFSET_X+$C8	; wScSt3SkullJawX
 	ld   [hl], a
-L015448:;R
-	xor  a
+.loopB:
+	;--
+	;
+	; DRAW SPRITES
+	;	
+	xor  a					; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   a, [wWilyShipY]
+
+	; Draw Rush Marine with Rockman inside
+	ld   a, [wScSt3PlY]
 	ld   [wTargetRelY], a
-	ld   a, [wWilyShipX]
+	ld   a, [wScSt3PlX]
 	ld   [wTargetRelX], a
-	ld   hl, $627D
+	ld   hl, SprMapPtrTbl_ScPl
 	xor  a
-	call L015A39
-	ld   a, [$CCF0]
+	call Sc_DrawSprMap
+	
+	; Draw Wily Station entrance
+	ld   a, [wScSt3SkullJawY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCF1]
+	ld   a, [wScSt3SkullJawX]
 	ld   [wTargetRelX], a
-	ld   hl, $6289
+	ld   hl, SprMapPtrTbl_ScSkullJaw
 	xor  a
-	call L015A39
-	call OAM_ClearRest
+	call Sc_DrawSprMap
+	
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   hl, $CCF1
+	;--
+	
+	;
+	; LOGIC
+	;
+	
+	; Scroll screen 1px/frame to the right.
+	; This scrolls in the entrance to the Wily Station from the right.
+	ld   hl, wScSt3SkullJawX	; Move door sprite left to account for scrolling
 	dec  [hl]
-	ld   hl, hScrollX
+	ld   hl, hScrollX			; Move viewport right
 	inc  [hl]
+	; (Don't move the player)
+	
 	ldh  a, [hScrollX]
-	cp   $21
-	jr   nz, L015448
-L015483:;R
-	xor  a
+	cp   $21					; Reached the target scroll position?
+	jr   nz, .loopB				; If not, loop
+	
+	;
+	; SCENE 3c - Move the player right, while opening the entrance
+	;
+.loopC:
+	;--
+	;
+	; DRAW SPRITES
+	;	
+	xor  a					; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   a, [wWilyShipY]
+
+	; Draw Rush Marine with Rockman inside
+	ld   a, [wScSt3PlY]
 	ld   [wTargetRelY], a
-	ld   a, [wWilyShipX]
+	ld   a, [wScSt3PlX]
 	ld   [wTargetRelX], a
-	ld   hl, $627D
+	ld   hl, SprMapPtrTbl_ScPl
 	xor  a
-	call L015A39
-	ld   a, [$CCF0]
+	call Sc_DrawSprMap
+	
+	; Draw Wily Station entrance
+	ld   a, [wScSt3SkullJawY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCF1]
+	ld   a, [wScSt3SkullJawX]
 	ld   [wTargetRelX], a
-	ld   hl, $6289
+	ld   hl, SprMapPtrTbl_ScSkullJaw
 	xor  a
-	call L015A39
-	call OAM_ClearRest
+	call Sc_DrawSprMap
+	
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   a, [$CCF0]
-	cp   $A0
-	adc  $00
-	ld   [$CCF0], a
-	ld   a, [wWilyShipX]
+	;--
+	
+	;
+	; LOGIC
+	;
+	
+	; Move down the entrance jaw 1px/frame until it fully opens.
+	ld   a, [wScSt3SkullJawY]	; Get Y pos
+	cp   OBJ_OFFSET_Y+$90		; C Flag = Y Position < $A0
+	adc  $00					; Move 1px down if it was
+	ld   [wScSt3SkullJawY], a	; Save back
+	
+	; Move player right 1px/frame until it fully goes offscreen
+	ld   a, [wScSt3PlX]			; PlX++
 	inc  a
-	ld   [wWilyShipX], a
-	cp   $C0
-	jr   nz, L015483
-L0154C5:;R
-	xor  a
+	ld   [wScSt3PlX], a
+	cp   OBJ_OFFSET_X+$B8		; Reached offscreen?
+	jr   nz, .loopC				; If not, loop
+	
+	;
+	; SCENE 3d - Close the entrance
+	;
+.loopD:
+	;--
+	;
+	; DRAW SPRITES
+	;	
+	xor  a					; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   a, [wWilyShipY]
+
+	; Draw Rush Marine with Rockman inside
+	; Not necessary as it's fully offscreen
+	ld   a, [wScSt3PlY]
 	ld   [wTargetRelY], a
-	ld   a, [wWilyShipX]
+	ld   a, [wScSt3PlX]
 	ld   [wTargetRelX], a
-	ld   hl, $627D
+	ld   hl, SprMapPtrTbl_ScPl
 	xor  a
-	call L015A39
-	ld   a, [$CCF0]
+	call Sc_DrawSprMap
+	
+	; Draw Wily Station entrance
+	ld   a, [wScSt3SkullJawY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCF1]
+	ld   a, [wScSt3SkullJawX]
 	ld   [wTargetRelX], a
-	ld   hl, $6289
+	ld   hl, SprMapPtrTbl_ScSkullJaw
 	xor  a
-	call L015A39
-	call OAM_ClearRest
+	call Sc_DrawSprMap
+	
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   a, [$CCF0]
+	;--
+	
+	;
+	; LOGIC
+	;
+	
+	; Move back up the entrance jaw 1px/frame to its original position
+	ld   a, [wScSt3SkullJawY]	; JawY--
 	dec  a
-	ld   [$CCF0], a
-	cp   $88
-	jr   nz, L0154C5
-	ld   a, $B4
+	ld   [wScSt3SkullJawY], a
+	cp   OBJ_OFFSET_Y+$78		; Moved up to Y position $88?
+	jr   nz, .loopD				; If not, loop
+	
+	;
+	; SCENE 3e - Wait 3 seconds before ending the cutscene
+	;
+	ld   a, 60*3
 	call WaitFrames
 	ret
-L015503: db $AF;X
-L015504: db $E0;X
-L015505: db $97;X
-L015506: db $FA;X
-L015507: db $EF;X
-L015508: db $CC;X
-L015509: db $EA;X
-L01550A: db $0E;X
-L01550B: db $CF;X
-L01550C: db $FA;X
-L01550D: db $F1;X
-L01550E: db $CC;X
-L01550F: db $EA;X
-L015510: db $0D;X
-L015511: db $CF;X
-L015512: db $21;X
-L015513: db $75;X
-L015514: db $62;X
-L015515: db $3E;X
-L015516: db $02;X
-L015517: db $CD;X
-L015518: db $39;X
-L015519: db $5A;X
-L01551A: db $C3;X
-L01551B: db $67;X
-L01551C: db $06;X
-L01551D:;C
+	
+; =============== WilyStation_Unused_DrawWily ===============
+; [TCRF] Unreferenced subroutine to draw Wily's Spaceship, identically to how it happens in the 1st and 2nd scenes.
+;        Would have been useful to cut down on code duplication in there.
+WilyStation_Unused_DrawWily: 
+	;--
+	;
+	; DRAW SPRITES
+	;
+
+	xor  a					; Start drawing sprites
+	ldh  [hWorkOAMPos], a
+	
+	; Draw the small Wily Spaceship.
+	ld   a, [tActWily+iScActY]
+	ld   [wTargetRelY], a
+	ld   a, [tActWily+iScActX]
+	ld   [wTargetRelX], a
+	ld   hl, SprMapPtrTbl_ScWilyShipSm
+	ld   a, $02
+	call Sc_DrawSprMap
+	
+	jp   OAM_ClearRest		; Done drawing
+
+; =============== Module_Ending ===============
+; Ending cutscene.
+Module_Ending:
+	
+Ending_Sc1:
+	;
+	; SCENE 1
+	;
+	; Wily escapes from the station, with Rockman chasing him and shooting him down.
+	;
+	
+	; Load the space scene
 	ld   a, GFXSET_SPACE
 	call GFXSet_Load
-	ld   de, $5AEA
+	
+	ld   de, TilemapDef_WilyStationEntrance
 	call LoadTilemapDef
+	; Make entrance visible on the right side of the screen
 	ld   a, $20
 	ldh  [hScrollX], a
 	call StartLCDOperation
-	ld   hl, $4F00
-	ld   de, $8500
-	ld   bc, $0B08
+	
+	; Load the same explosion graphics used in the Wily Castle cutscene, at the same address.
+	; A consequence is that GFXSET_SPACE will need to be reloaded when moving to the 2nd scene.
+	ld   hl, GFX_Wpn_MeNe ; Source GFX ptr
+	ld   de, $8500 ; VRAM Destination ptr
+	ld   bc, (BANK(GFX_Wpn_MeNe) << 8)|$08 ; B = Source GFX bank number (BANK $02) C = Number of tiles to copy
 	call GfxCopy_Req
-	ld   a, $01
+
+	ld   a, BGM_TITLE
 	ldh  [hBGMSet], a
-	ld   hl, wWilyShipY
+	
+	;
+	; Spawn the two actors.
+	; During the course of this sequence, until Wily explodes, only two will ever be visible
+	; on screen at the same time, so that's how many we need.
+	;
+	
+	; Wily and the Player use the same slot (can't have them both onscreen)
+	DEF tActWily     = wScAct0
+	DEF tActPl       = wScAct0
+	; The entrance and the missile use the same slot 
+	DEF tActSkullJaw = wScAct1
+	DEF tActMissile  = wScAct1
+	
+	; WILY SPACESHIP
+	ld   hl, tActWily
 	xor  a
-	ld   de, $80C0
-	ldi  [hl], a
-	ld   [hl], d
+	ld   de, ((OBJ_OFFSET_Y+$70) << 8)|(OBJ_OFFSET_X+$B8)
+	; Y position: $80 (around bottom)
+	ldi  [hl], a ; iScActYSub
+	ld   [hl], d ; iScActY
 	inc  hl
-	ldi  [hl], a
-	ld   [hl], e
+	; X position: $C0 (offscreen right)
+	ldi  [hl], a ; iScActXSub
+	ld   [hl], e ; iScActX
 	inc  hl
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   de, $88A0
-	ldi  [hl], a
-	ld   [hl], d
+	ldi  [hl], a ; iScActSpdYSub
+	ldi  [hl], a ; iScActSpdY
+	ldi  [hl], a ; iScActSpdXSub
+	ldi  [hl], a ; iScActSpdX
+	
+	; ENTRANCE DOOR
+	ld   de, ((OBJ_OFFSET_Y+$78) << 8)|(OBJ_OFFSET_X+$98)
+	; Y position: $88 (around bottom)
+	ldi  [hl], a ; iScActYSub
+	ld   [hl], d ; iScActY
 	inc  hl
-	ldi  [hl], a
-	ld   [hl], e
+	; X position: $A8 (right)
+	ldi  [hl], a ; iScActXSub
+	ld   [hl], e ; iScActX
 	inc  hl
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   a, $01
-	ld   [$CCFB], a
-	ld   a, $18
-	ld   [$CCFF], a
-	call L01576E
-	ld   a, $FE
-	ld   [$CCF5], a
-	ld   a, $00
-	ld   [$CCFB], a
-	ld   a, $02
-	ld   [wAct], a
-	ld   a, $70
-	ld   [$CCFF], a
-	call L01576E
-	ld   a, $B0
-	ld   [$CCF1], a
-	ld   a, $80
-	ld   [$CCF4], a
-	ld   a, $FF
-	ld   [$CCF5], a
-	ld   a, $02
-	ld   [wWilyPhaseDone], a
-	ld   a, $FE
-	ld   [$CCFE], a
-	ld   a, $04
-	ld   [wAct], a
-	ld   a, $10
-	ld   [$CCFF], a
-	call L01576E
-	xor  a
-	ld   [wWilyPhaseDone], a
-	ld   hl, $5E0C
-	ld   a, l
-	ld   [$CD02], a
+	ldi  [hl], a ; iScActSpdYSub
+	ldi  [hl], a ; iScActSpdY
+	ldi  [hl], a ; iScActSpdXSub
+	ldi  [hl], a ; iScActSpdX
+	
+	; MISC INIT 
+	ldi  [hl], a ; wScEd1ScrollSpdX
+	ldi  [hl], a ; wScEd1FramesLeft
+	ldi  [hl], a ; wScAct0SprMapBaseId
+	ldi  [hl], a ; wScAct1SprMapBaseId
+	ldi  [hl], a ; wScEdEvSrcPtr_Low
+	ldi  [hl], a ; wScEdEvSrcPtr_High
+	ldi  [hl], a ; wScEdEvEna
+	ldi  [hl], a ; $CD05
+	
+	;
+	; SCENE 1a - Open the entrance skull
+	;
+	ld   a, $01				; Move 1px/frame down
+	ld   [tActSkullJaw+iScActSpdY], a
+	ld   a, $18				; For 24 frames
+	ld   [wScEd1FramesLeft], a
+	call EndingSc1_AnimFor
+	
+	;
+	; SCENE 1b - Make Wily escape
+	;
+	ld   a, -$02			; Move Wily 2px/frame left
+	ld   [tActWily+iScActSpdX], a
+	ld   a, $00				; Keep entrance opened
+	ld   [tActSkullJaw+iScActSpdY], a
+	ld   a, $02				; Use Wily Sprite
+	ld   [wScAct0SprMapBaseId], a
+	ld   a, $70				; For ~2 seconds (enough to move from offscreen right to offscreen left)
+	ld   [wScEd1FramesLeft], a
+	call EndingSc1_AnimFor
+	
+	;
+	; SCENE 1c - Make Rockman escape #1
+	;            Scroll screen, pre-redraw.
+	;	
+	ld   a, OBJ_OFFSET_X+$A8	; Start offscreen right
+	ld   [tActPl+iScActX], a
+	ld   a, LOW(-$80)			; Move player 0.5px/frame left
+	ld   [tActPl+iScActSpdXSub], a
+	ld   a, HIGH(-$80)
+	ld   [tActPl+iScActSpdX], a
+	ld   a, $02					; Close entrance 2px/frame up
+	ld   [tActSkullJaw+iScActSpdX], a
+	ld   a, -$02				; Scrols screen at 2px/frame left
+	ld   [wScEd1ScrollSpdX], a
+	ld   a, $04					; Use Rockman sprite
+	ld   [wScAct0SprMapBaseId], a
+	ld   a, $10					; For 16 frames only
+	ld   [wScEd1FramesLeft], a
+	call EndingSc1_AnimFor
+	
+	;
+	; SCENE 1d - Make Rockman escape #2
+	;            Scroll screen, redraw tilemap edge.
+	;
+	xor  a						; Stop moving the Jaw
+	ld   [tActSkullJaw+iScActSpdX], a
+	; Trigger redraw of the tilemap to erase the Wily Station, allowing for looping scrolling stars.
+	; This event starts while part of the Station is still visible, but with the way the event happens
+	; over multiple frames, by the time it'd write over the visible part we have already scrolled it offscreen.
+	ld   hl, TilemapDef_Ending_Space
+	ld   a, l					; Set event source
+	ld   [wScEdEvSrcPtr_Low], a
 	ld   a, h
-	ld   [$CD03], a
-	ld   a, $FF
-	ld   [$CD04], a
-	ld   a, $50
-	ld   [$CCFF], a
-	call L01576E
-	ld   a, $C0
-	ld   [$CCF2], a
-	ld   a, $FF
-	ld   [$CCF3], a
-	ld   a, $40
-	ld   [$CCFF], a
-	call L01576E
-	xor  a
-	ld   [$CCF2], a
-	ld   [$CCF3], a
-	ld   [$CCF4], a
-	ld   [$CCF5], a
-	ld   a, $40
-	ld   [$CCFF], a
-	call L01576E
-	xor  a
-	ld   [$CCF2], a
-	ld   [$CCF3], a
-	ld   a, $80
-	ld   [$CCFF], a
-	call L01576E
-	ld   a, [wWilyShipX]
+	ld   [wScEdEvSrcPtr_High], a
+	ld   a, $FF					; Trigger event
+	ld   [wScEdEvEna], a
+	ld   a, $50					; For ~1.5 seconds
+	ld   [wScEd1FramesLeft], a
+	; While this happens, the player keeps moving 0.5px/frame left.
+	call EndingSc1_AnimFor
+	
+	;
+	; SCENE 1d - Move player slightly above, while still moving right.
+	;            This is so the missile, which spawns later, can hit Wily while moving in a straight line.
+	;
+	ld   a, LOW(-$40)			; Move 0.125px/frame up (while still moving 0.5px/frame left)
+	ld   [tActPl+iScActSpdYSub], a
+	ld   a, HIGH(-$40)
+	ld   [tActPl+iScActSpdY], a
+	ld   a, $40					; For ~1 second
+	ld   [wScEd1FramesLeft], a
+	call EndingSc1_AnimFor
+	
+	;
+	; SCENE 1e - The player is in place, stop moving #1
+	;	
+	xor  a						; Stop moving
+	ld   [tActPl+iScActSpdYSub], a
+	ld   [tActPl+iScActSpdY], a
+	ld   [tActPl+iScActSpdXSub], a
+	ld   [tActPl+iScActSpdX], a
+	ld   a, $40					; For ~1 second
+	ld   [wScEd1FramesLeft], a
+	call EndingSc1_AnimFor
+	
+	;
+	; SCENE 1f - The player is in place, stop moving #2
+	;	
+	xor  a						; Not necessary
+	ld   [tActPl+iScActSpdYSub], a
+	ld   [tActPl+iScActSpdY], a
+	ld   a, $80					; For ~2 seconds
+	ld   [wScEd1FramesLeft], a
+	call EndingSc1_AnimFor
+	
+	;
+	; SCENE 1g - Spawn missile
+	;
+	ld   a, [tActPl+iScActY]	; Missile Y: 8px below player
 	add  $08
-	ld   [$CCF7], a
-	ld   a, [$CCF1]
-	ld   [$CCF9], a
-	ld   a, $02
-	ld   [$CD01], a
-	ld   a, $80
-	ld   [$CCFF], a
-	call L01576E
-	ld   a, $01
-	ld   [$CCF5], a
-	ld   a, $80
-	ld   [$CCFF], a
-	call L01576E
-	ld   a, [wWilyShipX]
+	ld   [tActMissile+iScActY], a
+	ld   a, [tActPl+iScActX]	; Missile X: Same as player (middle)
+	ld   [tActMissile+iScActX], a
+	ld   a, $02					; Use missile sprite
+	ld   [wScAct1SprMapBaseId], a
+	ld   a, $80					; For ~2 seconds
+	ld   [wScEd1FramesLeft], a
+	call EndingSc1_AnimFor
+	
+	;
+	; SCENE 1h - Fire missile, scrolling the player out to the right.
+	;            Actually doesn't alter the starfield scrolling screen, which is a missed opportunity,
+	;            it's only the player moving to the right to give the effect.
+	;	
+	ld   a, $01					; Move player 1px/frame right
+	ld   [tActPl+iScActSpdX], a
+	ld   a, $80					; For ~2 seconds
+	ld   [wScEd1FramesLeft], a
+	call EndingSc1_AnimFor
+	
+	;
+	; SCENE 1i - Fire missile, scrolling Wily in from the left.
+	;            Making Wily show up required scrolling the player out first.
+	;	
+	ld   a, [tActPl+iScActY]	; Move Wily 10px below player
 	add  $10
-	ld   [wWilyShipX], a
-	ld   a, $01
-	ld   [$CCF5], a
-	ld   a, $02
-	ld   [wAct], a
-	ld   a, $80
-	ld   [$CCFF], a
-	call L01576E
+	ld   [tActWily+iScActY], a
+	ld   a, $01					; Move Wily 1px/frame right
+	ld   [tActWily+iScActSpdX], a
+	ld   a, $02					; Use Wily sprite
+	ld   [wScAct0SprMapBaseId], a
+	ld   a, $80					; For ~2 seconds
+	ld   [wScEd1FramesLeft], a
+	call EndingSc1_AnimFor
+	
+	;
+	; SCENE 1j - Despawn missile
+	;	
+	xor  a						; Stop moving Wily
+	ld   [tActWily+iScActSpdX], a
+	ld   a, $10					; For 16 frames
+	ld   [wScEd1FramesLeft], a
+	call EndingSc1_AnimFor
+	
+	
+	;
+	; SCENE 1k - Make Wily blow up while flashing.
+	;
+	; This effect displays several sprites while flashing Wily's palette.
+	; This is not supported by EndingSc1_AnimFor, which is why it's all done
+	; manually and uses its own format for tracking sprites.
+	;
+
+	; Save the spaceship position elsewhere
+	ld   a, [tActWily+iScActY]
+	ld   [wScEd1WilyY], a
+	ld   a, [tActWily+iScActX]
+	ld   [wScEd1WilyX], a
+	
+	;
+	; Spawn the 4 explosions
+	;
+	
+	; EXPLOSION 0
+	ld   hl, wScEdExpl0
 	xor  a
-	ld   [$CCF5], a
-	ld   a, $10
-	ld   [$CCFF], a
-	call L01576E
-	ld   a, [wWilyShipX]
-	ld   [$CD06], a
-	ld   a, [$CCF1]
-	ld   [$CD07], a
-	ld   hl, wWilyShipY
-	xor  a
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   [hl], $04
+	; Initially, hide all the explosions by placing them with both coords 0.
+	ldi  [hl], a ; iScExplY
+	ldi  [hl], a ; iScExplX
+	; Start with hidden explosion sprite
+	ld   [hl], $04 ; iScExplSprMapId
 	inc  hl
-	ld   [hl], $28
+	; After $28 frames, show this explosion.
+	; When the timer elapses, EndingSc1_AnimExpl gets called, which properly initializes the coordinates.
+	; Every explosion has its initial timer set to an unique value, to avoid having them animate in sync.
+	ld   [hl], $28 ; iScExplTimer
 	inc  hl
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   [hl], $04
+	
+	; EXPLOSION 1
+	ldi  [hl], a ; iScExplY
+	ldi  [hl], a ; iScExplX
+	ld   [hl], $04 ; iScExplSprMapId
 	inc  hl
-	ld   [hl], $20
+	ld   [hl], $20 ; iScExplTimer
 	inc  hl
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   [hl], $04
+	
+	; EXPLOSION 2
+	ldi  [hl], a ; iScExplY
+	ldi  [hl], a ; iScExplX
+	ld   [hl], $04 ; iScExplSprMapId
 	inc  hl
-	ld   [hl], $18
+	ld   [hl], $18 ; iScExplTimer
 	inc  hl
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   [hl], $04
+	
+	; EXPLOSION 3
+	ldi  [hl], a ; iScExplY
+	ldi  [hl], a ; iScExplX
+	ld   [hl], $04 ; iScExplSprMapId
 	inc  hl
-	ld   [hl], $10
+	ld   [hl], $10 ; iScExplTimer
 	inc  hl
+	
+	
+	; Do this scene for ~4 seconds
 	ld   a, $FF
-	ld   [$CCFE], a
-L015684:;R
-	xor  a
+	ld   [wScEdWilyExplTimer], a
+	
+.loop:
+	;--
+	;
+	; DRAW SPRITES
+	;
+	xor  a					; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   a, [$CD06]
+	
+	;
+	; Draw Wily's spaceship
+	;
+	ld   a, [wScEd1WilyY]
 	ld   [wTargetRelY], a
-	ld   a, [$CD07]
+	ld   a, [wScEd1WilyX]
 	ld   [wTargetRelX], a
-	ld   a, [$CCFE]
-	add  a
-	add  a
-	and  $10
-	ld   [$CD0D], a
-	ld   hl, $627D
+	; Flash Wily's palette every 4 frames
+	ld   a, [wScEdWilyExplTimer] ; (1/16)
+	add  a ; << 1 (1/8)
+	add  a ; << 1 (1/4)
+	and  SPR_OBP1 ; Filter bit
+	ld   [wScBaseSprFlags], a
+	; Draw the same Wily sprite.
+	; This doesn't animate it, but it's hard to notice between the flashing and explosions.
+	ld   hl, SprMapPtrTbl_ScPl
 	ld   a, $02
-	call L015A39
-	xor  a
-	ld   [$CD0D], a
-	ld   hl, wWilyShipY
-	ld   b, $04
-L0156AE:;R
-	push bc
-	ldi  a, [hl]
-	ld   [wTargetRelY], a
-	ldi  a, [hl]
-	ld   [wTargetRelX], a
-	ldi  a, [hl]
-	inc  hl
-	push hl
-	ld   hl, $62A5
-	call L015A39
-	pop  hl
-	pop  bc
-	dec  b
-	jr   nz, L0156AE
-	call OAM_ClearRest
+	call Sc_DrawSprMap
+	
+	;
+	; Draw all four explosions
+	;
+	xor  a						; Draw with normal palette
+	ld   [wScBaseSprFlags], a
+	
+	ld   hl, wScEdExpl0			; HL = Ptr to first explosion
+	ld   b, $04					; B = Number of explosions
+.drExLoop:
+	push bc ; Save count
+		ldi  a, [hl]			; Y Position: iScExplY
+		ld   [wTargetRelY], a
+		ldi  a, [hl]			; X Position: iScExplX
+		ld   [wTargetRelX], a
+		ldi  a, [hl]			; Sprite mapping ID: iScExplSprMapId
+		inc  hl					; Skip past iScExplTimer, into the next iScExplY
+		push hl					; Save slot ptr
+			ld   hl, SprMapPtrTbl_ScExpl
+			call Sc_DrawSprMap
+		pop  hl					; Restore slot ptr
+	pop  bc				; B = ExplLeft
+	dec  b				; Processed them all?
+	jr   nz, .drExLoop	; If not, loop
+	
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   hl, wWilyShipY
-	ld   b, $04
-L0156CE:;R
-	inc  hl
-	inc  hl
-	inc  hl
+	;--
+	
+	;
+	; ANIMATE EXPLOSIONS
+	;
+	ld   hl, wScEdExpl0			; HL = Ptr to first explosion
+	ld   b, $04					; B = Number of explosions
+.animLoop:
+	inc  hl ; iScExplX
+	inc  hl ; iScExplSprMapId
+	inc  hl ; iScExplTimer
+	; If iScExplTimer elapsed, advance the animation for this explosion
 	push hl
-	dec  [hl]
-	call z, L0157FB
+		dec  [hl]					; iScExplTimer--
+		call z, EndingSc1_AnimExpl	; iScExplTimer == 0? If so, animate
 	pop  hl
-	inc  hl
-	dec  b
-	jr   nz, L0156CE
-	ld   hl, hScrollX
+	inc  hl ; Seek to next explosion's iScExplY
+	dec  b 				; Done animating them all?
+	jr   nz, .animLoop	; If not, loop
+	
+	; Do scrolling starfield
+	ld   hl, hScrollX	; 2px/frame
 	dec  [hl]
 	dec  [hl]
-	ld   a, [$CCFE]
-	dec  a
-	ld   [$CCFE], a
-	jr   nz, L015684
+	
+	ld   a, [wScEdWilyExplTimer]
+	dec  a							; Timer--
+	ld   [wScEdWilyExplTimer], a	; Has it elapsed?
+	jr   nz, .loop					; If not, loop
+	
+Ending_Sc2:	
+	;
+	; SCENE 2
+	;
+	; Wily dies.
+	;
+	
+	;--
 	ld   a, GFXSET_SPACE
 	call GFXSet_Load
-	ld   de, $5C9B
+	
+	ld   de, TilemapDef_Earth
 	call LoadTilemapDef
+	
 	call StartLCDOperation
-	ld   a, $02
+	;--
+	
+	ld   a, BGM_STAGESELECT
 	ldh  [hBGMSet], a
-	ld   hl, wWilyShipY
+
+	
+	;--
+	; [POI] Not necessary, the small explosions aren't loaded or used here.
+	; EXPLOSION 0
+	ld   hl, wScEdExpl0
 	xor  a
-	ld   de, $8040
-	ldi  [hl], a
-	ld   [hl], d
+	ld   de, ($80 << 8)|$40
+	ldi  [hl], a ; iScExplY
+	ld   [hl], d ; iScExplX
 	inc  hl
-	ldi  [hl], a
-	ld   [hl], e
+	ldi  [hl], a ; iScExplSprMapId
+	ld   [hl], e ; iScExplTimer
 	inc  hl
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ldi  [hl], a
-	ld   a, $40
+	
+	; EXPLOSION 1
+	ldi  [hl], a ; iScExplY
+	ldi  [hl], a ; iScExplX
+	ldi  [hl], a ; iScExplSprMapId
+	ldi  [hl], a ; iScExplTimer
+	;--
+
+	
+	;##
+	;
+	; SCENE 2a - Wily crashes into the Earth
+	;
+	
+	; Set Wily's initial position (top-right)
+	ld   a, OBJ_OFFSET_Y+$30
 	ld   [wTargetRelY], a
-	ld   a, $A0
+	ld   a, OBJ_OFFSET_X+$98
 	ld   [wTargetRelX], a
+	
 	xor  a
-	ld   [$CCFE], a
-L01571A:;R
-	xor  a
+	ld   [wScEdWilyExplTimer], a
+.crLoop:
+	;--
+	;
+	; DRAW SPRITES
+	;
+	xor  a				; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   hl, $6291
+	
+	; Draw Wily fireball
+	; Use sprites $00-$01 at 1/8 speed, based on Wily's vertical postion.
+	ld   hl, SprMapPtrTbl_ScWilyCrash
 	ld   a, [wTargetRelY]
-	rrca 
-	rrca 
-	and  $01
-	call L015A39
-	call OAM_ClearRest
+	rrca ; /2
+	rrca ; /4 (at half speed movement, that's 1/8)
+	and  $01 ; Use sprites $00-$01
+	call Sc_DrawSprMap
+	
+	call OAM_ClearRest		; Done drawing
+	;--
+
+	;
+	; Move at 0.5px/frame down-left
+	;
+	rst  $08 ; Wait Frame	; Every 2 frames...
 	rst  $08 ; Wait Frame
-	rst  $08 ; Wait Frame
-	ld   hl, wTargetRelY
+	
+	ld   hl, wTargetRelY	; Move 1px down
 	inc  [hl]
-	ld   hl, wTargetRelX
+	ld   hl, wTargetRelX	; Move 1px left
 	dec  [hl]
+	
+	; Crash into the earth when reaching Y position $90, around the bottom
 	ld   a, [wTargetRelY]
-	cp   $90
-	jr   nz, L01571A
-	xor  a
-	ld   [$CCFE], a
-	ld   a, $00
+	cp   OBJ_OFFSET_Y+$80
+	jr   nz, .crLoop
+	
+	;##
+	;
+	; SCENE 2b - Wily crashes
+	;
+	
+	xor  a				; Init timer
+	ld   [wScEdWilyExplTimer], a
+	
+	ld   a, SND_MUTE	; Play nuke SFX
 	ldh  [hBGMSet], a
-	ld   a, $11
+	ld   a, SFX_UFOCRASH
 	ldh  [hSFXSet], a
-L01574A:;R
-	xor  a
+	
+.nkLoop:
+	;--
+	;
+	; DRAW SPRITES
+	;
+	
+	xor  a				; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   hl, $6295
-	ld   a, [$CCFE]
-	rrca 
-	rrca 
-	rrca 
-	rrca 
-	and  $07
-	call L015A39
-	call OAM_ClearRest
+	
+	; Draw the skull nuke
+	; Use sprites $00-$07 at 1/16 speed
+	ld   hl, SprMapPtrTbl_ScWilyNuke
+	ld   a, [wScEdWilyExplTimer]
+	rrca ; /2
+	rrca ; /4
+	rrca ; /8 
+	rrca ; /16 
+	and  $07 ; Use sprites $00-$07
+	call Sc_DrawSprMap
+	
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   hl, $CCFE
-	inc  [hl]
+	;--
+	
+	; Execute the above for $80 frames (~2 seconds)
+	ld   hl, wScEdWilyExplTimer
+	inc  [hl]			; Timer++
 	ld   a, [hl]
-	add  a
-	jr   nc, L01574A
-	ld   a, $78
+	add  a				; Timer * 2 overflows? (Timer < $80)
+	jr   nc, .nkLoop	; If not, loop
+	
+	; Wait 2 seconds before starting the credits
+	ld   a, 60*2
 	call WaitFrames
 	ret
-L01576E:;CR
-	call L01578D
-	ld   hl, wWilyShipY
-	call L015ACF
-	ld   hl, $CCF6
-	call L015ACF
-	ld   hl, $CCFE
+	
+; =============== EndingSc1_AnimFor ===============
+; Animates the ending scene with scrolling starts for the specified amount of frames.
+; This does not support Wily's explosions, so it can't be used for that part.
+; IN
+; - wScEd1FramesLeft: How many frames to execute it
+EndingSc1_AnimFor:
+	call EndingSc1_Anim
+	
+	; Move both actors, whatever they may be
+	ld   hl, wScAct0
+	call ScAct_ApplySpeed
+	ld   hl, wScAct1
+	call ScAct_ApplySpeed
+	
+	; Scroll the screen/starfield horizontally by the specified amount
+	ld   hl, wScEd1ScrollSpdX
 	ldh  a, [hScrollX]
 	add  [hl]
 	ldh  [hScrollX], a
-	inc  hl
-	ld   hl, $CCFF
-	dec  [hl]
-	jr   nz, L01576E
+	
+	inc  hl 					; Seek to wScEd1FramesLeft
+	ld   hl, wScEd1FramesLeft 	; (Not necessary)
+	dec  [hl]					; Executed it for all frames?
+	jr   nz, EndingSc1_AnimFor			; If not, loop
 	ret
-L01578D:;C
-	xor  a
+	
+; =============== EndingSc1_Anim ===============
+; Draws the sprite mappings for all cutscene actors in the scrolling stars sequence.
+; This also handles updating the tilemap for the scrolling starfield.
+EndingSc1_Anim:
+	xor  a						; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   a, [wWilyShipX]
+	
+	;
+	; DRAW ACTOR 0 (Player or Wily)
+	;
+	ld   a, [wScAct0+iScActY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCF1]
+	ld   a, [wScAct0+iScActX]
 	ld   [wTargetRelX], a
-	ld   hl, $627D
-	ld   a, [$CCFF]
+	ld   hl, SprMapPtrTbl_ScPl
+	;--
+	; Alternate between wScAct0SprMapBaseId and (wScAct0SprMapBaseId+1) at 1/4 speed
+	ld   a, [wScEd1FramesLeft]
+	rrca ; /2
+	rrca ; /4
+	and  $01	; 2 frames anim ($00-$01)
+	ld   b, a	; to B
+	ld   a, [wScAct0SprMapBaseId]	; Get base ID
+	add  b							; Add relative
+	;--
+	call Sc_DrawSprMap			; Draw it
+	
+	;
+	; DRAW ACTOR 1 (Skull Jaw or Crayola Missile)
+	;
+	ld   a, [wScAct1+iScActY]
+	ld   [wTargetRelY], a
+	ld   a, [wScAct1+iScActX]
+	ld   [wTargetRelX], a
+	ld   hl, SprMapPtrTbl_ScSkullJaw
+	;--
+	; Alternate between wScAct0SprMapBaseId and (wScAct0SprMapBaseId+1) at 1/4 speed
+	ld   a, [wScEd1FramesLeft]
 	rrca 
 	rrca 
 	and  $01
 	ld   b, a
-	ld   a, [wAct]
+	ld   a, [wScAct1SprMapBaseId]
 	add  b
-	call L015A39
-	ld   a, [$CCF7]
-	ld   [wTargetRelY], a
-	ld   a, [$CCF9]
-	ld   [wTargetRelX], a
-	ld   hl, $6289
-	ld   a, [$CCFF]
-	rrca 
-	rrca 
-	and  $01
-	ld   b, a
-	ld   a, [$CD01]
-	add  b
-	call L015A39
-	call OAM_ClearRest
+	;--
+	call Sc_DrawSprMap
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   a, [$CD04]
-	and  a
-	ret  z
-	ld   a, [$CD02]
+	;##
+	
+	;
+	; TILEMAP EDGE REDRAW
+	; 
+	; Used to redraw part of the tilemap when scrolling the starfield right.
+	;
+	; This is because the tilemap loaded in this scene (TilemapDef_WilyStationEntrance) contains
+	; the entrance to the Wily Station on the right, which needs to get overwritten by stars.
+	;
+	; This only needs to be triggered exactly once during the whole sequence, as soon as the entrance
+	; is scrolled out of view, then no further updates are necessary. 
+	;
+	
+	ld   a, [wScEdEvEna]
+	and  a				; Tilemap update triggered/in progress?
+	ret  z				; If not, return
+	
+	;
+	; As a large amount of tiles need to be written, this event is processed over multiple frames.
+	; Unlike with GFX updates, there's no system in place for doing so with tilemaps, although
+	; the way events are chained until reaching an end terminator would work very well for it.
+	;
+	; The event this uses is stored in ROM at TilemapDef_Ending_Space, which defines multiple commands for writing
+	; columns to the tilemap. As each command can be executed as an indivudual event, copy that
+	; to the buffer, stick and end terminator, and trigger it. The next frame copy the next command
+	; from where we last left off, and so on until we reach the terminator in ROM.
+	;
+	; Similar multi-frame events are handled manually later on, in the credits sequence.
+	;
+	
+	ld   a, [wScEdEvSrcPtr_Low]		; HL = Source event (where we last left off)
 	ld   l, a
-	ld   a, [$CD03]
+	ld   a, [wScEdEvSrcPtr_High]
 	ld   h, a
-	ld   de, wScrEvRows
-	ld   bc, $0015
-	call CopyMemory
-	xor  a
+	ld   de, wTilemapBuf			; DE = Destination
+	ld   bc, $0015					; BC = Event size (3-byte header + 18 tiles)
+	call CopyMemory					; Copy to event buffer
+	xor  a							; Write terminator
 	ld   [de], a
-	inc  a
+	inc  a							; Trigger event
 	ld   [wTilemapEv], a
-	ld   a, l
-	ld   [$CD02], a
+	ld   a, l						; Save back what we reached
+	ld   [wScEdEvSrcPtr_Low], a
 	ld   a, h
-	ld   [$CD03], a
+	ld   [wScEdEvSrcPtr_High], a
+	
 	ld   a, [hl]
-	and  a
-	ret  nz
-	ld   [$CD04], a
+	and  a							; Did we reach the null terminator?
+	ret  nz							; If not, return (trigger another event next frame)
+	ld   [wScEdEvEna], a			; Otherwise, we're done
 	ret
-L0157FB:;C
+	
+; =============== EndingSc1_AnimExpl ===============
+; Animattes a single explosion for Wily's spaceship.
+; IN
+; - HL: Ptr to iScExplTimer
+EndingSc1_AnimExpl:
+	; Reset animation timer to $08
+	; This sets the animation speed to 1/8
 	ld   [hl], $08
-	dec  hl
-	ld   a, [hl]
+	
+	; Advance animation cycle ($00-$02)
+	dec  hl ; iScExplSprMapId
+	ld   a, [hl]	; SprId++
 	inc  a
 	ld   [hl], a
-	cp   $03
-	ret  c
-	ld   [hl], $00
-	dec  hl
-	call Rand
-	and  $38
-	sub  $20
+	cp   $03		; Went out of range?
+	ret  c			; If not, return
+	
+	; Otherwise, "respawn" the explosion
+	ld   [hl], $00	; Reset to first sprite
+	
+	;
+	; Randomize the spawn coordinates, anywhere from +$18 to -$20 within Wily's Spaceship.
+	;
+	
+	; X POSITION
+	dec  hl ; iScExplX
+	; C = (Rand & $38) - $20
+	call Rand	; Randomize
+	and  $38	; Filter in range
+	sub  $20	; Offset in both directions
 	ld   c, a
-	ld   a, [$CD07]
+	; iScExplX = wScEd1WilyX + C
+	ld   a, [wScEd1WilyX]
 	add  c
 	ld   [hl], a
-	dec  hl
-	call Rand
-	and  $38
-	sub  $20
+	
+	; Y POSITION
+	dec  hl ; iScExplY
+	; C = (Rand & $38) - $20
+	call Rand	; Randomize
+	and  $38	; Filter in range
+	sub  $20	; Offset in both directions
 	ld   c, a
-	ld   a, [$CD06]
+	; iScExplY = wScEd1WilyY + C
+	ld   a, [wScEd1WilyY]
 	add  c
 	ld   [hl], a
-	ld   a, $06
+	
+	ld   a, SFX_EXPLODE	; Play explosion SFX
 	ldh  [hSFXSet], a
 	ret
-L015827:;C
-	ld   a, $12
+	
+; =============== Module_Credits ===============
+; Cast roll and Thank you for playing screen.
+; This never returns, and if it did you'd reach an infinite loop.
+Module_Credits:
+	ld   a, BGM_ENDING
 	ldh  [hBGMSet], a
-	ld   hl, $5F5D
+	
+Credits_Sc1:
+	;
+	; This expects to directly continue off the heels of the ending sequence.
+	; The earth is visible at the bottom, alongside a skull nuke sprite.
+	;
+	; Scroll the screen up slowly, while overwriting the bottom of the tilemap
+	; with starts as the Earth gets out of view, to allow for a vertically scrolling starfield.
+	;
+	; This uses a similar setup to EndingSc1_Anim, except it's for vertical scrolling and with
+	; the slower scrolling speed multiple frames pass between tilemap row writes.
+	;
+	ld   hl, TilemapDef_Credits_Space	; Set event source
 	ld   a, l
-	ld   [$CD02], a
+	ld   [wScEdEvSrcPtr_Low], a
 	ld   a, h
-	ld   [$CD03], a
-L015836:;JR
-	rst  $08 ; Wait Frame
-	rst  $08 ; Wait Frame
-	rst  $08 ; Wait Frame
-	rst  $08 ; Wait Frame
-	ld   hl, wTargetRelY
+	ld   [wScEdEvSrcPtr_High], a
+	
+.mkFieldLoop:
+
+	; Every 4 frames...
+	REPT 4
+		rst  $08 ; Wait Frame
+	ENDR
+	
+	;
+	; ...Scroll the screen 1px up (0.25px/frame)
+	;
+	
+	ld   hl, wTargetRelY	; Move nuke 1px down to compensate
 	inc  [hl]
-	xor  a
+	;--
+	; Draw the Nuke sprite at the new location
+	xor  a					; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   hl, $6295
+	ld   hl, SprMapPtrTbl_ScWilyNuke
 	ld   a, $07
-	call L015A39
-	call OAM_ClearRest
-	ld   hl, hScrollY
+	call Sc_DrawSprMap
+	call OAM_ClearRest		; Done drawing
+	;--
+	ld   hl, hScrollY		; Scroll screen up 1px
 	dec  [hl]
 	ld   a, [hl]
+	
+	; Every other frame we get here...
+	; (In total, every 8 frames of moving up, aka 1 tile)
 	and  $01
-	jp   z, L015836
-	ld   a, [$CD02]
+	jp   z, .mkFieldLoop
+	
+	; ... overwrite the next row with starfield tiles,
+	ld   a, [wScEdEvSrcPtr_Low]		; HL = Source event (where we last left off)
 	ld   l, a
-	ld   a, [$CD03]
+	ld   a, [wScEdEvSrcPtr_High]
 	ld   h, a
-	ld   de, wScrEvRows
-	ld   bc, $000D
-	call CopyMemory
-	xor  a
+	ld   de, wTilemapBuf			; DE = Destination
+	ld   bc, $000D					; BC = Event size (3-byte header + 10 tiles)
+	call CopyMemory					; Copy to event buffer
+	xor  a							; Write terminator
 	ld   [de], a
-	inc  a
+	inc  a							; Trigger event
 	ld   [wTilemapEv], a
-	ld   a, l
-	ld   [$CD02], a
+	ld   a, l						; Save back what we reached
+	ld   [wScEdEvSrcPtr_Low], a
 	ld   a, h
-	ld   [$CD03], a
+	ld   [wScEdEvSrcPtr_High], a
+
+	; Continue until we reach the end terminator for this event
 	ld   a, [hl]
-	and  a
-	jr   nz, L015836
-	ld   hl, $7400
-	ld   de, $8000
-	ld   bc, $0B80
+	and  a							; Did we reach the null terminator?
+	jr   nz, .mkFieldLoop			; If not, loop (trigger another event after 8 frames)
+
+
+Credits_Sc2:
+	;
+	; Load the credits text font and large Rockman sprite, while still scrolling up.
+	; At this point, the Nuke is fully offscreen so it won't getdrawn anymore.
+	;
+	; As the background is *currently* reserved to the scrolling starfield, the text is drawn using sprites.
+	;
+
+	ld   hl, GFX_Credits_OBJ ; Source GFX ptr
+	ld   de, $8000 ; VRAM Destination ptr (1st section)
+	ld   bc, (BANK(GFX_Credits_OBJ) << 8)|$80 ; B = Source GFX bank number (BANK $0B) C = Number of tiles to copy
 	call GfxCopy_Req
-	ld   b, $10
-L015887:;R
-	ld   a, $04
+	
+	;
+	; Loading $80 tiles takes up $20 frames.
+	; As we need to be consistent with the starfield scrolling speed of 0.25px/frame, we're waiting 
+	; 4 frames at a time rather than 2, so by the halfway mark we're done loading it.
+	;
+	ld   b, $10				; For $10 frames...
+.fontLoadLoop:
+	ld   a, $04				; Load a full row of graphics
 	call WaitFrames
-	ld   hl, hScrollY
+	ld   hl, hScrollY		; Scroll screen 1px up
 	dec  [hl]
-	dec  b
-	jr   nz, L015887
-	xor  a
-	ld   [wWilyShipY], a
-	ld   a, $40
-	ld   [$CCF6], a
-	ld   a, $B0
-	ld   [$CCF7], a
-L0158A1:;R
-	ld   hl, $659F
-	ld   a, [wWilyShipY]
+	dec  b					; Are we done?
+	jr   nz, .fontLoadLoop	; If not, loop
+	
+Credits_Sc3:
+	;
+	; CAST ROLL
+	;
+	; Enemies come from the right side of the screen, pause for a bit 
+	; while showing their name, then move offscreen to the left.
+	;
+	; Curiously, up until the bosses, the enemies shown are ordered by their actor ID.
+	;
+	xor  a						; From the first enemy
+	ld   [wCredRowId], a
+	ld   a, OBJ_OFFSET_Y+$30	; Enemy Y position: $40 (near the top, fixed)
+	ld   [wCredRowY], a
+	ld   a, $B0					; Enemy X position: $A8 (offscreen to the right)
+	ld   [wCredRowX], a
+.nextEnemy:
+	;
+	; Cast roll data is stored in several tables, all indexed by wCredRowId.
+	; The first of them defines the actor art set associated to the enemy.
+	;
+	ld   hl, Credits_CastGfxSetTbl	; A = Credits_CastGfxSetTbl[wCredRowId]
+	ld   a, [wCredRowId]
 	ld   b, $00
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	call ActS_ReqLoadRoomGFX.tryLoadBySetId
+	call ActS_ReqLoadRoomGFX.tryLoadBySetId	; Load that
+	
+	; Wait for ~half a second while the enemy graphics load
 	ld   b, $20
-	call L0159B9
-L0158B4:;R
-	xor  a
+	call Credits_CastScrollYFor
+	
+.loopEnemy:
+	;--
+	;
+	; DRAW SPRITES
+	;
+
+	xor  a				; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   a, $50
+	
+	; Draw the large Rockman sprite
+	ld   a, OBJ_OFFSET_Y+$40	; Around the bottom (as the origin of this sprite is at the top)
 	ld   [wTargetRelY], a
-	ld   a, $88
+	ld   a, OBJ_OFFSET_X+$80	; Right side
 	ld   [wTargetRelX], a
-	ld   hl, $62B1
+	ld   hl, SprMapPtrTbl_Credits_Pl
 	xor  a
-	call L015A39
-	ld   a, [$CCF6]
+	call Sc_DrawSprMap
+	
+	; Draw the enemy sprite (without text)
+	ld   a, [wCredRowY]
 	ld   [wTargetRelY], a
-	ld   a, [$CCF7]
+	ld   a, [wCredRowX]
 	ld   [wTargetRelX], a
-	ld   hl, $65CC
-	ld   a, [wWilyShipY]
-	call L015A39
-	call OAM_ClearRest
+	ld   hl, SprMapPtrTbl_Credits_CastPic
+	ld   a, [wCredRowId]
+	call Sc_DrawSprMap
+	
+	call OAM_ClearRest		; Done drawing
 	rst  $08 ; Wait Frame
-	ld   hl, $CCF7
+	;--
+	
+	; Move enemy left 1px
+	ld   hl, wCredRowX	; XPos--
 	dec  [hl]
+	
+	;
+	; Whenever the enemy reaches the center of the screen, draw its name and pause for 2 seconds.
+	; This delay is why the text doesn't disappear immediately, as the sprites previously written
+	; to the OAM mirror do not get changed in the middle of Credits_CastScrollYFor.
+	;
+	ld   a, [hl]						; A = XPos
+	cp   OBJ_OFFSET_X+$50				; XPos == $58?
+	call z, Credits_CastDrawNameStub	; If so, draw its name to OAM (preserves flags for second check)
+	ld   b, 60*2						; For 2 seconds...
+	call z, Credits_CastScrollYFor		; If the check above passed, wait for that long
+	
+	; Scroll the starfield
+	call Credits_CastScrollY
+	
+	; 
+	; When the enemy moves offscreen to the left, advance to the next one.
+	; Just to be sure to account, this check triggers at X position $C0,
+	; which is around the middle of the offscreen area.
+	;
+	ld   a, [hl]			; A = XPos
+	cp   OBJ_OFFSET_X+$B8	; XPos == $C0?
+	jr   nz, .loopEnemy		; If not, keep moving the sprite left
+	
+	ld   hl, wCredRowId		; Otherwise, advance to the next row
+	inc  [hl]				; wCredRowId++
+	; Went past the last cast roll entry ($26)?
 	ld   a, [hl]
-	cp   $58
-	call z, L0159C3
-	ld   b, $78
-	call z, L0159B9
-	call L0159A7
-	ld   a, [hl]
-	cp   $C0
-	jr   nz, L0158B4
-	ld   hl, wWilyShipY
-	inc  [hl]
-	ld   a, [hl]
-	cp   $26
-	jr   nz, L0158A1
-	ld   a, $80
-	ld   [$CD02], a
+	cp   Credits_CastGfxSetTbl.end-Credits_CastGfxSetTbl
+	jr   nz, .nextEnemy		; If so, jump
+	
+
+Credits_Sc4:
+	;
+	; Prepare the screen for the vertically scrolling text.
+	;
+	; Due to sprite limits, we can't use sprites to draw the text like we did before,
+	; so that text really needs to be written to the tilemap.
+	; However, the tilemap is currently displaying a scrolling starfield!
+	;
+	; Therefore, as the screen scrolls, we have to wipe the tilemap clean.
+	; To make the transition seamless, draw a sprite version of the starfield as
+	; soon as we start doing it.
+	;
+	; Note that the reason we can't clear the screen all at once is that there
+	; aren't enough sprites to draw the full starfield, so stars would visibly pop out.
+	;
+	
+	; As the screen is scrolling up, overwrite what's above the viewport.
+	; Since we start overwriting when the viewport is near the top of the screen,
+	; start from the bottom of the tilemap.
+	ld   a, (BGMap_End-BGMap_Begin)/8	; /8 due to how it's offset
+	ld   [wCredBGClrPtrLow], a
+	; Wait for the Y position to reach the top of the tilemap, to start at a known position.
 	ld   b, $10
-	call L0159C9
-L01590B:;R
+	call Credits_CastScrollYTo
+	
+.loop:
+
+	; Wait 32 frames, scrolling the starfield down at 0.25px/frame.
+	; This will scroll the screen up by 8px when we're done.
 	ld   b, $20
-L01590D:;R
+.scLoop:
 	push bc
-	call L0159A7
-	call L0159EB
-	rst  $08 ; Wait Frame
+		call Credits_CastScrollY	; Scroll both the sprite starfield and what's left of the background starfield
+		call Credits_DrawThank		; Draw Rockman and the sprite starfield
+		rst  $08 ; Wait Frame
 	pop  bc
-	dec  b
-	jr   nz, L01590D
-	ld   a, [$CD02]
-	sub  $04
-	ld   [$CD02], a
+	dec  b				; Done waiting?
+	jr   nz, .scLoop	; If not, loop
+	
+	
+	; 
+	; Calculate the destination ptr to the tilemap.
+	; HL = BGMap_Begin[wCredBGClrPtrLow - BG_TILECOUNT_H]
+	; All calculations are done with values divided by 8.
+	;
+	ld   a, [wCredBGClrPtrLow]
+	sub  BG_TILECOUNT_H/8		; Move 1 tile up
+	ld   [wCredBGClrPtrLow], a		; Save back
 	ld   l, a
-	ld   h, $13
-	add  hl, hl
-	add  hl, hl
-	add  hl, hl
-	ld   de, wScrEvRows
+	ld   h, HIGH(BGMap_Begin)/8	
+	; Then multiply the result by 8 to get the real pointer
+	add  hl, hl ; *2
+	add  hl, hl ; *4
+	add  hl, hl ; *8
+	
+	ld   de, wTilemapBuf
+	
+	; bytes0-1: Destination pointer
 	ld   a, h
 	ld   [de], a
 	inc  de
 	ld   a, l
 	ld   [de], a
 	inc  de
-	ld   a, $54
+	
+	; byte2: Writing mode + Number of bytes to write
+	ld   a, BG_REPEAT|BG_MVRIGHT|$14	; Repeat tile 14 times right
 	ld   [de], a
 	inc  de
-	ld   a, $70
+	
+	; byte3+: payload
+	ld   a, $70		; Use black tile ID
 	ld   [de], a
 	inc  de
+	
+	; Write terminator
 	xor  a
 	ld   [de], a
+	
+	; Trigger event
 	inc  a
 	ld   [wTilemapEv], a
-	ld   a, [$CD02]
-	and  a
-	jr   nz, L01590B
-	ld   hl, $7400
-	ld   de, $9200
-	ld   bc, $0B60
+	
+	ld   a, [wCredBGClrPtrLow]
+	and  a			; Wrote to the top of the tilemap?
+	jr   nz, .loop	; If not, loop
+	
+Credits_Sc5:
+	;
+	; Scroll in from below the "Thank you for playing" text, while the sprite starfield keeps scrolling down.
+	;
+	
+	; Load the credits text font on the background section, as we're writing text there.
+	ld   hl, GFX_Credits_OBJ ; Source GFX ptr
+	ld   de, $9200 ; VRAM Destination ptr (3rd section)
+	ld   bc, (BANK(GFX_Credits_OBJ) << 8)|$60 ; B = Source GFX bank number (BANK $0B) C = Number of tiles to copy
 	call GfxCopy_Req
+	
+	; With the tilemap fully black, set viewport to Y position $60.
+	; This makes the viewport aligned to the bottom of the tilemap.
 	ld   a, $60
 	ldh  [hScrollY], a
-	ld   hl, $6167
+	
+	; Prepare the event, which starts writing text at the top of the tilemap.
+	; As the viewport moves down, this text will immediately scroll up into the visible area.
+	ld   hl, TilemapDef_Credits_Thank	
 	ld   a, l
-	ld   [$CD02], a
+	ld   [wScEdEvSrcPtr_Low], a
 	ld   a, h
-	ld   [$CD03], a
-L01595F:;R
+	ld   [wScEdEvSrcPtr_High], a
+.loop:
+
+	; Wait 64 frames, scrolling the text up and starfield down at 0.25px/frame.
+	; This will scroll the screen up by 16px when we're done.
 	ld   b, $40
-L015961:;R
+.scLoop:
 	push bc
-	call L0159D5
-	call L0159EB
-	rst  $08 ; Wait Frame
+		call Credits_SprStarTextScroll	; Scroll text and sprite starfield
+		call Credits_DrawThank			; Draw Rockman and sprite starfield
+		rst  $08 ; Wait Frame
 	pop  bc
-	dec  b
-	jr   nz, L015961
-	ld   a, [$CD02]
+	dec  b				; Done waiting?
+	jr   nz, .scLoop	; If not, loop
+	
+	; ... overwrite the next row with the event data.
+	; As this writes the whole thing, by the time we're done everything will have been written,
+	; including the Capcom logo.
+	ld   a, [wScEdEvSrcPtr_Low]		; HL = Source event (where we last left off)
 	ld   l, a
-	ld   a, [$CD03]
+	ld   a, [wScEdEvSrcPtr_High]
 	ld   h, a
-	ld   de, wScrEvRows
-	ld   bc, $0010
-	call CopyMemory
-	xor  a
+	ld   de, wTilemapBuf			; DE = Destination
+	ld   bc, $0010					; BC = Event size (3-byte header + 13 tiles)
+	call CopyMemory					; Copy to event buffer
+	xor  a							; Write terminator
 	ld   [de], a
-	inc  a
+	inc  a							; Trigger event
 	ld   [wTilemapEv], a
-	ld   a, l
-	ld   [$CD02], a
+	ld   a, l						; Save back what we reached
+	ld   [wScEdEvSrcPtr_Low], a
 	ld   a, h
-	ld   [$CD03], a
+	ld   [wScEdEvSrcPtr_High], a
+
+	; Continue until we reach the end terminator for this event
 	ld   a, [hl]
-	and  a
-	jr   nz, L01595F
-L015990:;R
-	call L0159D5
-	call L0159EB
+	and  a							; Did we reach the null terminator?
+	jr   nz, .loop					; If not, loop
+	
+Credits_Sc6:
+	;
+	; Continue scrolling the text we wrote before, until we reach Y position $80.
+	; That's when the Capcom logo gets vertically centered.
+	;
+	call Credits_SprStarTextScroll	; Scroll text and sprite starfield
+	call Credits_DrawThank			; Draw Rockman and the sprite starfield
 	rst  $08 ; Wait Frame
 	ldh  a, [hScrollY]
 	cp   $80
-	jr   nz, L015990
-L01599D:;R
-	call L015A2B
-	call L0159EB
+	jr   nz, Credits_Sc6
+	
+Credits_Sc7:
+	;
+	; Infinite loop at the Capcom logo.
+	;
+	call Credits_SprStarScroll		; Scroll sprite starfield only
+	call Credits_DrawThank			; Draw Rockman and the sprite starfield
 	rst  $08 ; Wait Frame
-	jr   L01599D
-L0159A6: db $C9;X
-L0159A7:;C
-	ld   a, [$CCFE]
-	add  $40
-	ld   [$CCFE], a
-	ret  nc
-	ldh  a, [hScrollY]
+	jr   Credits_Sc7
+	; We never get here
+	ret
+	
+; =============== Credits_CastScrollY ===============
+; Scrolls the starfield down at 0.25px/frame.
+; Used during the cast roll and transition, when the starfield is drawn using the background.
+Credits_CastScrollY:
+	; Takes 4 frames to overflow
+	ld   a, [wCredScrollYSub]
+	add  $40					; SubPx += $40
+	ld   [wCredScrollYSub], a	; Did we overflow?
+	ret  nc						; If not, return
+	
+	; When the stars are drawn on the background layer (during the cast roll),
+	; make them move up by moving the viewport up.
+	ldh  a, [hScrollY]			; Otherwise, move up 1px
 	dec  a
 	ldh  [hScrollY], a
-	ld   [$CCFF], a
+	; Keep this synched for later.
+	; This will be important once the cast roll ends and the starfield is converted
+	; to sprites to make the vertical scrolling text possible.
+	ld   [wCredSprScrollY], a
 	ret
-L0159B9:;CR
-	call L0159A7
-	push bc
-	rst  $08 ; Wait Frame
+	
+; =============== Credits_CastScrollYFor ===============
+; Scrolls the starfield for the specified amount of frames.
+; Cast roll only.
+; IN
+; - B: Number of frames
+Credits_CastScrollYFor:
+	call Credits_CastScrollY
+	push bc ; (Not necessary)
+		rst  $08 ; Wait Frame
 	pop  bc
-	dec  b
-	jr   nz, L0159B9
+	dec  b				; Done moving?
+	jr   nz, Credits_CastScrollYFor	; If not, loop
 	ret
-L0159C3:;C
-	push af
-	call L015A6F
+	
+; =============== Credits_CastDrawNameStub ===============
+; Wrapper to Credits_CastDrawName.
+Credits_CastDrawNameStub:
+	push af ; Save and restore flags
+		call Credits_CastDrawName
 	pop  af
 	ret
-L0159C9:;CR
-	push bc
-	call L0159A7
-	rst  $08 ; Wait Frame
+	
+; =============== Credits_CastScrollYTo ===============
+; Scrolls the starfield until the specified scroll position is reached.
+; Cast roll only.
+; IN
+; - B: Target Y position
+Credits_CastScrollYTo:
+	push bc ; (Not necessary)
+		call Credits_CastScrollY
+		rst  $08 ; Wait Frame
 	pop  bc
+	
 	ldh  a, [hScrollY]
-	cp   b
-	jr   nz, L0159C9
+	cp   b				; Are we on the target Y position?
+	jr   nz, Credits_CastScrollYTo	; If not, loop
 	ret
-L0159D5:;C
-	ld   a, [$CCFE]
-	add  $40
-	ld   [$CCFE], a
-	ret  nc
+	
+; =============== Credits_SprStarTextScroll ===============
+; Scrolls the text up and the starfield down at 0.25px/frame.
+; Thanks for playing screen only, when the starfield is drawn using sprites.
+Credits_SprStarTextScroll:
+	; Takes 4 frames to overflow
+	ld   a, [wCredScrollYSub]
+	add  $40					; SubPx += $40
+	ld   [wCredScrollYSub], a	; Did we overflow?
+	ret  nc						; If not, return
+	
+	; Scroll the BG viewport down.
+	; This scrolls up the text drawn on the background layer.
 	ldh  a, [hScrollY]
 	inc  a
 	ldh  [hScrollY], a
-	ld   a, [$CCFF]
+	
+	; Scroll the sprite viewport up.
+	; This is set up to simulate how the the BG viewport works, except with sprites.
+	; So scrolling this viewport up makes the sprite starfield scroll down (see Credits_DrawThank).
+	ld   a, [wCredSprScrollY]
 	dec  a
-	ld   [$CCFF], a
+	ld   [wCredSprScrollY], a
 	ret
-L0159EB:;C
-	xor  a
+	
+; =============== Credits_DrawThank ===============
+; Draws all sprites in scenes after the cast roll.
+Credits_DrawThank:
+	xor  a				; Start drawing sprites
 	ldh  [hWorkOAMPos], a
-	ld   a, $50
+	
+	;
+	; Draw the large Rockman sprite
+	;
+	ld   a, OBJ_OFFSET_Y+$40	; Around the bottom (as the origin of this sprite is at the top)
 	ld   [wTargetRelY], a
-	ld   a, $88
+	ld   a, OBJ_OFFSET_X+$80	; Right side
 	ld   [wTargetRelX], a
-	ld   hl, $62B1
+	ld   hl, SprMapPtrTbl_Credits_Pl
 	xor  a
-	call L015A39
-	ld   hl, wWorkOAM
-	ldh  a, [hWorkOAMPos]
+	call Sc_DrawSprMap
+	
+	;
+	; Draw the sprite version of the starfield.
+	;
+	
+	;--
+	; DE = Ptr to destination (current OAM slot)
+	ld   hl, wWorkOAM		; HL = Ptr to start of OAM mirror
+	ldh  a, [hWorkOAMPos]	; BC = Current pos
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ld   e, l
+	add  hl, bc				; Seek to current
+	ld   e, l				; Move to DE
 	ld   d, h
-	ld   hl, $6218
-	ld   b, $1A
-L015A0F:;R
-	ld   a, [$CCFF]
-	xor  $FF
-	add  [hl]
+	;--
+	
+	ld   hl, Credits_StarfieldSprTbl								; HL = Ptr to source
+	ld   b, (Credits_StarfieldSprTbl.end-Credits_StarfieldSprTbl)/3	; B = Number of stars ($1A)
+.loop:
+
+	; Y Position = byte0 - wCredSprScrollY - 1
+	; wCredSprScrollY is being treated similarly to the background viewport.
+	; For example, scrolling a viewport up makes the background move down.
+	;
+	; Since sprites do not use viewports, this is simulated manually making sprites move down
+	; The higher wCredSprScrollY becomes, the lower the viewport moves down, moving the starfield up.
+	; Therefore, subtract viewport position from the relative Y position.
+	ld   a, [wCredSprScrollY]	; A = -wCredSprScrollY
+	xor  $FF					; ""
+	add  [hl]					; Add relative Y position (byte0)
+	ld   [de], a				; Write to OAM
+	inc  hl ; Seek to byte1
+	inc  de ; Seek to XPos
+	
+	; X Position = byte1
+	ldi  a, [hl]	; Read byte1, seek to byte2
 	ld   [de], a
-	inc  hl
-	inc  de
-	ldi  a, [hl]
+	inc  de			; Seek to TileId
+	
+	; Tile ID = byte2
+	ldi  a, [hl]	; Read byte2, seek to next byte0
 	ld   [de], a
-	inc  de
-	ldi  a, [hl]
-	ld   [de], a
-	inc  de
+	inc  de			; Seek to Flags
+	
+	; Flags = $00
+	; To save space, since every star uses the same sprite flags, 
+	; this is not included in the sprite mapping.
 	xor  a
 	ld   [de], a
-	inc  de
-	dec  b
-	jr   nz, L015A0F
-	ld   a, e
+	inc  de			; Seek to next YPos
+	
+	dec  b					; Drawn all stars?
+	jr   nz, .loop			; If not, loop
+	
+	ld   a, e				; Track reached OAM slot
 	ldh  [hWorkOAMPos], a
-	call OAM_ClearRest
+	call OAM_ClearRest		; Done drawing
 	ret
-L015A2B:;C
-	ld   a, [$CCFE]
-	add  $40
-	ld   [$CCFE], a
-	ret  nc
-	ld   hl, $CCFF
+	
+; =============== Credits_SprStarScroll ===============
+; Scrolls the sprite starfield down at 0.25px/frame.
+; This is used when the Capcom logo stops moving, so the BG viewport isn't changed.
+Credits_SprStarScroll:
+	; Takes 4 frames to overflow
+	ld   a, [wCredScrollYSub]
+	add  $40					; SubPx += $40
+	ld   [wCredScrollYSub], a	; Did we overflow?
+	ret  nc						; If not, return
+	
+	; Scroll the sprite viewport up.
+	ld   hl, wCredSprScrollY
 	dec  [hl]
 	ret
-L015A39:;C
-	add  a
+	
+; =============== Sc_DrawSprMap ===============
+; Draws the specified cutscene sprite.
+; See also: ActS_DrawSprMap
+; IN
+; - HL: Ptr to sprite mapping table
+; - A: Sprite mapping ID
+; - wTargetRelY: Y position
+; - wTargetRelX: X position
+; - wScBaseSprFlags: Base flags
+Sc_DrawSprMap:
+	;
+	; Index the sprite mapping pointer from the table we've been passed.
+	; HL = HL[A*2]
+	;
+	add  a			; * 2 for pointer table
 	ld   b, $00
 	ld   c, a
-	add  hl, bc
-	ld   e, [hl]
+	add  hl, bc		; Seek to entry
+	ld   e, [hl]	; Read out pointer to DE
 	inc  hl
 	ld   d, [hl]
-	ld   l, e
+	ld   l, e		; Move to HL
 	ld   h, d
-	ld   de, wWorkOAM
+	
+	;
+	; Write the sprite mapping to the OAM mirror.
+	;
+	
+	;--
+	ld   de, wWorkOAM		; HL = Ptr to current OAM slot (could have been done simpler)
 	ldh  a, [hWorkOAMPos]
 	add  e
 	ld   e, a
 	ld   a, d
 	adc  $00
 	ld   d, a
-	ld   b, [hl]
-	inc  hl
-L015A50:;R
-	ld   a, [wTargetRelY]
-	add  [hl]
-	ld   [de], a
-	inc  hl
-	inc  de
+	;--
+	
+	; The first byte of a mapping marks the number of individual OBJ they use.
+	; Unlike other sprite mapping drawing routines, this neither allows blank sprite mappings
+	; nor does it check if we're going over the sprite limit (since it's all controlled manually).
+	; It also does not support flipping.
+	ld   b, [hl]			; B = OBJCount
+	inc  hl					; Seek to the OBJ table
+.loop:
+	; YPos = wTargetRelY + byte0
+	ld   a, [wTargetRelY]	; A = Absolute Y
+	add  [hl]				; Add relative Y
+	ld   [de], a			; Write to OAM mirror
+	inc  hl					; SrcPtr++
+	inc  de					; DestPtr++
+	
+	; XPos = wTargetRelX + byte1
 	ld   a, [wTargetRelX]
 	add  [hl]
 	ld   [de], a
 	inc  hl
 	inc  de
+	
+	; TileID = byte2
 	ldi  a, [hl]
 	ld   [de], a
 	inc  de
-	ld   a, [$CD0D]
+	
+	; Flags = wScBaseSprFlags ^ byte3
+	; Unlike every other routine, this does merge them the proper way by xor'ing them.
+	ld   a, [wScBaseSprFlags]
 	xor  [hl]
 	ld   [de], a
 	inc  hl
 	inc  de
-	dec  b
-	jr   nz, L015A50
-	ld   a, e
+	
+	dec  b					; Finished copying all OBJ?
+	jr   nz, .loop			; If not, loop
+	
+	ld   a, e				; Save back current OAM ptr
 	ldh  [hWorkOAMPos], a
 	ret
-L015A6F:;C
-	ld   a, [wWilyShipY]
+	
+; =============== Credits_CastDrawName ===============
+; Draws the enemy's name using sprites.
+Credits_CastDrawName:
+
+	;
+	; Get ptr to the string for the current cast roll entry.
+	; HL = Credits_CastTextPtrTbl[wCredRowId * 2]
+	;
+	ld   a, [wCredRowId]	; A = RowId * 2 (for ptr table)
 	add  a
-	ld   hl, $661A
-	ld   b, $00
+	ld   hl, Credits_CastTextPtrTbl	; HL = Ptr table base
+	ld   b, $00		; BC = Index
 	ld   c, a
-	add  hl, bc
-	ld   e, [hl]
+	add  hl, bc		; Seek to entry
+	ld   e, [hl]	; Read out to DE
 	inc  hl
 	ld   d, [hl]
-	ld   l, e
+	ld   l, e		; Move to HL
 	ld   h, d
-	ld   a, $48
-	ld   [$CD06], a
-	ld   a, [hl]
-	inc  hl
-	and  $1F
-	add  a
-	add  a
-	add  a
-	ld   [$CD07], a
-	ld   [$CD08], a
+	
+	;
+	; Set starting coordinates for the text drawing loop.
+	;
+	
+	; Y POSITION - Fixed
+	; All lines start at Y position $48.
+	DEF TEXT_BASE_Y = OBJ_OFFSET_Y+$38
+	ld   a, TEXT_BASE_Y
+	ld   [wCredTextY], a
+	
+	; X POSITION - String-specific.
+	; The first byte of a string contains its left padding, in tiles.
+	ld   a, [hl]	; Read byte0
+	inc  hl			; Seek to first character
+	and  $1F		; Filter out unwanted bits
+	add  a			; *2
+	add  a			; *4
+	add  a			; *8 (TILE_H)
+	ld   [wCredTextX], a
+	ld   [wCredTextRowX], a	; Make a backup copy for restoring it on newlines
+	
+	;
+	; Convert the text string into sprites.
+	;
+	
+	;--
+	; Start drawing writing them from the current OAM entry
+	; HL = wWorkOAM + hWorkOAMPos
 	ld   de, wWorkOAM
 	ldh  a, [hWorkOAMPos]
 	add  e
@@ -5949,45 +6948,89 @@ L015A6F:;C
 	ld   a, d
 	adc  $00
 	ld   d, a
-L015A9C:;R
-	ld   a, [$CD06]
+	;--
+.loop:
+	; YPos = wCredTextY
+	ld   a, [wCredTextY]
 	ld   [de], a
 	inc  de
-	ld   a, [$CD07]
+	
+	; XPos = wCredTextX
+	ld   a, [wCredTextX]
 	ld   [de], a
-	add  $08
-	ld   [$CD07], a
+	; Write the next character 8 pixels ro the right
+	; wCredTextX += 8
+	add  TILE_H
+	ld   [wCredTextX], a
 	inc  de
-	ldi  a, [hl]
-	sub  $20
-	ld   [de], a
+	
+	; TileID = byte2 - $20
+	; The font in ROM is ASCII-like, but in VRAM it's located 32 tiles before that.
+	ldi  a, [hl]		; Read character, seek to next
+	sub  $20			; -32
+	ld   [de], a		; Use that as tile ID
 	inc  de
+	
+	; Flags = wScBaseSprFlags ^ byte3
 	xor  a
 	ld   [de], a
 	inc  de
-	ld   a, [hl]
-	cp   $2F
-	call z, L015AC1
-	cp   $2E
-	jr   nz, L015A9C
-	ld   a, e
+	
+	; Check for a string terminator
+	ld   a, [hl]		; Read next character
+	cp   $2F			; Reached a newline character?
+	call z, .newLine	; If so, move to the start of the next row
+	cp   $2E			; Reached terminator?
+	jr   nz, .loop		; If not, loop
+	
+	; Otherwise, we're done
+	ld   a, e			; Save back new OAM write position
 	ldh  [hWorkOAMPos], a
 	ret
-L015AC1:;C
-	ld   a, $50
-	ld   [$CD06], a
-	ld   a, [$CD08]
-	ld   [$CD07], a
-	inc  hl
-	ld   a, [hl]
+	
+.newLine:
+	; Text strings only have two lines at most.
+	; We can get away with using an hardcoded Y location rather than doing it the proper way.
+	ld   a, TEXT_BASE_Y+TILE_H
+	ld   [wCredTextY], a
+	; Seek back to the start of the row
+	ld   a, [wCredTextRowX]
+	ld   [wCredTextX], a
+	
+	inc  hl 		; Seek to next character
+	ld   a, [hl]	; Read it before returning to the terminator check
 	ret
-L015ACF:;C
-	ld   e, l
+	
+; =============== ScAct_ApplySpeed ===============
+; Moves the actor by its current speed.
+; In short, actually moves the actor.
+; IN
+; - HL: Ptr to cutscene actor slot
+ScAct_ApplySpeed:
+	; Seek to vars
+	ld   e, l				; DE = Ptr to iScActYSub (position)
 	ld   d, h
-	inc  hl
-	inc  hl
-	inc  hl
-	inc  hl
+	
+	inc  hl ; iScActY		; HL = Ptr to iScActSpdYSub (speed)
+	inc  hl ; iScActXSub
+	inc  hl ; iScActX
+	inc  hl ; iScActSpdYSub
+	
+	; Move vertically
+	; iScActY* += iScActSpdY*
+	ld   a, [de]	; Read iScActYSub
+	add  [hl]		; Add iScActSpdYSub
+	ld   [de], a	; Save back
+	inc  hl ; iScActSpdY
+	inc  de ; iScActY
+	ld   a, [de]	; Read iScActY
+	adc  [hl]		; Add speed + overflow
+	ld   [de], a	; Save back
+	inc  hl ; iScActSpdXSub
+	inc  de ; iScActXSub
+	
+	; Move horizontally
+	; iScActX* += iScActSpdX*
 	ld   a, [de]
 	add  [hl]
 	ld   [de], a
@@ -5998,18 +7041,10 @@ L015ACF:;C
 	ld   [de], a
 	inc  hl
 	inc  de
-	ld   a, [de]
-	add  [hl]
-	ld   [de], a
-	inc  hl
-	inc  de
-	ld   a, [de]
-	adc  [hl]
-	ld   [de], a
-	inc  hl
-	inc  de
+	
 	ret
-L015AEA: db $98
+	
+TilemapDef_WilyStationEntrance: db $98
 L015AEB: db $00
 L015AEC: db $18
 L015AED: db $70
@@ -6442,7 +7477,7 @@ L015C97: db $70
 L015C98: db $70
 L015C99: db $70
 L015C9A: db $00
-L015C9B: db $98
+TilemapDef_Earth: db $98
 L015C9C: db $40
 L015C9D: db $14
 L015C9E: db $70
@@ -6811,7 +7846,7 @@ L015E08: db $70
 L015E09: db $70
 L015E0A: db $70
 L015E0B: db $00
-L015E0C: db $98
+TilemapDef_Ending_Space: db $98
 L015E0D: db $1F
 L015E0E: db $92
 L015E0F: db $70
@@ -7148,7 +8183,7 @@ L015F59: db $70
 L015F5A: db $70
 L015F5B: db $70
 L015F5C: db $00
-L015F5D: db $9B
+TilemapDef_Credits_Space: db $9B
 L015F5E: db $EA
 L015F5F: db $0A
 L015F60: db $70
@@ -7670,7 +8705,7 @@ L016163: db $70
 L016164: db $70
 L016165: db $00
 L016166: db $00;X
-L016167: db $98
+TilemapDef_Credits_Thank: db $98
 L016168: db $03
 L016169: db $0D
 L01616A: db $40
@@ -7847,100 +8882,41 @@ L016214: db $70
 L016215: db $70
 L016216: db $70
 L016217: db $00
-L016218: db $09
-L016219: db $30
-L01621A: db $3E
-L01621B: db $09
-L01621C: db $88
-L01621D: db $3F
-L01621E: db $F9
-L01621F: db $58
-L016220: db $3F
-L016221: db $F9
-L016222: db $90
-L016223: db $3D
-L016224: db $E9
-L016225: db $48
-L016226: db $3F
-L016227: db $E9
-L016228: db $98
-L016229: db $3F
-L01622A: db $D9
-L01622B: db $18
-L01622C: db $3F
-L01622D: db $D9
-L01622E: db $68
-L01622F: db $3F
-L016230: db $C9
-L016231: db $30
-L016232: db $3D
-L016233: db $C9
-L016234: db $88
-L016235: db $3F
-L016236: db $B9
-L016237: db $28
-L016238: db $3F
-L016239: db $B9
-L01623A: db $A0
-L01623B: db $3D
-L01623C: db $A9
-L01623D: db $60
-L01623E: db $3D
-L01623F: db $99
-L016240: db $30
-L016241: db $3E
-L016242: db $99
-L016243: db $88
-L016244: db $3F
-L016245: db $91
-L016246: db $28
-L016247: db $3F
-L016248: db $89
-L016249: db $30
-L01624A: db $3D
-L01624B: db $79
-L01624C: db $28
-L01624D: db $3F
-L01624E: db $79
-L01624F: db $A0
-L016250: db $3D
-L016251: db $61
-L016252: db $88
-L016253: db $3F
-L016254: db $51
-L016255: db $50
-L016256: db $3E
-L016257: db $51
-L016258: db $80
-L016259: db $3D
-L01625A: db $51
-L01625B: db $90
-L01625C: db $3E
-L01625D: db $41
-L01625E: db $28
-L01625F: db $3F
-L016260: db $31
-L016261: db $60
-L016262: db $3D
-L016263: db $21
-L016264: db $30
-L016265: db $3E
-L016266: db $21;X
-L016267: db $90;X
-L016268: db $3E;X
-L016269: db $11;X
-L01626A: db $08;X
-L01626B: db $3D;X
-L01626C: db $11;X
-L01626D: db $08;X
-L01626E: db $3D;X
-L01626F: db $11;X
-L016270: db $08;X
-L016271: db $3D;X
-L016272: db $11;X
-L016273: db $08;X
-L016274: db $3D;X
-L016275: db $B4;X
+Credits_StarfieldSprTbl:
+	;  Y   X   TILE ID
+	db $09,$30,$3E ; $00
+	db $09,$88,$3F ; $01
+	db $F9,$58,$3F ; $02
+	db $F9,$90,$3D ; $03
+	db $E9,$48,$3F ; $04
+	db $E9,$98,$3F ; $05
+	db $D9,$18,$3F ; $06
+	db $D9,$68,$3F ; $07
+	db $C9,$30,$3D ; $08
+	db $C9,$88,$3F ; $09
+	db $B9,$28,$3F ; $0A
+	db $B9,$A0,$3D ; $0B
+	db $A9,$60,$3D ; $0C
+	db $99,$30,$3E ; $0D
+	db $99,$88,$3F ; $0E
+	db $91,$28,$3F ; $0F
+	db $89,$30,$3D ; $10
+	db $79,$28,$3F ; $11
+	db $79,$A0,$3D ; $12
+	db $61,$88,$3F ; $13
+	db $51,$50,$3E ; $14
+	db $51,$80,$3D ; $15
+	db $51,$90,$3E ; $16
+	db $41,$28,$3F ; $17
+	db $31,$60,$3D ; $18
+	db $21,$30,$3E ; $19
+.end: ; [TCRF] Unused stars that don't get drawn to avoid going over the sprite limit, mostly dummy entries.
+	db $21,$90,$3E ; $1A
+	db $11,$08,$3D ; $1B
+	db $11,$08,$3D ; $1C
+	db $11,$08,$3D ; $1D
+	db $11,$08,$3D ; $1E
+SprMapPtrTbl_ScWilyShipSm: db $B4;X
 L016276: db $62;X
 L016277: db $B9;X
 L016278: db $62;X
@@ -7948,7 +8924,7 @@ L016279: db $BE
 L01627A: db $62
 L01627B: db $C7;X
 L01627C: db $62;X
-L01627D: db $E0
+SprMapPtrTbl_ScPl: db $E0
 L01627E: db $62
 L01627F: db $09
 L016280: db $63
@@ -7960,7 +8936,7 @@ L016285: db $32
 L016286: db $63
 L016287: db $5B
 L016288: db $63
-L016289: db $00
+SprMapPtrTbl_ScSkullJaw: db $00
 L01628A: db $64
 L01628B: db $00
 L01628C: db $64
@@ -7968,11 +8944,11 @@ L01628D: db $E6
 L01628E: db $63
 L01628F: db $F3
 L016290: db $63
-L016291: db $25
+SprMapPtrTbl_ScWilyCrash: db $25
 L016292: db $64
 L016293: db $2E
 L016294: db $64
-L016295: db $37
+SprMapPtrTbl_ScWilyNuke: db $37
 L016296: db $64
 L016297: db $3C
 L016298: db $64
@@ -7988,7 +8964,7 @@ L0162A1: db $AD
 L0162A2: db $64
 L0162A3: db $DE
 L0162A4: db $64
-L0162A5: db $33
+SprMapPtrTbl_ScExpl: db $33
 L0162A6: db $65
 L0162A7: db $38
 L0162A8: db $65
@@ -8000,7 +8976,7 @@ L0162AD: db $38
 L0162AE: db $65
 L0162AF: db $49;X
 L0162B0: db $65;X
-L0162B1: db $66
+SprMapPtrTbl_Credits_Pl: db $66
 L0162B2: db $65
 L0162B3: db $00;X
 L0162B4: db $01;X
@@ -8750,580 +9726,187 @@ L01659B: db $30
 L01659C: db $0A
 L01659D: db $7D
 L01659E: db $00
-L01659F: db $02
-L0165A0: db $02
-L0165A1: db $02
-L0165A2: db $02
-L0165A3: db $02
-L0165A4: db $07
-L0165A5: db $04
-L0165A6: db $04
-L0165A7: db $05
-L0165A8: db $05
-L0165A9: db $05
-L0165AA: db $05
-L0165AB: db $07
-L0165AC: db $07
-L0165AD: db $07
-L0165AE: db $09
-L0165AF: db $09
-L0165B0: db $09
-L0165B1: db $09
-L0165B2: db $0B
-L0165B3: db $0B
-L0165B4: db $0B
-L0165B5: db $0D
-L0165B6: db $0D
-L0165B7: db $0D
-L0165B8: db $0F
-L0165B9: db $0F
-L0165BA: db $0F
-L0165BB: db $0F
-L0165BC: db $0A
-L0165BD: db $0C
-L0165BE: db $0E
-L0165BF: db $10
-L0165C0: db $14
-L0165C1: db $15
-L0165C2: db $06
-L0165C3: db $08
-L0165C4: db $13
-L0165C5: db $02;X
-L0165C6: db $02;X
-L0165C7: db $02;X
-L0165C8: db $02;X
-L0165C9: db $02;X
-L0165CA: db $02;X
-L0165CB: db $02;X
-L0165CC: db $DD
-L0165CD: db $67
-L0165CE: db $0E
-L0165CF: db $68
-L0165D0: db $1B
-L0165D1: db $68
-L0165D2: db $3C
-L0165D3: db $68
-L0165D4: db $6D
-L0165D5: db $68
-L0165D6: db $92
-L0165D7: db $68
-L0165D8: db $69
-L0165D9: db $69
-L0165DA: db $8E
-L0165DB: db $69
-L0165DC: db $A3
-L0165DD: db $69
-L0165DE: db $C4
-L0165DF: db $69
-L0165E0: db $FD
-L0165E1: db $69
-L0165E2: db $0E
-L0165E3: db $6A
-L0165E4: db $27
-L0165E5: db $6A
-L0165E6: db $3C
-L0165E7: db $6A
-L0165E8: db $61
-L0165E9: db $6A
-L0165EA: db $7A
-L0165EB: db $6A
-L0165EC: db $CC
-L0165ED: db $6A
-L0165EE: db $ED
-L0165EF: db $6A
-L0165F0: db $12
-L0165F1: db $6B
-L0165F2: db $3F
-L0165F3: db $6B
-L0165F4: db $64
-L0165F5: db $6B
-L0165F6: db $AD
-L0165F7: db $6B
-L0165F8: db $BA
-L0165F9: db $6B
-L0165FA: db $DF
-L0165FB: db $6B
-L0165FC: db $14
-L0165FD: db $6C
-L0165FE: db $2D
-L0165FF: db $6C
-L016600: db $3E
-L016601: db $6C
-L016602: db $53
-L016603: db $6C
-L016604: db $8C
-L016605: db $6C
-L016606: db $C1
-L016607: db $6C
-L016608: db $E6
-L016609: db $6C
-L01660A: db $0B
-L01660B: db $6D
-L01660C: db $3C
-L01660D: db $6D
-L01660E: db $6D
-L01660F: db $6D
-L016610: db $A6
-L016611: db $6D
-L016612: db $CB
-L016613: db $6D
-L016614: db $F0
-L016615: db $6D
-L016616: db $21
-L016617: db $6E
-L016618: db $00;X
-L016619: db $00;X
-L01661A: db $66
-L01661B: db $66
-L01661C: db $73
-L01661D: db $66
-L01661E: db $7B
-L01661F: db $66
-L016620: db $84
-L016621: db $66
-L016622: db $90
-L016623: db $66
-L016624: db $A4
-L016625: db $66
-L016626: db $AC
-L016627: db $66
-L016628: db $B8
-L016629: db $66
-L01662A: db $C4
-L01662B: db $66
-L01662C: db $CD
-L01662D: db $66
-L01662E: db $D9
-L01662F: db $66
-L016630: db $E3
-L016631: db $66
-L016632: db $F0
-L016633: db $66
-L016634: db $F7
-L016635: db $66
-L016636: db $03
-L016637: db $67
-L016638: db $0B
-L016639: db $67
-L01663A: db $12
-L01663B: db $67
-L01663C: db $18
-L01663D: db $67
-L01663E: db $21
-L01663F: db $67
-L016640: db $2A
-L016641: db $67
-L016642: db $34
-L016643: db $67
-L016644: db $3E
-L016645: db $67
-L016646: db $44
-L016647: db $67
-L016648: db $4C
-L016649: db $67
-L01664A: db $52
-L01664B: db $67
-L01664C: db $5A
-L01664D: db $67
-L01664E: db $67
-L01664F: db $67
-L016650: db $6F
-L016651: db $67
-L016652: db $7B
-L016653: db $67
-L016654: db $8A
-L016655: db $67
-L016656: db $94
-L016657: db $67
-L016658: db $9E
-L016659: db $67
-L01665A: db $A7
-L01665B: db $67
-L01665C: db $AF
-L01665D: db $67
-L01665E: db $B8
-L01665F: db $67
-L016660: db $C0
-L016661: db $67
-L016662: db $CB
-L016663: db $67
-L016664: db $D6
-L016665: db $67
-L016666: db $67
-L016667: db $48
-L016668: db $41
-L016669: db $56
-L01666A: db $45
-L01666B: db $5C
-L01666C: db $53
-L01666D: db $55
-L01666E: db $5C
-L01666F: db $42
-L016670: db $45
-L016671: db $45
-L016672: db $2E
-L016673: db $68
-L016674: db $43
-L016675: db $48
-L016676: db $49
-L016677: db $42
-L016678: db $45
-L016679: db $45
-L01667A: db $2E
-L01667B: db $68
-L01667C: db $57
-L01667D: db $41
-L01667E: db $4E
-L01667F: db $41
-L016680: db $41
-L016681: db $41
-L016682: db $4E
-L016683: db $2E
-L016684: db $68
-L016685: db $48
-L016686: db $41
-L016687: db $4D
-L016688: db $4D
-L016689: db $45
-L01668A: db $52
-L01668B: db $2F
-L01668C: db $4A
-L01668D: db $4F
-L01668E: db $45
-L01668F: db $2E
-L016690: db $66
-L016691: db $4B
-L016692: db $41
-L016693: db $45
-L016694: db $54
-L016695: db $54
-L016696: db $45
-L016697: db $4B
-L016698: db $49
-L016699: db $54
-L01669A: db $41
-L01669B: db $2F
-L01669C: db $4D
-L01669D: db $4F
-L01669E: db $4E
-L01669F: db $4B
-L0166A0: db $49
-L0166A1: db $4E
-L0166A2: db $47
-L0166A3: db $2E
-L0166A4: db $68
-L0166A5: db $4D
-L0166A6: db $45
-L0166A7: db $54
-L0166A8: db $41
-L0166A9: db $4C
-L0166AA: db $4C
-L0166AB: db $2E
-L0166AC: db $67
-L0166AD: db $4B
-L0166AE: db $4F
-L0166AF: db $4D
-L0166B0: db $41
-L0166B1: db $53
-L0166B2: db $41
-L0166B3: db $42
-L0166B4: db $55
-L0166B5: db $52
-L0166B6: db $4F
-L0166B7: db $2E
-L0166B8: db $69
-L0166B9: db $4D
-L0166BA: db $45
-L0166BB: db $43
-L0166BC: db $48
-L0166BD: db $41
-L0166BE: db $2F
-L0166BF: db $4B
-L0166C0: db $45
-L0166C1: db $52
-L0166C2: db $4F
-L0166C3: db $2E
-L0166C4: db $68
-L0166C5: db $4D
-L0166C6: db $41
-L0166C7: db $47
-L0166C8: db $40
-L0166C9: db $46
-L0166CA: db $4C
-L0166CB: db $59
-L0166CC: db $2E
-L0166CD: db $67
-L0166CE: db $47
-L0166CF: db $5B
-L0166D0: db $53
-L0166D1: db $50
-L0166D2: db $52
-L0166D3: db $49
-L0166D4: db $4E
-L0166D5: db $47
-L0166D6: db $45
-L0166D7: db $52
-L0166D8: db $2E
-L0166D9: db $67
-L0166DA: db $50
-L0166DB: db $45
-L0166DC: db $54
-L0166DD: db $45
-L0166DE: db $52
-L0166DF: db $43
-L0166E0: db $48
-L0166E1: db $59
-L0166E2: db $2E
-L0166E3: db $68
-L0166E4: db $4E
-L0166E5: db $45
-L0166E6: db $57
-L0166E7: db $2F
-L0166E8: db $53
-L0166E9: db $48
-L0166EA: db $4F
-L0166EB: db $54
-L0166EC: db $4D
-L0166ED: db $41
-L0166EE: db $4E
-L0166EF: db $2E
-L0166F0: db $69
-L0166F1: db $59
-L0166F2: db $41
-L0166F3: db $4D
-L0166F4: db $42
-L0166F5: db $4F
-L0166F6: db $2E
-L0166F7: db $66
-L0166F8: db $48
-L0166F9: db $41
-L0166FA: db $52
-L0166FB: db $49
-L0166FC: db $40
-L0166FD: db $48
-L0166FE: db $41
-L0166FF: db $52
-L016700: db $52
-L016701: db $59
-L016702: db $2E
-L016703: db $68
-L016704: db $48
-L016705: db $4F
-L016706: db $55
-L016707: db $44
-L016708: db $41
-L016709: db $49
-L01670A: db $2E
-L01670B: db $69
-L01670C: db $54
-L01670D: db $45
-L01670E: db $4C
-L01670F: db $4C
-L016710: db $59
-L016711: db $2E
-L016712: db $69
-L016713: db $50
-L016714: db $49
-L016715: db $50
-L016716: db $49
-L016717: db $2E
-L016718: db $68
-L016719: db $53
-L01671A: db $48
-L01671B: db $4F
-L01671C: db $54
-L01671D: db $4D
-L01671E: db $41
-L01671F: db $4E
-L016720: db $2E
-L016721: db $68
-L016722: db $46
-L016723: db $4C
-L016724: db $59
-L016725: db $40
-L016726: db $42
-L016727: db $4F
-L016728: db $59
-L016729: db $2E
-L01672A: db $68
-L01672B: db $53
-L01672C: db $50
-L01672D: db $52
-L01672E: db $49
-L01672F: db $4E
-L016730: db $47
-L016731: db $45
-L016732: db $52
-L016733: db $2E
-L016734: db $67
-L016735: db $50
-L016736: db $49
-L016737: db $45
-L016738: db $52
-L016739: db $4F
-L01673A: db $42
-L01673B: db $4F
-L01673C: db $54
-L01673D: db $2E
-L01673E: db $69
-L01673F: db $4D
-L016740: db $4F
-L016741: db $4C
-L016742: db $45
-L016743: db $2E
-L016744: db $68
-L016745: db $52
-L016746: db $4F
-L016747: db $42
-L016748: db $42
-L016749: db $49
-L01674A: db $54
-L01674B: db $2E
-L01674C: db $69
-L01674D: db $43
-L01674E: db $4F
-L01674F: db $4F
-L016750: db $4B
-L016751: db $2E
-L016752: db $68
-L016753: db $42
-L016754: db $41
-L016755: db $54
-L016756: db $54
-L016757: db $4F
-L016758: db $4E
-L016759: db $2E
-L01675A: db $69
-L01675B: db $50
-L01675C: db $55
-L01675D: db $54
-L01675E: db $49
-L01675F: db $2F
-L016760: db $47
-L016761: db $4F
-L016762: db $42
-L016763: db $4C
-L016764: db $49
-L016765: db $4E
-L016766: db $2E
-L016767: db $68
-L016768: db $53
-L016769: db $43
-L01676A: db $57
-L01676B: db $4F
-L01676C: db $52
-L01676D: db $4D
-L01676E: db $2E
-L01676F: db $66
-L016770: db $4D
-L016771: db $41
-L016772: db $54
-L016773: db $41
-L016774: db $53
-L016775: db $41
-L016776: db $42
-L016777: db $55
-L016778: db $52
-L016779: db $4F
-L01677A: db $2E
-L01677B: db $68
-L01677C: db $4B
-L01677D: db $41
-L01677E: db $4D
-L01677F: db $49
-L016780: db $4E
-L016781: db $41
-L016782: db $52
-L016783: db $49
-L016784: db $2F
-L016785: db $47
-L016786: db $4F
-L016787: db $52
-L016788: db $4F
-L016789: db $2E
-L01678A: db $67
-L01678B: db $43
-L01678C: db $4C
-L01678D: db $41
-L01678E: db $53
-L01678F: db $48
-L016790: db $4D
-L016791: db $41
-L016792: db $4E
-L016793: db $2E
-L016794: db $67
-L016795: db $4D
-L016796: db $45
-L016797: db $54
-L016798: db $41
-L016799: db $4C
-L01679A: db $4D
-L01679B: db $41
-L01679C: db $4E
-L01679D: db $2E
-L01679E: db $68
-L01679F: db $57
-L0167A0: db $4F
-L0167A1: db $4F
-L0167A2: db $44
-L0167A3: db $4D
-L0167A4: db $41
-L0167A5: db $4E
-L0167A6: db $2E
-L0167A7: db $68
-L0167A8: db $41
-L0167A9: db $49
-L0167AA: db $52
-L0167AB: db $4D
-L0167AC: db $41
-L0167AD: db $4E
-L0167AE: db $2E
-L0167AF: db $68
-L0167B0: db $48
-L0167B1: db $41
-L0167B2: db $52
-L0167B3: db $44
-L0167B4: db $4D
-L0167B5: db $41
-L0167B6: db $4E
-L0167B7: db $2E
-L0167B8: db $68
-L0167B9: db $54
-L0167BA: db $4F
-L0167BB: db $50
-L0167BC: db $4D
-L0167BD: db $41
-L0167BE: db $4E
-L0167BF: db $2E
-L0167C0: db $67
-L0167C1: db $4D
-L0167C2: db $41
-L0167C3: db $47
-L0167C4: db $4E
-L0167C5: db $45
-L0167C6: db $54
-L0167C7: db $4D
-L0167C8: db $41
-L0167C9: db $4E
-L0167CA: db $2E
-L0167CB: db $67
-L0167CC: db $4E
-L0167CD: db $45
-L0167CE: db $45
-L0167CF: db $44
-L0167D0: db $4C
-L0167D1: db $45
-L0167D2: db $4D
-L0167D3: db $41
-L0167D4: db $4E
-L0167D5: db $2E
-L0167D6: db $69
-L0167D7: db $51
-L0167D8: db $55
-L0167D9: db $49
-L0167DA: db $4E
-L0167DB: db $54
-L0167DC: db $2E
+; =============== Credits_CastGfxSetTbl ===============
+; Maps each entry in the cast roll to its art set.
+Credits_CastGfxSetTbl:
+	db ACTGFX_LVLHARD    ; 
+	db ACTGFX_LVLHARD    ; 
+	db ACTGFX_LVLHARD    ; 
+	db ACTGFX_LVLHARD    ; 
+	db ACTGFX_LVLHARD    ; 
+	db ACTGFX_LVLNEEDLE  ; 
+	db ACTGFX_LVLTOP     ; 
+	db ACTGFX_LVLTOP     ; 
+	db ACTGFX_LVLMAGNET  ; 
+	db ACTGFX_LVLMAGNET  ; 
+	db ACTGFX_LVLMAGNET  ; 
+	db ACTGFX_LVLMAGNET  ; 
+	db ACTGFX_LVLNEEDLE  ; 
+	db ACTGFX_LVLNEEDLE  ; 
+	db ACTGFX_LVLNEEDLE  ; 
+	db ACTGFX_LVLCRASH   ; 
+	db ACTGFX_LVLCRASH   ; 
+	db ACTGFX_LVLCRASH   ; 
+	db ACTGFX_LVLCRASH   ; 
+	db ACTGFX_LVLMETAL   ; 
+	db ACTGFX_LVLMETAL   ; 
+	db ACTGFX_LVLMETAL   ; 
+	db ACTGFX_LVLWOOD    ; 
+	db ACTGFX_LVLWOOD    ; 
+	db ACTGFX_LVLWOOD    ; 
+	db ACTGFX_LVLAIR     ; 
+	db ACTGFX_LVLAIR     ; 
+	db ACTGFX_LVLAIR     ; 
+	db ACTGFX_LVLAIR     ; 
+	db ACTGFX_CRASHMAN   ; 
+	db ACTGFX_METALMAN   ; 
+	db ACTGFX_WOODMAN    ; 
+	db ACTGFX_AIRMAN     ; 
+	db ACTGFX_HARDMAN    ; 
+	db ACTGFX_TOPMAN     ; 
+	db ACTGFX_MAGNETMAN  ; 
+	db ACTGFX_NEEDLEMAN  ; 
+	db ACTGFX_QUINT      ; 
+.end: ; [POI] Dummy unused entries
+	db ACTGFX_LVLHARD
+	db ACTGFX_LVLHARD
+	db ACTGFX_LVLHARD
+	db ACTGFX_LVLHARD
+	db ACTGFX_LVLHARD
+	db ACTGFX_LVLHARD
+	db ACTGFX_LVLHARD
+	
+; =============== SprMapPtrTbl_Credits_CastPic ===============
+; Sprite mappings used for the enemies in the cast roll.
+; Goes without saying, these are separate from the ones used during gameplay.
+SprMapPtrTbl_Credits_CastPic:
+	dw L0167DD
+	dw L01680E
+	dw L01681B
+	dw L01683C
+	dw L01686D
+	dw L016892
+	dw L016969
+	dw L01698E
+	dw L0169A3
+	dw L0169C4
+	dw L0169FD
+	dw L016A0E
+	dw L016A27
+	dw L016A3C
+	dw L016A61
+	dw L016A7A
+	dw L016ACC
+	dw L016AED
+	dw L016B12
+	dw L016B3F
+	dw L016B64
+	dw L016BAD
+	dw L016BBA
+	dw L016BDF
+	dw L016C14
+	dw L016C2D
+	dw L016C3E
+	dw L016C53
+	dw L016C8C
+	dw L016CC1
+	dw L016CE6
+	dw L016D0B
+	dw L016D3C
+	dw L016D6D
+	dw L016DA6
+	dw L016DCB
+	dw L016DF0
+	dw L016E21
+	dw $0000;X
+
+; =============== Credits_CastTextPtrTbl ===============
+; Enemy names for the cast roll.
+MACRO mCastStr
+	db $60|\1 ; Left padding, in tiles. The $60 marker doesn't have any effect.
+	db \2     ; String
+	db "\0"   ; Terminator
+ENDM
+Credits_CastTextPtrTbl:
+	dw Str_Bee
+	dw Str_Chibee
+	dw Str_Wanaan
+	dw Str_HammerJoe
+	dw Str_NeoMonking
+	dw Str_NeoMet
+	dw Str_Komasaburo
+	dw Str_Mechakkero
+	dw Str_MagFly
+	dw Str_GiantSpringer
+	dw Str_Peterchy
+	dw Str_NewShotnan
+	dw Str_Yambow
+	dw Str_HariHarry
+	dw Str_Cannon
+	dw Str_Telly
+	dw Str_Pipi
+	dw Str_ShotMan
+	dw Str_FlyBoy
+	dw Str_Springer
+	dw Str_PieroBot
+	dw Str_Mole
+	dw Str_Robbit
+	dw Str_Cook
+	dw Str_Batton
+	dw Str_PuchiGoblin
+	dw Str_Scworm
+	dw Str_Matasaburo
+	dw Str_KaminariGoro
+	dw Str_CrashMan
+	dw Str_MetalMan
+	dw Str_WoodMan
+	dw Str_AirMan
+	dw Str_HardMan
+	dw Str_TopMan
+	dw Str_MagnetMan
+	dw Str_NeedleMan
+	dw Str_Quint
+	
+SETCHARMAP credits
+Str_Bee:           mCastStr $07, "HAVE'SU'BEE"
+Str_Chibee:        mCastStr $08, "CHIBEE"
+Str_Wanaan:        mCastStr $08, "WANAAAN"
+Str_HammerJoe:     mCastStr $08, "HAMMER\nJOE"
+Str_NeoMonking:    mCastStr $06, "KAETTEKITA\nMONKING"
+Str_NeoMet:        mCastStr $08, "METALL"
+Str_Komasaburo:    mCastStr $07, "KOMASABURO"
+Str_Mechakkero:    mCastStr $09, "MECHA\nKERO"
+Str_MagFly:        mCastStr $08, "MAG FLY"
+Str_GiantSpringer: mCastStr $07, "G.SPRINGER"
+Str_Peterchy:      mCastStr $07, "PETERCHY"
+Str_NewShotnan:    mCastStr $08, "NEW\nSHOTMAN"
+Str_Yambow:        mCastStr $09, "YAMBO"
+Str_HariHarry:     mCastStr $06, "HARI HARRY"
+Str_Cannon:        mCastStr $08, "HOUDAI"
+Str_Telly:         mCastStr $09, "TELLY"
+Str_Pipi:          mCastStr $09, "PIPI"
+Str_ShotMan:       mCastStr $08, "SHOTMAN"
+Str_FlyBoy:        mCastStr $08, "FLY BOY"
+Str_Springer:      mCastStr $08, "SPRINGER"
+Str_PieroBot:      mCastStr $07, "PIEROBOT"
+Str_Mole:          mCastStr $09, "MOLE"
+Str_Robbit:        mCastStr $08, "ROBBIT"
+Str_Cook:          mCastStr $09, "COOK"
+Str_Batton:        mCastStr $08, "BATTON"
+Str_PuchiGoblin:   mCastStr $09, "PUTI\nGOBLIN"
+Str_Scworm:        mCastStr $08, "SCWORM"
+Str_Matasaburo:    mCastStr $06, "MATASABURO"
+Str_KaminariGoro:  mCastStr $08, "KAMINARI\nGORO"
+Str_CrashMan:      mCastStr $07, "CLASHMAN"
+Str_MetalMan:      mCastStr $07, "METALMAN"
+Str_WoodMan:       mCastStr $08, "WOODMAN"
+Str_AirMan:        mCastStr $08, "AIRMAN"
+Str_HardMan:       mCastStr $08, "HARDMAN"
+Str_TopMan:        mCastStr $08, "TOPMAN"
+Str_MagnetMan:     mCastStr $07, "MAGNETMAN"
+Str_NeedleMan:     mCastStr $07, "NEEDLEMAN"
+Str_Quint:         mCastStr $09, "QUINT"
+
 L0167DD: db $0C
 L0167DE: db $E1
 L0167DF: db $F4

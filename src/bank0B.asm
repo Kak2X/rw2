@@ -1282,7 +1282,7 @@ L0B44FF: db $38
 ; Sets of weapon graphics, each 16 tiles large.
 ; Only one can be loaded at a time.
 Marker_GFX_Wpn:
-L0B4500: db $00
+GFX_Wpn_P: db $00
 L0B4501: db $00
 L0B4502: db $00
 L0B4503: db $00
@@ -2306,7 +2306,7 @@ L0B48FC: db $F4
 L0B48FD: db $38
 L0B48FE: db $F8
 L0B48FF: db $00
-L0B4900: db $01
+GFX_Wpn_Rm: db $01
 L0B4901: db $01
 L0B4902: db $06
 L0B4903: db $06
@@ -2562,7 +2562,7 @@ L0B49FC: db $F0
 L0B49FD: db $80
 L0B49FE: db $F0
 L0B49FF: db $80
-L0B4A00: db $0C
+GFX_Wpn_Rj: db $0C
 L0B4A01: db $00
 L0B4A02: db $0F
 L0B4A03: db $04
@@ -2818,7 +2818,7 @@ L0B4AFC: db $00
 L0B4AFD: db $00
 L0B4AFE: db $00
 L0B4AFF: db $00
-L0B4B00: db $00
+GFX_Wpn_Tp: db $00
 L0B4B01: db $00
 L0B4B02: db $30
 L0B4B03: db $00
@@ -3586,7 +3586,7 @@ L0B4DFC: db $00
 L0B4DFD: db $00
 L0B4DFE: db $00
 L0B4DFF: db $00
-L0B4E00: db $00
+GFX_Wpn_Ar: db $00
 L0B4E01: db $0E
 L0B4E02: db $00
 L0B4E03: db $1F
@@ -3842,7 +3842,7 @@ L0B4EFC: db $0A
 L0B4EFD: db $04
 L0B4EFE: db $06
 L0B4EFF: db $00
-L0B4F00: db $3C
+GFX_Wpn_MeNe: db $3C
 L0B4F01: db $00
 L0B4F02: db $7E
 L0B4F03: db $14
@@ -4098,7 +4098,7 @@ L0B4FFC: db $3C
 L0B4FFD: db $00
 L0B4FFE: db $00
 L0B4FFF: db $00
-L0B5000: db $06
+GFX_Quint: db $06
 L0B5001: db $00
 L0B5002: db $07
 L0B5003: db $02
@@ -10242,7 +10242,7 @@ L0B67FC: db $7E
 L0B67FD: db $02
 L0B67FE: db $7C
 L0B67FF: db $04
-L0B6800: db $E0
+GFX_Wily: db $E0
 L0B6801: db $80
 L0B6802: db $10
 L0B6803: db $E0
@@ -13314,7 +13314,7 @@ L0B73FC: db $FF;X
 L0B73FD: db $00;X
 L0B73FE: db $FF;X
 L0B73FF: db $00;X
-L0B7400: db $07
+GFX_Credits_OBJ: db $07
 L0B7401: db $07
 L0B7402: db $1F
 L0B7403: db $1F

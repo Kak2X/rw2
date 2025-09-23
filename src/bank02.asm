@@ -10936,8 +10936,8 @@ Act_Bubble_Pop:
 	
 ;================ Act_WilyCastleCutscene ================
 ; ID: ACT_WILYCASTLESC
-; ??? There's actually no code for this, it's only used to load the respective graphics in.
-; ??? The cutscene itself is not handled by an actor, rather it's hardcoded in ??????.
+; There's actually no code for this, it's only used to draw Wily's sprite (and load his GFX when the room loads).
+; This actor's animation is directly handled by WilyCastle_DoCutscene, which also uses pseudo-gameplay to move the player.
 Act_WilyCastleCutscene:
 	ret
 	
@@ -13878,14 +13878,15 @@ Act_CrashManShotExpl_Anim:
 	
 ;================ Act_GroundExpl ================
 ; ID: ACT_GROUNDEXPL
-; Weird-looking explosion used during the Wily Castle cutscene, when ground explodes 
+; Weird-looking looping explosion used during the Wily Castle cutscene, when ground explodes 
 ; from under Rockman and he falls into the teleporter room.
 ;
-; This actor is only used to perform the animation and play the explosion sound, it's
-; the cutscene that deletes the actual blocks from the level layout, at least in part
-; because the cutscene spawns *several* of these. 
-; Specifically, for a few seconds, as soon as one despawns a new one is spawned in
-; its place, which is why the animation and sound effects look continuous.
+; For some reason, the graphics associated with this actor are stored next to Needle Cannon
+; and Metal Blade' shot graphics, and expect to be loaded in VRAM where weapon GFX load.
+;
+; This actor is only used to perform the animation and play the explosion sound. The blocks
+; the player falls through are never solid, the cutscene merely writes blank blocks to the tilemap
+; during the explosion to give the effect of the two blocks being gone.
 Act_GroundExpl:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
@@ -13908,12 +13909,12 @@ Act_GroundExpl_Play:
 	; Wait until the explosion is finished
 	call ActS_PlayAnimRange
 	ret  z
-	; Then despawn the explosion.
-	; The cutscene may either immediately respawn another one, or wait for all explosions
-	; to get despawned before making the player fall down.
+	; Then loop back the to the first routine, resetting the animation.
+	; This actor never despawns on its own, it's the screen transition that does it.
 	xor  a
 	ldh  [hActCur+iActRtnId], a
 	ret
+	
 ; =============== Act_NewShotmanShotV ===============
 ; ID: ACT_NEOMETSHOT
 ; Neo Metall's shot, spawned in three, can be horizontal or diagonal.

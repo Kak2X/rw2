@@ -27,17 +27,82 @@ SECTION "CCE0", WRAM0[$CCE0]
 wLeafShieldOrgSpdX:   db ; $CCE0 ; Leaf Shield - Throw signal
 
 SECTION "CCEE", WRAM0[$CCEE]
-wWilyShipY:            db ; $CCEE ; Wily Ship - Y Position
-wWilyShipX:            db ; $CCEF ; Wily Ship - X Position
 
-SECTION "CCFD", WRAM0[$CCFD]
-wWilyPhaseDone:        db ; $CCFD ; Wily Machine phase completed
-
-
-SECTION "CD00", WRAM0[$CD00]
+; This section is used for a bunch of different purposes between cutscenes
+UNION
+; Gameplay
+wWilyShipY:            db      ; $CCEE ; Wily Ship - Y Position
+wWilyShipX:            db      ; $CCEF ; Wily Ship - X Position
+ds $0D
+wWilyPhaseDone:        db      ; $CCFD ; Wily Machine phase completed
+ds $02
 wAct:                  ds $100 ; $CD00 ; Currently loaded actors
 wActColi:              ds $100 ; $CE00 ; Respective collision data for currently loaded actors
 DEF wAct_End EQU wActColi + $100
+
+NEXTU
+; Multiple cutscenes
+wScAct0:                 ds $08 ; $CCEE ; Cutscene actor 0
+wScAct1:                 ds $08 ; $CCF6 ; Cutscene actor 1
+ds $02
+ds $02
+wScEdEvSrcPtr_Low:       db ; $CD02
+wScEdEvSrcPtr_High:      db ; $CD03
+wScEdEvEna:              db ; $CD04
+ds $08
+wScBaseSprFlags:         db ; $CD0D ; Base OBJ flags for every cutscene sprite mapping
+
+NEXTU
+; Wily Station Cutscene - Scenes 1/2
+ds $08
+wScWilyArcIdx:           db ; $CCF6 ; Wily - Arc table index (determines movement speed)
+wScWilyArcLeft:          db ; $CCF7 ; Wily - Remaining indexes for the above before going out of range
+wScWilyHotspotNum:       db ; $CCF8 ; Wily - Hotspots reached
+
+NEXTU
+; Wily Station Cutscene - Scene 3
+wScSt3PlY:               db ; $CCEE ; Rush Marine - Y position
+wScSt3PlX:               db ; $CCEF ; Rush Marine - X position
+wScSt3SkullJawY:         db ; $CCF0 ; Skull Entrance Jaw - Y position
+wScSt3SkullJawX:         db ; $CCF1 ; Skull Entrance Jaw - X position
+
+NEXTU
+; Ending Cutscene - Scene 1
+ds $10
+wScEd1ScrollSpdX:        db ; $CCFE ; Horizontal scrolling speed
+wScEd1FramesLeft:        db ; $CCFF ; Number of frames remaining to execute the scene (EndingSc1_AnimFor)
+wScAct0SprMapBaseId:     db ; $CD00 ; Cutscene actor 0 - Base sprite mapping ID
+wScAct1SprMapBaseId:     db ; $CD01 ; Cutscene actor 1 - Base sprite mapping ID
+ds $04
+wScEd1WilyY:              db ; $CD06 ; Wily spaceship Y position (Scene 1k only)
+wScEd1WilyX:              db ; $CD07 ; Wily spaceship X position (Scene 1k only)
+
+NEXTU
+; Ending Cutscene - Scene 1k
+wScEdExpl0:            ds $04 ; $CCEE ; Explosion #0
+wScEdExpl1:            ds $04 ; $CCF2 ; Explosion #1
+wScEdExpl2:            ds $04 ; $CCF6 ; Explosion #2
+wScEdExpl3:            ds $04 ; $CCFA ; Explosion #3
+wScEdWilyExplTimer:    db     ; $CCFE ; Times the Wily explosion sequence
+
+NEXTU
+; Credits
+wCredRowId:            db ; $CCEE ; Cast roll entry ID
+ds $07
+wCredRowY:             db ; $CCF6 ; Cast roll entry - Y Position
+wCredRowX:             db ; $CCF7 ; Cast roll entry - X Position
+ds $06
+wCredScrollYSub:       db ; $CCFE ; Subpixel value for the vertical scroll position
+wCredSprScrollY:       db ; $CCFF ; OBJ equivalent to hScrollY for the starfield sprites' scroll position
+ds $02
+wCredBGClrPtrLow:      db ; $CD02 ; Keeps track of the last row cleared when clearing the starfield (/8)
+ds $03
+; Credits - Sprite text writer
+wCredTextY:            db ; $CD06 ; Current Y position
+wCredTextX:            db ; $CD07 ; Current X position
+wCredTextRowX:         db ; $CD08 ; X position for start of row, used for newlines
+ENDU
+
 
 SECTION "CF00", WRAM0[$CF00]
 
@@ -165,7 +230,7 @@ wPlRmSpdL:              db ; $CF75 ; Rush Marine speed/momentum - left
 wPlRmSpdR:              db ; $CF76 ; Rush Marine speed/momentum - right 
 wPlRmSpdU:              db ; $CF77 ; Rush Marine speed/momentum - up 
 wPlRmSpdD:              db ; $CF78 ; Rush Marine speed/momentum - down 
-wUnk_CF79_FlipTimer:    db ; $CF79 ; Times the flip for ???
+wWilyWalkTimer:         db ; $CF79 ; Wily walking timer, when in the Wily Castle cutscene
 wLvlWarpDest:           db ; $CF7A ; Selected teleport destination in Wily's Castle (same format as wLvlEnd)
 wGetWpnDestPtr_Low:     db ; $CF7B ; Tilemap pointer to the current row in the Get Weapon screen, keeps track of where to write text
 wGetWpnDestPtr_High:    db ; $CF7C ; ""
@@ -532,6 +597,20 @@ DEF iShotNeTimer     EQU iShotWkTimer ; How many frames have passed since the sh
 DEF iShotHaTimer     EQU iShotWkTimer ; How many frames have passed since the shot spawned (up to $10)
 DEF iShotMgMoveV     EQU iShotWkTimer ; If set, Magnet Missile is moving vertically (has locked in)
 
+
+DEF iScActYSub    EQU $00 ; Y subpixel position
+DEF iScActY       EQU $01 ; Y position
+DEF iScActXSub    EQU $02 ; X subpixel position
+DEF iScActX       EQU $03 ; X position
+DEF iScActSpdYSub EQU $04 ; Y subpixel speed
+DEF iScActSpdY    EQU $05 ; Y speed
+DEF iScActSpdXSub EQU $06 ; X subpixel speed
+DEF iScActSpdX    EQU $07 ; X speed
+
+DEF iScExplY        EQU $00 ; Y Position
+DEF iScExplX        EQU $01 ; X Position
+DEF iScExplSprMapId EQU $02 ; Sprite mapping ID
+DEF iScExplTimer    EQU $03 ; Animation timer
 
 ; Password dot locations
 DEF iDotA1 EQU $00
