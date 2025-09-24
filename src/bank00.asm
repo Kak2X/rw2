@@ -1595,48 +1595,64 @@ Rand:
 	ld   a, $4F
 	ldh  [hRandSt3], a
 	ret
-L00079C: db $F5;X
-L00079D: db $E5;X
-L00079E: db $C5;X
-L00079F: db $21;X
-L0007A0: db $00;X
-L0007A1: db $00;X
-L0007A2: db $4A;X
-L0007A3: db $16;X
-L0007A4: db $00;X
-L0007A5: db $79;X
-L0007A6: db $B7;X
-L0007A7: db $28;X
-L0007A8: db $04;X
-L0007A9: db $19;X
-L0007AA: db $0D;X
-L0007AB: db $18;X
-L0007AC: db $F8;X
-L0007AD: db $5D;X
-L0007AE: db $54;X
-L0007AF: db $C1;X
-L0007B0: db $E1;X
-L0007B1: db $F1;X
-L0007B2: db $C9;X
-L0007B3: db $E5;X
-L0007B4: db $C5;X
-L0007B5: db $21;X
-L0007B6: db $00;X
-L0007B7: db $00;X
-L0007B8: db $4F;X
-L0007B9: db $79;X
-L0007BA: db $B7;X
-L0007BB: db $28;X
-L0007BC: db $04;X
-L0007BD: db $19;X
-L0007BE: db $0D;X
-L0007BF: db $18;X
-L0007C0: db $F8;X
-L0007C1: db $5D;X
-L0007C2: db $54;X
-L0007C3: db $C1;X
-L0007C4: db $E1;X
-L0007C5: db $C9;X
+	
+; =============== Unused_Mul8 ===============
+; [TCRF] Unreferenced code.
+; Performs multiplication with an 8-bit multiplicand.
+; IN
+; - E: Multiplicand 
+; - D: Multiplier
+; OUT
+; - DE: Result
+Unused_Mul8:
+	push af
+	push hl
+	push bc
+		; Multiplication performed through looped addition
+		ld   hl, $0000	; Result = 0
+		ld   c, d		; C = Loop count (Multiplier)
+		ld   d, $00		; DE = Value added (Multiplicand, with high byte $00)
+	.loop:
+		ld   a, c
+		or   a			; Are we done?
+		jr   z, .done	; If so, jump
+		add  hl, de		; Result += Multiplicand
+		dec  c			; LoopCount--
+		jr   .loop		; Check again
+	.done:
+		ld   e, l		; DE = Result
+		ld   d, h
+	pop  bc
+	pop  hl
+	pop  af
+	ret
+	
+; =============== Unused_Mul16 ===============
+; [TCRF] Unreferenced code.
+; Performs multiplication with a 16-bit multiplicand.
+; IN
+; - DE: Multiplicand 
+; - A: Multiplier
+; OUT
+; - DE: Result
+Unused_Mul16:
+	push hl
+	push bc
+		ld   hl, $0000	; Result = 0
+		ld   c, a		; C = Loop count (Multiplier)
+	.loop:
+		ld   a, c
+		or   a			; Are we done?
+		jr   z, .done	; If so, jump
+		add  hl, de		; Result += Multiplicand
+		dec  c			; LoopCount--
+		jr   .loop		; Check again
+	.done:
+		ld   e, l		; DE = Result
+		ld   d, h
+	pop  bc
+	pop  hl
+	ret  
 
 ; =============== Lvl_LoadData ===============
 ; Loads all of the data for the currently selected level.
@@ -7278,27 +7294,32 @@ ActS_FacePl:
 	ldh  [hActCur+iActSprMap], a	; Save back
 	ret
 	
-L001EF7: db $FA;X
-L001EF8: db $16;X
-L001EF9: db $CF;X
-L001EFA: db $47;X
-L001EFB: db $F0;X
-L001EFC: db $A7;X
-L001EFD: db $B8;X
-L001EFE: db $1F;X
-L001EFF: db $E6;X
-L001F00: db $80;X
-L001F01: db $CB;X
-L001F02: db $3F;X
-L001F03: db $47;X
-L001F04: db $F0;X
-L001F05: db $A2;X
-L001F06: db $CB;X
-L001F07: db $B7;X
-L001F08: db $B0;X
-L001F09: db $E0;X
-L001F0A: db $A2;X
-L001F0B: db $C9;X
+; =============== ActS_Unused_FacePlY ===============
+; [TCRF] Unreferenced code.
+; Makes the current actor face towards the player in the vertical direction.
+ActS_Unused_FacePlY:
+	;
+	; Set the direction flag depending on the player being above or below the actor.
+	;
+	
+	ld   a, [wPlRelY]				; B = wPlRelY
+	ld   b, a
+	ldh  a, [hActCur+iActY]			; A = iActY
+
+	; Calculate the result flags of iActY < wPlRelY (player below of the actor?)
+	; If it is, the C flag will be set, so we can push it out to the MSB
+	; to turn it into the appropriate ACTDIR_* value.
+	cp   b							; iActX < wPlRelX? if so, C flag = set
+	rra  							; Shift C flag to MSB
+	and  ACTDIR_D<<1				; Filter other bits out (offset by 1)
+	srl  a							; >> 1 to compensate
+	ld   b, a						; Set to B
+	
+	ldh  a, [hActCur+iActSprMap]
+	res  ACTDIRB_D, a				; Clear old flag
+	or   b							; Replace it with new value
+	ldh  [hActCur+iActSprMap], a	; Save back
+	ret
 
 ; =============== ActS_SetColiBox ===============
 ; Sets the current actor's collision box size.
@@ -8375,12 +8396,15 @@ ActS_ApplySpeedFwdYColi:
 	ld   a, [wTmpCF53]
 	ldh  [hActCur+iActY], a
 	ret
-L0022C0: db $F0;X
-L0022C1: db $A2;X
-L0022C2: db $CB;X
-L0022C3: db $77;X
-L0022C4: db $20;X
-L0022C5: db $31;X
+	
+; =============== ActS_Unused_ApplySpeedFwdY ===============
+; [TCRF] Unreferenced code.
+; Moves the actor forward by the current vertical speed.
+ActS_Unused_ApplySpeedFwdY: 
+	; "Forward" has different meanings depending on the direction we're facing
+	ldh  a, [hActCur+iActSprMap]
+	bit  ACTDIRB_D, a				; Facing down?
+	jr   nz, ActS_ApplySpeedDownY	; If so, jump
 
 ; =============== ActS_ApplySpeedUpY ===============
 ; Moves the current actor *upwards* by the current vertical speed.
@@ -8490,13 +8514,14 @@ ActS_ApplySpeedDownY:
 	scf  
 	ret
 	
-L002321: db $F0;X
-L002322: db $A2;X
-L002323: db $CB;X
-L002324: db $77;X
-L002325: db $C2;X
-L002326: db $A8;X
-L002327: db $23;X
+; =============== ActS_Unused_ApplySpeedFwdYColi ===============
+; [TCRF] Unreferenced code.
+; Moves the actor forward by the current vertical speed, while checking for solid collision. 
+ActS_Unused_ApplySpeedFwdYColi: 
+	; "Forward" has different meanings depending on the direction we're facing
+	ldh  a, [hActCur+iActSprMap]
+	bit  ACTDIRB_D, a					; Facing down?
+	jp   nz, ActS_ApplySpeedDownYColi	; If so, jump
 
 ; =============== ActS_ApplySpeedUpYColi ===============
 ; Moves the current actor *upwards* by the current vertical speed, applying gravity.

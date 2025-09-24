@@ -5748,7 +5748,7 @@ Act_PieroBot_ChkCommon:
 Act_Mole:;I
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
-	dw L025891
+	dw Act_Mole_Init
 	dw Act_Mole_DigBorder
 	dw Act_Mole_DigSolid0
 	dw Act_Mole_DigOut
@@ -5757,7 +5757,7 @@ Act_Mole:;I
 	dw Act_Mole_DigSolid1
 
 ; =============== Act_Mole_Init ===============
-L025891:
+Act_Mole_Init:
 	;
 	; Randomize the horizontal position of the mole.
 	; The spawner has already randomized the vertical position but not the horizontal
