@@ -9995,11 +9995,7 @@ Act_RushCoil_WaitPl:
 	cp   60
 	jr   nc, .chkColi
 	
-	; Flash by alternating between frames $xx and $xx+08 every 4 frames.
-	; In practice, the sprite ranges we end up with are $00-$01 and $08-$09.
-	; $08 is a completely blank sprite mapping used for this flashing effect,
-	; ??? whereas $09 is a copy of $01 for programming convenience, since it avoids 
-	; us having to reset wActCurSprMapBaseId when spring collision happens.
+	; Flash by alternating between frames $00 and $08 every 4 frames.
 	push af
 		sla  a							; At double timer speed...
 		and  %1000						; Every 8 frames... (/2)

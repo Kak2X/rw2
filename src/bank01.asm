@@ -97,7 +97,7 @@ WpnCtrlS_StartShootAnim:
 ; The default weapon, a small shot that travels forward.
 ; Items such as Rush Coil reuse this for actual player shots.
 WpnCtrl_Default:
-	; Keep track of the weapon unlock bit for this shot ??? identify the unlock bit for the current weapon. 
+	; Keep track of the weapon unlock bit for this shot. 
 	; This value is only ever written to though.
 	xor  a
 	ld   [wWpnUnlockMask], a

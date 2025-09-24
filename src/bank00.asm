@@ -324,7 +324,7 @@ VBlankHandler:
 	;
 	
 	; Don't even bother executing them unless there's enough time left.
-	; ??? Is there even any way for that to not be the case?
+	; Might be in case of the timer interrupt firing right before VBlank.
 	ldh  a, [rLY]
 	cp   LY_VBLANK		; rLY == $90?
 	jr   z, .chkEv		; If so, jump
@@ -697,7 +697,7 @@ VBlankHandler_UpdateScreen:
 ; LCDC interrupt, reserved to handle some of the status bar properties.
 LCDCHandler:
 	push af
-		; [POI] (are there other uses) ??? This is intended to set the X position of the status bar,
+		; [POI] This is intended to set the X position of the status bar,
 		;       however it does nothing since that is drawn on the WINDOW layer.
 		ldh  a, [hScrollX2]
 		ldh  [rSCX], a
@@ -1378,10 +1378,10 @@ StopLCDOperation:
 	ret
 	
 ; =============== LoadTilemapDef ===============
-; Applies one or more tilemaps definitions (TilemapDef) to VRAM. 
-;
-; TODO!!! This is also used to load a tiny amount of graphics occasionally.
-;         Depending on how often it gets done, this might need to get renamed.
+; Applies one or more chained tilemaps definitions (TilemapDef) to VRAM. 
+; These are applied all at once in a single frame, so if processing them over a period
+; of time is wanted (akin to the GFX event), that needs to be manually done by
+; writing to the buffer only a single command.
 ;
 ; IN
 ; - DE: Ptr to one or more TilemapDef stored in sequence, terminated by a null byte.
@@ -4907,7 +4907,7 @@ DEF RMSPD_DEC EQU $04
 .setSpdU:
 	; Decrement Rush Marine's speed by those subpixels.
 	; Instead of directly affecting the player's speed, this is stored into a separate variable,
-	; ??? which could have been avoided had entering Rush Marine reset the player's speed.
+	; which could have been avoided had entering Rush Marine reset the player's speed (in Act_RushMarine_WaitPl).
 	; The logic is otherwise the same as Pl_DecSpeedX.
 	ld   a, [wPlRmSpdU]			; B = Upwards speed
 	ld   b, a
@@ -6838,11 +6838,9 @@ ActS_Spawn:
 		dec  b
 		jr   nz, .cpLoop
 		
-		; ???
-		; For reasons unknown to man, the two digits of the actor's health
-		; are stored separately in the ROM.
-		; This might be related to how actors with special behavior on death die when their
-		; health reaches $10, but it's still a waste.
+		; The two digits of the actor's health are stored separately in the ROM.
+		; This is related to how actors with special behavior on death die when their health reaches $10,
+		; where the lower nybble is in practice the real health, but it's still a byte waste.
 		ld   b, [hl]	; Read low nybble (byte4)
 		inc  hl
 		ld   a, [hl]	; Read high nybble (byte5)
@@ -6869,8 +6867,7 @@ ActS_Spawn:
 ; Specifically, it triggers requests to load the graphics during VBlank,
 ; so they may take a couple of frames to fully load.
 ;
-; TODO: This and the related table ActS_GFXSetTbl might be better called Lvl_ReqLoadRoomObjGFX / Lvl_ObjGFXSetTbl or Obj_GFXSetTbl
-;       ACTGFX_HARDMAN -> OBJGFX_HARDMAN
+; Occasionally used to load generic sprite GFX sets.
 ActS_ReqLoadRoomGFX:
 
 	;
@@ -7571,7 +7568,7 @@ ActS_AngleToPl:
 	
 ; =============== ActS_AngleToPlCustom ===============
 ; See above, but with a custom vertical offset.
-; Used exclusively by ??? to track the player's origin rather than center of the body.
+; Used exclusively by the boss version of Metal Blades to track the player's origin rather than center of the body.
 ;
 ; IN
 ; - B: Target Y offset, relative to the player's origin
@@ -7761,11 +7758,12 @@ ActS_InitCirclePath:
 ; =============== ActS_ApplyCirclePath ===============
 ; Moves the current actor along a circular path.
 ; IN
-; - A: Movement speed (1 or 2)
+; - A: Circle size (ARC_*)
+;      The higher this is, the smaller the arc is.
 ActS_ApplyCirclePath:
-	DEF tArcSpd = wTmpCF52
+	DEF tArcSize = wTmpCF52
 	; Save this for later
-	ld   [tArcSpd], a
+	ld   [tArcSize], a
 	
 	;
 	; Get the actor's speed from the table for the current indexes.
@@ -7813,29 +7811,24 @@ ActS_ApplyCirclePath:
 	jr   nz, .decX					; If so, jump
 .incX:
 	;
-	; Increase the index by the speed amount we passed to the subroutine.
+	; Increase the index by the arc size value amount we passed to the subroutine.
 	; If it reaches the maximum value of ARC_MAX, make the actor turn horizontally
 	; and, from the next frame, start decreasing the indexes.
 	;
-	; TODO: ??? The wanted behavior is likely the normal case. If so, rewrite the comments.
-	; A consequence of the way this is done is that the actor will make less ground.
-	; If that is the wanted behavior but not the increased speed, actors may immediately
-	; call ActS_HalfSpdSub to counterbalance it.
-	; test comment next:
-	; When $02 is used as increment, half of the values will be skipped, leading to a smaller arc.
-	; However, as it will take half the time to do a full rotations, actors may want to counterbalance
-	; it by calling ActS_HalfSpdSub after this subroutine returns.
-	;
+	; The higher this "size value" is, the more values are skipped, leading to smaller arcs
+	; as the rotation will complete sooner. Hence why ARC_LG is $01 while ARC_SM is $02.
+	; However, as it will also take half the time to do a full rotations, actors may want to
+	; counterbalance it by calling ActS_HalfSpdSub after this subroutine returns.
 	;
 	
-	ld   a, [tArcSpd]				; iArcIdX += tArcSpd
+	ld   a, [tArcSize]				; iArcIdX += tArcSize
 	ld   b, a
 	ldh  a, [hActCur+iArcIdX]
 	add  b
 	ldh  [hActCur+iArcIdX], a
 	
 	; The equality check here brings an assumption.
-	; ARC_MAX needs to be a multiple of tArcSpd, otherwise we miss the specific value we check for.
+	; ARC_MAX needs to be a multiple of tArcSize, otherwise we miss the specific value we check for.
 	cp   ARC_MAX					; iArcIdX == ARC_MAX? (lowest speed)
 	jr   nz, .updY					; If not, skip
 	
@@ -7849,11 +7842,11 @@ ActS_ApplyCirclePath:
 	
 .decX:
 	;
-	; Decrease the index by the speed amount we passed to the subroutine.
+	; Decrease the index by the arc size we passed to the subroutine.
 	; If it reaches the minimum value of start increasing the indexes.
 	;
 	
-	ld   a, [tArcSpd]				; iArcIdX -= tArcSpd
+	ld   a, [tArcSize]				; iArcIdX -= tArcSize
 	ld   b, a
 	ldh  a, [hActCur+iArcIdX]
 	sub  b
@@ -7877,7 +7870,7 @@ ActS_ApplyCirclePath:
 	jr   nz, .decY
 	
 .incY:
-	ld   a, [tArcSpd]				; iArcIdY += tArcSpd
+	ld   a, [tArcSize]				; iArcIdY += tArcSize
 	ld   b, a
 	ldh  a, [hActCur+iArcIdY]
 	add  b
@@ -7895,7 +7888,7 @@ ActS_ApplyCirclePath:
 	ret
 	
 .decY:
-	ld   a, [tArcSpd]				; iArcIdY -= tArcSpd
+	ld   a, [tArcSize]				; iArcIdY -= tArcSize
 	ld   b, a
 	ldh  a, [hActCur+iArcIdY]
 	sub  b
@@ -8667,7 +8660,7 @@ ActS_ApplySpeedUpYColi:
 	ccf		; We got here with "jr c", clear that
 .startFall:
 	; Zero out the vertical speed & subpixel value.
-	; This forces the actor to start falling down ???
+	; This makes falling down start with a consistent gravity value.
 	push af ; Preserve cleared carry flag (does it matter?)
 		xor  a
 		ldh  [hActCur+iActYSub], a
@@ -8911,7 +8904,7 @@ ActS_DrawSprMap:
 	
 	; First, seek HL to the sprite mapping table associated to the current actor.
 	ldh  a, [hActCur+iActId]
-	and  $FF^ACTF_PROC	; Filter out ??? visibility flag
+	and  $FF^ACTF_PROC			; Filter out active marker
 	sla  a						; * 2
 	ld   hl, ActS_SprMapPtrTbl
 	ld   b, $00
@@ -9503,7 +9496,8 @@ Module_Game:
 	
 	;
 	; Run actor code.
-	; Actor code, unlike everything else, expects the default bank to be BANK $02, because ???
+	; Actor code is all stored in BANK $02, but may call code in BANK $00 that triggers a bankswitch.
+	; To make those subroutines properly return, set $02 as the default bank when executing actors.
 	;
 	push af
 		ld   a, BANK(ActS_Do) ; BANK $02
@@ -11700,7 +11694,7 @@ WilyCastle_DoCutscene:
 	; As the blocks were solid to begin with, this doesn't need to actually alter the level layout.
 	;
 	ld   hl, TilemapDef_WilyCastle_TrapGone
-	ld   de, wScrEvRows
+	ld   de, wTilemapBuf
 	ld   bc, TilemapDef_WilyCastle_TrapGone_End-TilemapDef_WilyCastle_TrapGone
 	call CopyMemory
 	ld   a, $01					; Trigger event
@@ -12113,7 +12107,7 @@ Wpn_DoActColi:
 	jr   nc, .setDistX			; Is that a positive value? If so, skip
 	xor  $FF					; Otherwise, convert to positive
 	inc  a
-	scf  						; ???
+	scf 
 .setDistX:
 	ld   b, a					; B = Distance
 	; If the shot isn't horizontally overlapping with the collision box, seek to the next slot.
@@ -12146,7 +12140,7 @@ Wpn_DoActColi:
 	jr   nc, .setDistY			; Is that a positive value? If so, skip
 	xor  $FF					; Otherwise, convert to positive
 	inc  a
-	scf  						; ???
+	scf
 .setDistY:
 	ld   b, a					; B = Distance
 	; Do the bounds check
@@ -13516,7 +13510,7 @@ Pause_Do:
 		rst  $18 ; Wait bar update
 		
 		; Update small health bar
-		ld   de, wScrEvRows
+		ld   de, wTilemapBuf
 		call Pause_AddBarDrawEv
 		rst  $10 ; Wait tilemap load
 		

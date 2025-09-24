@@ -122,7 +122,7 @@ wGfxEvSrcPtr_High:     db ; $CF08 ; Source GFX ptr, high byte.
 wGfxEvSrcPtr_Low:      db ; $CF09 ; Source GFX ptr, low byte.
 wLvlId:                db ; $CF0A ; Level ID
 wLvlRoomId:            db ; $CF0B ; Room ID, only used in a few cases (ie: room transitions)
-wLvlColL:              db ; $CF0C ; Current column number in a level, ??? relative to the left edge of the screen.
+wLvlColL:              db ; $CF0C ; Current column number in a level, relative to the left edge of the screen.
 wTargetRelX:           db ; $CF0D ; Temporary relative X position, for targets
 wTargetRelY:           db ; $CF0E ; Temporary relative Y position, for targets
 wPlRelRealX:           db ; $CF0F ; Copy of wPlRelX without the hardware's sprite offset
@@ -214,7 +214,7 @@ wPlWarpAnimTimer:       db ; $CF65 ; Animation timer for the teleport landing an
 wStageSelCursor:        db ; $CF66 ; Cursor location on the stage select
 wPlSprFlags:            db ; $CF67 ; OBJ flags for the player
 wPlRmSpdYSub:           db ; $CF68 ; Rush Marine Y speed, calculated from wPlRmSpdU & wPlRmSpdD 
-wPlRmSpdY:              db ; $CF69 ; ( ??? for some reason, there's no X equivalent)
+wPlRmSpdY:              db ; $CF69 ; No X equivalent, as that one writes directly to wPlRelX
 wActHelperColiSlotPtr:  db ; $CF6A ; Marks the helper item (Rush/Sakugarne) the player has collided with
 wActRjStandSlotPtr:     db ; $CF6B ; Marks the Rush Jet actor slot the player is standing on
 wWpnSGRide:             db ; $CF6C ; Sakugarne ride controls enabled
@@ -291,7 +291,6 @@ DEF wActDespawnTbl_End EQU wActDespawnTbl + $100
 SECTION "DD00", WRAM0[$DD00]
 ; Multipurpose scratch buffer for screen transfers
 UNION
-; TODO: Check for improper labels to this after all's done
 wScrEvRows:            ds $40 ; $DD00 ; Tile IDs when vertical scrolling
 NEXTU
 wTilemapBuf:           ds $100 ; $DD00 ; TilemapDef tilemap buffer (Generic)
