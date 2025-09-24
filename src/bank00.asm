@@ -2951,7 +2951,7 @@ Game_Init:
 	ld   [wWpnId], a 			; Start with the buster always
 	ld   [wWpnHelperWarpRtn], a
 	ld   [wWpnHelperUseTimer], a
-	ld   [wUnk_Unused_CF5F], a
+	ld   [wUnused_CF5F], a
 	ld   [wLvlWarpDest], a
 	ld   [wWpnTpActive], a
 	ld   [wWpnSGRide], a
@@ -7732,7 +7732,7 @@ ActS_InitCirclePath:
 
 	; Not used here, presumably leftover copypaste from ActS_InitAnimRange
 	xor  a
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	;
 	; Set the initial ActS_ArcPathTbl indexes & direction for both axes.
@@ -10978,7 +10978,7 @@ Act_StageSelBoss_Init:
 	ldh  [hActCur+iActSpdY], a
 	; The total jump arc will take up $28 frames
 	ld   a, $28
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Next mode
 	jp   ActS_IncRtnId
@@ -10987,10 +10987,10 @@ Act_StageSelBoss_Init:
 ; RTN $01
 ; Jump arc - upwards movement.
 Act_StageSelBoss_JumpUp:
-	; iActTimer0C--
-	ldh  a, [hActCur+iActTimer0C]
+	; iActTimer--
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Continue jump arc
 	call ActS_ApplySpeedFwdX
@@ -11008,10 +11008,10 @@ Act_StageSelBoss_JumpDown:
 	call ActS_ApplySpeedDownY
 	
 	; Wait for the timer to tick down before continuing
-	; iActTimer0C--
-	ldh  a, [hActCur+iActTimer0C]
+	; iActTimer--
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	jp   ActS_IncRtnId
@@ -11026,7 +11026,7 @@ Act_StageSelBoss_JumpLand:
 	
 	; Delay next mode for 32 frames
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
@@ -11036,9 +11036,9 @@ Act_StageSelBoss_JumpLand:
 Act_StageSelBoss_WaitAnim:
 
 	; Wait for those 32 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Set up the intro animation.

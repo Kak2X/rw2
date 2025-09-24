@@ -391,7 +391,7 @@ Act_ItemDrop_InitGround:
 	ld   c, $01
 	call ActS_Anim2
 	ld   a, 3*60					; 3 seconds before flashing
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_ItemDrop_Ground ===============
@@ -401,13 +401,13 @@ Act_ItemDrop_Ground:
 	ld   c, $01
 	call ActS_Anim2
 	
-	ldh  a, [hActCur+iActTimer0C]	; Wait those 3 seconds
+	ldh  a, [hActCur+iActTimer]	; Wait those 3 seconds
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	ld   a, 2*60					; 2 seconds before despawning
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_ItemDrop_Flash ===============
@@ -418,9 +418,9 @@ Act_ItemDrop_Flash:
 	ld   bc, ($03 << 8)|$02			; B = 3 frames, C = 2/8 speed
 	call ActS_AnimCustom
 	
-	ldh  a, [hActCur+iActTimer0C]	; Wait those 2 seconds
+	ldh  a, [hActCur+iActTimer]	; Wait those 2 seconds
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	xor  a							; Despawn
 	ldh  [hActCur+iActId], a
@@ -518,7 +518,7 @@ Act_Bee_InitPath:
 	ld   b, OBJ_OFFSET_X+SCREEN_GAME_H-BLOCK_H-$08	; B = 0-16 pixels from the right edge (bee spawned on the left)
 .setTarget:
 	ld   a, b
-	ldh  [hActCur+iBeeTargetX], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 
 ; =============== Act_Bee_MoveToTarget ===============
@@ -537,7 +537,7 @@ Act_Bee_MoveToTarget:
 	ldh  a, [hActCur+iActX]			; Get bee position
 	and  $F0						; Check 16px wide range to avoid missing the pixel (clear low nybble)
 	ld   b, a
-	ldh  a, [hActCur+iBeeTargetX]	; Get target
+	ldh  a, [hActCur+iActTimer]		; Get target
 	and  $F0						; Check 16px ...
 	cp   b							; Do the ranges match?
 	ret  nz							; If not, return
@@ -545,7 +545,7 @@ Act_Bee_MoveToTarget:
 	; Target reached, turn the other side (the player) and wait for a bit
 	call ActS_FlipH
 	ld   a, $00
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Bee_MoveU ===============
@@ -560,9 +560,9 @@ Act_Bee_MoveU:
 	call ActS_ApplySpeedFwdY
 	
 	; Do so for 20 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   $14
 	ret  nz
 	
@@ -582,9 +582,9 @@ Act_Bee_MoveD:
 	call ActS_ApplySpeedFwdY
 	
 	; Do so for 40 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   $28
 	ret  nz
 	
@@ -638,7 +638,7 @@ Act_BeeHive_InitPath:
 	ld   b, OBJ_OFFSET_X+SCREEN_GAME_H-BLOCK_H-$08
 .setTarget:
 	ld   a, b
-	ldh  [hActCur+iBeeTargetX], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_BeeHive_MoveToTarget ===============
@@ -650,14 +650,14 @@ Act_BeeHive_MoveToTarget:
 	ldh  a, [hActCur+iActX]
 	and  $F0
 	ld   b, a
-	ldh  a, [hActCur+iBeeTargetX]
+	ldh  a, [hActCur+iActTimer]
 	and  $F0
 	cp   b
 	ret  nz
 	
 	; (Hive doesn't turn)
 	ld   a, $00
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_BeeHive_MoveU ===============
@@ -667,9 +667,9 @@ Act_BeeHive_MoveU:
 	call ActS_ApplySpeedFwdY
 	
 	; Do so for 20 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   $14
 	ret  nz
 	
@@ -684,9 +684,9 @@ Act_BeeHive_MoveD:
 	call ActS_ApplySpeedFwdY
 	
 	; Do so for 40 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   $28
 	ret  nz
 	
@@ -803,9 +803,9 @@ Act_Chibee_MoveArc:
 	call ActS_Anim2
 	
 	; Wait nearly 3 seconds before returning to the previous mode
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   $B0							; Timer < $B0?
 	jr   c, .doArc						; If so, skip
 	ld   a, ACTRTN_CHIBEE_MOVELINE
@@ -865,15 +865,15 @@ Act_Wanaan_ChkDistance:
 	
 	; Delay activation by $1E frames
 	ld   a, $1E
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wanaan_Wait ===============
 Act_Wanaan_Wait:
 	; Wait for it...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Show sprite
@@ -884,16 +884,16 @@ Act_Wanaan_Wait:
 	call ActS_SetColiType
 	; Move up for 16 frames
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wanaan_MoveU ===============
 Act_Wanaan_MoveU:
 	; Move up for 16 frames at 2px/frame (2 blocks up)
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Close grip
@@ -903,16 +903,16 @@ Act_Wanaan_MoveU:
 	; Start retracting to the ground
 	call ActS_FlipV
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wanaan_MoveD ===============
 Act_Wanaan_MoveD:
 	; Move down for 16 frames at 2px/frame (2 blocks up)
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; We're back inside the pipe
@@ -962,7 +962,7 @@ Act_HammerJoe_Init:
 	ld   [hl], a ; iActSpdX
 	
 	ld   a, $00
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_HammerJoe_Swing ===============
@@ -1005,9 +1005,9 @@ Act_HammerJoe_Swing:
 	;--
 	
 
-	ldh  a, [hActCur+iActTimer0C]	; Timer++
+	ldh  a, [hActCur+iActTimer]	; Timer++
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	;
 	; After 1 second, open Joe's eyes and make him vulnerable.
@@ -1029,7 +1029,7 @@ Act_HammerJoe_Swing:
 .throw:
 
 	ld   a, $00
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Reset animation frame
 	call ActS_ClrSprMapId
@@ -1056,9 +1056,9 @@ Act_HammerJoe_Throw:
 	ld   [wActCurSprMapBaseId], a
 	
 	; Wait for one second
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   60
 	ret  nz
 	
@@ -1290,15 +1290,15 @@ Act_NeoMet_InitHide:
 	
 	; Wait for 1 second
 	ld   a, 60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_NeoMet_WaitNotice ===============
 ; Waits for 1 second before noticing the player.
 Act_NeoMet_WaitNotice:
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	jp   ActS_IncRtnId
 	
@@ -1316,16 +1316,16 @@ Act_NeoMet_Notice:
 	call ActS_SetSprMapId
 	; Show it for 8 frames
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_NeoMet_UnHide ===============
 ; Rise up from shield.
 Act_NeoMet_UnHide:
 	; Wait those 8 frames first
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Set fully risen sprite
 	ld   a, $02
@@ -1335,35 +1335,35 @@ Act_NeoMet_UnHide:
 	call ActS_SetColiType
 	; Wait 20 frames before attacking
 	ld   a, $14
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_NeoMet_Fire ===============
 ; Fire projectiles.
 Act_NeoMet_Fire:
 	; Wait for it...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Do spread shot
 	call Act_NeoMet_SpawnShots
 	; Wait for another second
 	ld   a, 60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_NeoMet_PostFireWait ===============
 ; Stands still after firing.
 Act_NeoMet_PostFireWait:
 	; Wait 1 second before walking forward
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Walk for $30 frames
 	ld   a, $30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_NeoMet_Walk ===============
@@ -1371,9 +1371,9 @@ Act_NeoMet_PostFireWait:
 Act_NeoMet_Walk:
 	; After almost a second of walking, hide instantly.
 	; There is no transition sprite unlike when rising up.
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jr   nz, .move
 	ld   a, ACTRTN_NEOMET_INITHIDE
 	ldh  [hActCur+iActRtnId], a
@@ -1447,7 +1447,7 @@ Act_PickelmanBull_MoveFwd:
 	
 	; Stutter for half a second
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_PickelmanBull_Shake ===============
@@ -1458,13 +1458,13 @@ Act_PickelmanBull_Shake:
 	call ActS_Anim2
 	
 	; Go back to moving forward after the 30 frames pass
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   z, ActS_DecRtnId
 	
 	; Alternate between moving left and right every 4 frames, at 1px/frame.
-	ldh  a, [hActCur+iActTimer0C]	; A = Timer
+	ldh  a, [hActCur+iActTimer]	; A = Timer
 	ld   hl, hActCur+iActX			; HL = Ptr to iActX
 	bit  2, a						; Timer & 4 == 0?
 	jr   z, .moveR					; If so, move right
@@ -1507,7 +1507,7 @@ Act_Bikky_Init:
 	
 	; Stay for one second like this
 	ld   a, 60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Bikky_GroundReflect ===============
@@ -1518,9 +1518,9 @@ Act_Bikky_GroundReflect:
 	call ActS_Anim2
 	
 	; Wait for the second...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; After the second passes, show its eyes and make it vulnerable
@@ -1531,16 +1531,16 @@ Act_Bikky_GroundReflect:
 	
 	; Small delay before jumping
 	ld   a, $14
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Bikky_GroundHit ===============
 ; Stays on the ground, vulnerable.
 Act_Bikky_GroundHit:
 	; Wait for those 20 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Set jumping sprite and jump towards the player.
@@ -1606,7 +1606,7 @@ Act_Komasaburo_InitIdle:
 	
 	; Wait for 60 seconds in the next mode
 	ld   a, 60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Komasaburo_Idle ===============
@@ -1617,9 +1617,9 @@ Act_Komasaburo_Idle:
 	call ActS_Anim2
 	
 	; Wait for those 60 seconds before shooting
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	jp   ActS_IncRtnId
 	
@@ -1648,16 +1648,16 @@ Act_Komasaburo_Shoot:
 	
 	; ...for 12 frames
 	ld   a, $0C
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Komasaburo_AfterShoot ===============
 ; Waits 12 frames in the shooting sprite, as cooldown.
 Act_Komasaburo_AfterShoot:
 	; After they pass, return to the start again, in its idle animation
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	ld   a, ACTRTN_KOMASABURO_INITIDLE
 	ldh  [hActCur+iActRtnId], a
@@ -1679,7 +1679,7 @@ Act_Koma_Init:
 	ld   bc, $0180				; 1.5px/frame forward
 	call ActS_SetSpeedX
 	ld   a, 60*3				; Explode after 3 seconds (outside of when they fall down)
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Koma_MoveH ===============
@@ -1690,9 +1690,9 @@ Act_Koma_MoveH:
 	call ActS_Anim2
 	
 	; When the life timer elapses, explode (without dropping items)
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jr   nz, .moveH
 	jp   ActS_Explode
 .moveH:
@@ -1760,7 +1760,7 @@ Act_Mechakkero_InitJump:
 	; [TCRF] This suggests the intention to wait for 1.5 seconds before jumping,
 	;        similar to what Rockman 3 does, but the code isn't quite set up for that.
 	ld   a, $5A
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	;--
 	jp   ActS_IncRtnId
 	
@@ -1792,32 +1792,32 @@ Act_Mechakkero_JumpD:
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $0C
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Mechakkero_Wait0 ===============
 ; On the ground, normal eyes.
 Act_Mechakkero_Wait0:
 	; Wait for it...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Use open eyes sprite for 12 frames
 	ld   a, $01
 	call ActS_SetSprMapId
 	ld   a, $0C
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Mechakkero_Wait1 ===============
 ; On the ground, open eyes.
 Act_Mechakkero_Wait1:
 	; Wait for it..
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	;--
 	; [POI] Why return to this for a single frame?
@@ -1957,7 +1957,7 @@ Act_Tama_ChkAttack:
 	
 	; Set the delay for the throw animation, in case we're throwing the Yarn Ball next
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Alternate betwen attack types
 	ldh  a, [hActCur+iTamaAttackType]
@@ -1979,14 +1979,14 @@ Act_Tama_Throw0:
 	call ActS_Anim2
 	
 	; Wait for half a second in the same animation as Act_Tama_WaitAttack
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Wait another half a second in the next mode
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Tama_Throw1 ===============
@@ -2002,14 +2002,14 @@ Act_Tama_Throw1:
 	call ActS_Anim2
 	
 	; Wait half a second before spawning the ball
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; This does nothing
 	ld   a, $0F
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Finally spawn the Yarn Ball
 	ld   a, ACT_TAMABALL
@@ -2143,16 +2143,16 @@ Act_TamaFlea_JumpD:
 	
 	; Delay the next jump by 1 second
 	ld   a, 60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_TamaFlea_Ground ===============
 ; Flea is on the ground.
 Act_TamaFlea_Ground:
 	; Wait for the second to pass before setting up a new jump
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Larger sprite when jumping (set in ACTRTN_TAMAFLEA_INIT) means larger collision box by 4px vertically
@@ -2310,7 +2310,7 @@ Act_GiantSpringer_Main:
 	ld   a, $01					; Use shooting frame
 	call ActS_SetSprMapId
 	ld   a, 30					; Delay firing for half a second
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, ACTRTN_GSPRINGER_FIREMISSILE
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -2347,9 +2347,9 @@ Act_GiantSpringer_FallV:
 ; Enemy spawns the homing missile.
 Act_GiantSpringer_FireMissile:
 	; Wait for half a second before spawning the missile
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Launch the missile from the top
 	ld   a, ACT_GSPRINGERSHOT
@@ -2400,7 +2400,7 @@ Act_GiantSpringerShot:
 Act_GiantSpringerShot_InitMoveU:
 	; For 15 frames...
 	ld   a, $0F
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	; Move up at 1px/frame
 	ld   bc, $0100
 	call ActS_SetSpeedY
@@ -2414,15 +2414,15 @@ Act_GiantSpringerShot_InitMoveU:
 Act_GiantSpringerShot_MoveU:
 	; Handle the upwards movement set up before
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 		
 	;--
 	; Not necessary, done below
 	ld   a, $00
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	;--
 	
 	;
@@ -2467,7 +2467,7 @@ Act_GiantSpringerShot_MoveU:
 	xor  a							; Move fast vert
 	ldh  [hActCur+iArcIdY], a
 	
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	; Use diagonal missile sprite
 	ld   a, $00
 	call ActS_SetSprMapId
@@ -2478,13 +2478,13 @@ Act_GiantSpringerShot_MoveU:
 Act_GiantSpringerShot_Arc:
 	;--
 	; [POI] There's nothing using the timer here, including ActS_ApplyCirclePath.
-	ldh  a, [hActCur+iActTimer0C]	; Timer++
+	ldh  a, [hActCur+iActTimer]	; Timer++
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   $B0						; Timer < $B0?
 	jp   c, doArc					; If so, skip
 	ld   a, $00						; Timer = 0
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	;--
 doArc:
 	; Move missile around a small arc
@@ -2707,15 +2707,15 @@ Act_Block_Hide:
 	; Delay appearing for a second 
 	; This should have delayed for 60 - wGameTimeSub.
 	ld   a, 60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Block_DelayShow ===============
 Act_Block_DelayShow:
 	; Wait for a second before making the block show up
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; [wGameTime shift = $01/$04]
 	
@@ -2725,7 +2725,7 @@ Act_Block_DelayShow:
 	call ActS_SetColiType
 	
 	ld   a, 10					; For next mode
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Block_Solid0 ===============
@@ -2738,14 +2738,14 @@ Act_Block_Solid0:
 	ld   a, $01
 	ld   [wActCurSprMapBaseId], a
 	
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; [wGameTime shift = $01.$0A/$04]
 	
 	ld   a, 10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Block_Solid1 ===============
@@ -2753,14 +2753,14 @@ Act_Block_Solid0:
 Act_Block_Solid1:
 	ld   a, $02
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; [wGameTime shift = $01.$14/$04]
 	
 	ld   a, 20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Block_Solid2 ===============
@@ -2768,14 +2768,14 @@ Act_Block_Solid1:
 Act_Block_Solid2:
 	ld   a, $03
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; [wGameTime shift = $01.$28/$04]
 	
 	ld   a, 60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Block_Solid3 ===============
@@ -2783,9 +2783,9 @@ Act_Block_Solid2:
 Act_Block_Solid3:
 	ld   a, $04
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; [wGameTime shift = $02.$28/$04]
@@ -2823,7 +2823,7 @@ Act_NewShotman_InitMain:
 	
 	; Set delay for triggering horizontal attack
 	ld   a, 60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_NewShotman_Main ===============
@@ -2852,7 +2852,7 @@ Act_NewShotman_Main:
 	
 	; Cooldown of half a second after spawning the shots
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Spawn the two vertical shots, one on each side.
 	xor  a									; A = Sprite $00, Moving left
@@ -2874,9 +2874,9 @@ Act_NewShotman_Main:
 	; Wait until the second ticks down before triggering the horizontal attack.
 	; This is mainly useful if we came here from .tryVert, as it gives a window of opportunity
 	; for the vertical attack to trigger.
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Otherwise, prepare the horizontal attack.
 	jp   ActS_IncRtnId
@@ -2889,7 +2889,7 @@ Act_NewShotman_SetSpawnDelayH:
 	call ActS_Anim2
 	; Half a second cooldown between shots
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_NewShotman_SpawnH ===============
@@ -2898,9 +2898,9 @@ Act_NewShotman_SpawnH:
 	; While waiting, use frames $00-$01, at 1/8 speed 
 	ld   c, $01
 	call ActS_Anim2
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Then, fire both shots on each side.
@@ -2940,16 +2940,16 @@ Act_NewShotman_AfterSpawnV:
 	; Use sprite $02 for 30 seconds (previously set in Act_NewShotman_InitMain)
 	ld   a, $02
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; After the cooldown elapses, do the horizontal attack.
 	; Unlike when the horizontal attack starts on its own, the first shot is delayed by a second.
 	; (the ther two ones still delay by half a second)
 	ld   a, 60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, ACTRTN_NEWSHOTMAN_SPAWNH
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -2981,7 +2981,7 @@ Act_NeedlePress_InitDelay:
 	ld   a, [wActNePrLastCycleTarget]	; Toggle 0 and 1
 	xor  $01
 	ld   [wActNePrLastCycleTarget], a
-	ldh  [hActCur+iNePrCycleTarget], a	; Use new value as target
+	ldh  [hActCur+iActTimer], a			; Use new value as target
 	
 	jp   ActS_IncRtnId
 	
@@ -2990,14 +2990,14 @@ Act_NeedlePress_InitDelay:
 Act_NeedlePress_WaitCycle:
 
 	;
-	; Wait until wGameTime % 2 == iNePrCycleTarget to extend the spike.
+	; Wait until wGameTime % 2 == iActTimer to extend the spike.
 	; This is mainly to avoid, after vertical transitions where multiple actors get spawned 
 	; in the same frame, to have multiple onscreen spikes use the same cycle.
 	;
 	ld   a, [wGameTime]					; B = wGameTime % 2 (current timer)
 	and  $01
 	ld   b, a
-	ldh  a, [hActCur+iNePrCycleTarget]	; A = Target second
+	ldh  a, [hActCur+iActTimer]			; A = Target second
 	cp   b								; Does it match with the current one?
 	ret  nz								; If not, keep waiting
 	
@@ -3010,7 +3010,7 @@ Act_NeedlePress_InitMain:
 	ldh  [hActCur+iNePrAnimOff], a
 	; Delay for 12 frames before applying any changes
 	ld   a, $0C
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_NeedlePress_Main ===============
@@ -3048,9 +3048,9 @@ Act_NeedlePress_Main:
 	; [POI] This should have been the first thing done in the subroutine, to avoid running the indexing code while waiting
 	;       and to prevent the last animation entry from being skipped (iNePrAnimOff will point to the end terminator).
 	;
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;
@@ -3117,7 +3117,7 @@ Act_NeedlePress_Main:
 	
 	; Show current data for 12 frames
 	ld   a, $0C
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret
 	
 ; =============== Act_NeedlePress_AnimTbl ===============
@@ -3232,7 +3232,7 @@ Act_Yambow_MoveOppH1:
 	
 	; Wait for half a second after moving
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Yambow_WaitMoveD ===============
@@ -3242,9 +3242,9 @@ Act_Yambow_WaitMoveD:
 	call ActS_Anim2
 	
 	; Wait that half a second
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Hopefully face the player by doing this
@@ -3275,7 +3275,7 @@ Act_Yambow_MoveD:
 	
 	; Wait half a second before charging
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Yambow_WaitCharge ===============
@@ -3284,9 +3284,9 @@ Act_Yambow_WaitCharge:
 	call ActS_Anim2
 	
 	; Wait that half a second
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	jp   ActS_IncRtnId
@@ -3327,14 +3327,14 @@ Act_HariHarry_InitIdle:
 	call ActS_SetSpeedX
 	
 	ld   a, 60*2			; Wait idle for 2 seconds
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_HariHarry_Idle ===============
 Act_HariHarry_Idle:
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	jp   ActS_IncRtnId
 	
@@ -3342,7 +3342,7 @@ Act_HariHarry_Idle:
 ; Prepare for shooting the needles.
 Act_HariHarry_InitShoot:
 	ld   a, $00
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	; Face the player in preparation for moving after shooting them
 	call ActS_FacePl
 	; Reset sprite to idle in case we got here after rolling
@@ -3357,9 +3357,9 @@ Act_HariHarry_Shoot:
 	;
 	; Shoot the needles right in the middle of the shooting sprite range (see below)
 	;
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   $18				; Timer == $18?
 	jr   nz, .chkAnim		; If not, skip
 	
@@ -3382,7 +3382,7 @@ Act_HariHarry_Shoot:
 	srl  a
 	srl  a
 	
-	cp   ($30 >> 4)		; iActTimer0C == $30?	
+	cp   ($30 >> 4)		; iActTimer == $30?	
 	jr   z, .nextMode	; If so, next mode
 .tryAnimShoot:
 	and  $01			; Alternate between idle and shoot
@@ -3399,7 +3399,7 @@ Act_HariHarry_Shoot:
 Act_HariHarry_InitMove:
 	; Roll towards the player for 1.5 seconds, while invulnerable
 	ld   a, $5A
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   b, ACTCOLI_ENEMYREFLECT
 	call ActS_SetColiType
 	call ActS_FacePl
@@ -3416,9 +3416,9 @@ Act_HariHarry_MoveH:
 	call ActS_Anim2
 	
 	; Wait for half a second before returning to shoot
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jr   nz, .move
 	
 .endRoll:
@@ -3536,7 +3536,7 @@ Act_Cannon_Unshield:
 	call ActS_SetColiType
 	
 	ld   a, $00
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Cannon_Shoot ===============
@@ -3548,9 +3548,9 @@ Act_Cannon_Shoot:
 	; Tick on the animation timer, then check where we are in the animation.
 	; The animation itself manually alternates between the two shooting sprites $03 and $02,
 	; the latter being for the slightly retracted cannon ready to shoot.
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	;
 	; $00-$1D -> Sprite $02
@@ -3628,15 +3628,15 @@ Act_Cannon_Shield:
 	
 	; Cooldown of 1 second before checking the player getting near again
 	ld   a, 60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Cannon_Cooldown ===============
 Act_Cannon_Cooldown:
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	ld   a, ACTRTN_CANNON_PLFAR
@@ -3703,21 +3703,21 @@ Act_TellySpawner:
 Act_TellySpawner_Init:
 	; Wait 32 frames before spawning the first one
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_TellySpawner_Spawn ===============
 Act_TellySpawner_Spawn:
 	; Wait the 32 frames, whenever they come from
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;--
 	; Try again 32 frames later...
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; ...if there are more than 3 tellies onscreen
 	ld   a, ACT_TELLY
@@ -3734,20 +3734,20 @@ Act_TellySpawner_Spawn:
 	
 	; Wait for a few seconds before spawning another one
 	ld   a, $FF
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_TellySpawner_Wait ===============
 Act_TellySpawner_Wait:
 	; Wait 255 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Wait the usual additional 32 frames in Act_TellySpawner_Spawn
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_DecRtnId
 	
 ; =============== Act_Lift ===============
@@ -3847,7 +3847,7 @@ Act_Lift_NextSeg:
 		; byte1 - How many frames the lift should move
 		ld   a, [hl]					; Read byte1
 		ld   a, a
-		ldh  [hActCur+iActTimer0C], a	; Write directly to iActTimer0C
+		ldh  [hActCur+iActTimer], a	; Write directly to iActTimer
 		
 		; Use the next segment next time
 		ld   hl, wActLiftPathSeg
@@ -3884,9 +3884,9 @@ Act_Lift_MoveH:
 	
 .tick:
 	; Do the above for the specified amount of frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Handle the next segment when done
 	ld   a, ACTRTN_LIFT_NEXTSEG
@@ -3898,9 +3898,9 @@ Act_Lift_MoveH:
 Act_Lift_MoveV:
 	; Move vertically for the specified amount of frames
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Handle the next segment when done
 	ld   a, ACTRTN_LIFT_NEXTSEG
@@ -4126,7 +4126,7 @@ Act_BlockyHead_FallV:
 	ret  c
 	; Set initial check delay (see below)
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_BlockyHead_Ground ===============
@@ -4141,13 +4141,13 @@ Act_BlockyHead_Ground:
 	;
 	
 	; Wait for those 16 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Set a new delay in case the check below fails
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	; If any body parts are still active, wait
 	ld   a, ACT_BLOCKYBODY
 	call ActS_CountById
@@ -4518,16 +4518,16 @@ Act_BlockyRise_Init:
 	ld   bc, $0200			; 2px/frame rising speed
 	call ActS_SetSpeedY
 	ld   a, $20				; Rise for 32 frames
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_BlockyRise_Rise ===============
 Act_BlockyRise_Rise:
 	; Rise up for those 32 frames
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;
@@ -4583,7 +4583,7 @@ Act_Pipi_InitWait:
 	
 	; Wait 64 frames before coming from the side of the screen
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Pipi_Wait ===============
@@ -4595,9 +4595,9 @@ Act_Pipi_Wait:
 	ldh  [hActCur+iActX], a
 	
 	; Wait for 64 frames 
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 
 	; [BUG] This is forgetting to call ActS_ChkExplodeNoChild.
@@ -4685,7 +4685,7 @@ Act_Egg_Init:
 	ldh  [hActCur+iEggBirdDead], a
 	
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Egg_MoveH ===============
@@ -4697,9 +4697,9 @@ Act_Egg_MoveH:
 	; Move the egg to sync itself with the bird.
 	
 	call ActS_ApplySpeedFwdX
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   z, ActS_IncRtnId			; Timer elapsed? If so, jump
 	
 	; If the bird has died, also destroy the egg since it's still being carried.
@@ -4832,7 +4832,7 @@ Act_Copipi:
 Act_Copipi_InitSpread:
 	; How long the birds should spread out
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Copipi_Spread ===============
@@ -4847,9 +4847,9 @@ Act_Copipi_Spread:
 	call ActS_ApplySpeedFwdY
 	
 	; Wait for those 32 frames...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Once that's all done, target the player's position at the time of the check.
@@ -4892,16 +4892,16 @@ Act_Shotman_Init:
 	; Start the shooting sequence almost immediately, without any long delay like how it is between arcs.
 	; Still wait the usual 32 frame cooldown, normally used between shots
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Shotman_ShotLow ===============
 ; Fire long shots in a low arc.
 Act_Shotman_ShotLow:
 	; Wait for the cooldown to elapse first
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Then spawn the shot
@@ -4914,7 +4914,7 @@ Act_Shotman_ShotLow:
 	
 	; Set cooldown of 32 frames before the next shot
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; If all six shots have been fired, delay for a bit and switch to an higher arc
 	ld   hl, hActCur+iShotmanShotsLeft
@@ -4930,22 +4930,22 @@ Act_Shotman_ShotLow:
 	; Show the transition sprite for 8 frames.
 	; This means the next shot comes out in 32+8 = 40 frames
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Shotman_InitShowHi ===============
 Act_Shotman_WaitShotHi:
 	; Wait until the transition timer elapses
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Use sprite $02 (high arc)
 	ld   a, $02
 	call ActS_SetSprMapId
 	; Normal 32 frame cooldown
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Shotman_ShotHi ===============
@@ -4953,9 +4953,9 @@ Act_Shotman_WaitShotHi:
 ; See also: Act_Shotman_ShotLow
 Act_Shotman_ShotHi:
 	; Wait for the cooldown to elapse first
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Then spawn the shot
@@ -4968,7 +4968,7 @@ Act_Shotman_ShotHi:
 	
 	; Set cooldown of 32 frames before the next shot
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; If all six shots have been fired, delay for a bit and switch back to the lower arc
 	ld   hl, hActCur+iShotmanShotsLeft
@@ -4983,22 +4983,22 @@ Act_Shotman_ShotHi:
 	call ActS_SetSprMapId
 	; Show the transition sprite for 8 frames.
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 
 ; =============== Act_Shotman_InitShotLow ===============
 Act_Shotman_InitShotLow:
 	; Wait until the transition timer elapses
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Use sprite $02 (low arc)
 	ld   a, $00
 	call ActS_SetSprMapId
 	; Normal 32 frame cooldown
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, ACTRTN_SHOTMAN_SHOTLOW
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -5062,7 +5062,7 @@ Act_FlyBoy_JumpD:
 	ret  c
 	; Wait 32 frames on the ground
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_FlyBoy_Ground ===============
@@ -5074,16 +5074,16 @@ Act_FlyBoy_Ground:
 	call ActS_Anim2
 	
 	; Wait for it...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; After 32 frames, start slowly moving up for around 3 seconds
 	ld   bc, $0040			; 0.25px/frame up
 	call ActS_SetSpeedY
 	ld   a, $C0				; ~3 seconds
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_FlyBoy_LiftOff ===============
@@ -5095,9 +5095,9 @@ Act_FlyBoy_LiftOff:
 	
 	; Move slowly 0.25px/frame up for 3 seconds
 	call ActS_ApplySpeedFwdYColi
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;
@@ -5148,20 +5148,20 @@ Act_FlyBoySpawner_Init:
 	; Wait ~3 seconds before spawning one in.
 	; This is way too shot, making it easy to miss them in the only place they are used.
 	ld   a, $C0
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_FlyBoySpawner_Main ===============
 Act_FlyBoySpawner_Main:
 	; Wait until the delay elapses before spawning another one
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Set the same very long delay
 	ld   a, $C0
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Max 2 Fly Boys on screen, otherwise try again after 3 seconds
 	ld   a, ACT_FLYBOY
@@ -5290,7 +5290,7 @@ Act_Springer_InitSpring:
 	ld   a, $20	; 32 frames of animation (looped from the 4th)
 	ldh  [hActCur+iSpringerAnimTimer], a
 	ld   a, $08	; Each sprite shown for 8 frames
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Springer_Spring ===============
@@ -5306,12 +5306,12 @@ Act_Springer_Spring:
 	ld   [wActCurSprMapBaseId], a
 	
 	; ...at 1/8 speed
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	ld   a, $08	
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; If we've gone through the entire animation (all 32 frames), return to whatever we were doing before.
 	; If the player is still nearby, it will instantly return to this routine, making the effect seem continuous.
@@ -5376,7 +5376,7 @@ Act_PieroBotGear_Init:
 	
 	; Set Pierobot spawn delay
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_PieroBotGear_AirNoBot ===============
@@ -5390,9 +5390,9 @@ Act_PieroBotGear_AirNoBot:
 	;
 	ld   c, $01
 	call ActS_Anim2
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;
@@ -5442,7 +5442,7 @@ Act_PieroBotGear_AirNoBot:
 	;--
 	; [POI] This is never written to again, see its only use.
 	xor  a
-	ld   [hl], a ; iPieroBot0F
+	ld   [hl], a ; iPieroBotUnusedFlag
 	;--
 	
 	; The bot also notifies us when it dies
@@ -5450,7 +5450,7 @@ Act_PieroBotGear_AirNoBot:
 	
 	; Set next delay 
 	ld   a, $80
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_PieroBotGear_AirBot ===============
@@ -5458,9 +5458,9 @@ Act_PieroBotGear_AirNoBot:
 Act_PieroBotGear_AirBot:
 	; Wait for ~2 seconds before dropping the gear.
 	call Act_PieroBotGear_ChkCommon
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Pierobot is currently jumping on the gear, notify him to also drop.
@@ -5727,8 +5727,8 @@ Act_PieroBot_ChkCommon:
 	pop  bc
 	
 	;--
-	; [POI] iPieroBot0F is always zero, and the check is a copy/paste from Act_PieroBotGear_ChkCommon.
-	ldh  a, [hActCur+iPieroBot0F]
+	; [POI] iPieroBotUnusedFlag is always zero, and the check is a copy/paste from Act_PieroBotGear_ChkCommon.
+	ldh  a, [hActCur+iPieroBotUnusedFlag]
 	and  a
 	ret  nz
 	;--
@@ -5799,7 +5799,7 @@ Act_Mole_Init:
 	call ActS_SetSpeedY
 	
 	ld   a, $02
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Mole_DigBorder ===============
@@ -5922,7 +5922,7 @@ Act_Mole_ChkCommon:
 	;
 	; Handle the animation manually, at 1/2 speed.
 	;
-	ld   hl, hActCur+iActTimer0C
+	ld   hl, hActCur+iActTimer
 	dec  [hl]				; Animation timer elapsed?
 	ret  nz					; If not, return
 	push af
@@ -5932,7 +5932,7 @@ Act_Mole_ChkCommon:
 		xor  $01
 		ldh  [hActCur+iMoleSprMapBaseId], a
 		; Flip again after 2 frames
-		ld   [hl], $02		; iActTimer0C = $02
+		ld   [hl], $02		; iActTimer = $02
 	pop  af
 	ret
 	
@@ -5954,7 +5954,7 @@ Act_MoleSpawner_Spawn:
 	
 	; ~2 second delay before spawning another mole
 	ld   a, $80
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	;--
 	
 	inc  hl ; iActRtnId
@@ -6002,7 +6002,7 @@ Act_MoleSpawner_Spawn:
 		; $00-$01 => When digging down
 		; $02-$03 => When digging up
 		;
-		add  hl, de 	; iActTimer0C-iActY
+		add  hl, de 	; iActTimer-iActY
 		inc  hl 		; iMoleSprMapBaseId
 	ld   a, b		; Get base $00-$80 position
 	rlca 			; bit7 to bit0
@@ -6013,9 +6013,9 @@ Act_MoleSpawner_Spawn:
 ; =============== Act_MoleSpawner_Wait ===============
 Act_MoleSpawner_Wait:
 	; Wait those ~2 seconds before spawning another mole
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	jp   ActS_DecRtnId
 	
@@ -6085,15 +6085,15 @@ Act_Press_MoveU:
 	
 	; Wait 1.5 seconds before dropping again, that's enough for the player to pass through
 	ld   a, $5A
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Press_Cooldown ===============
 Act_Press_Cooldown:
 	; After waiting for that...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Return to waiting for the player to get here
 	ld   a, ACTRTN_PRESS_WAITPL
@@ -6147,15 +6147,15 @@ Act_Robbit_JumpD:
 	ld   a, $00						; Use standing sprite
 	call ActS_SetSprMapId
 	ld   a, $40						; ~1 second delay between shots, and at the start
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Robbit_Ground ===============
 Act_Robbit_Ground:
 	; Wait for cooldown before shooting
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Face the player every time we're about to shoot
@@ -6168,15 +6168,15 @@ Act_Robbit_Ground:
 	ld   hl, hActCur+iRobbitCarrotsLeft
 	dec  [hl]							; # Ran out of carrots?
 	ld   a, $40							; Cooldown of ~1 sec after shooting
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz								; # If not, return
 	jp   ActS_IncRtnId					; # Otherwise, wait that second before jumping
 	
 ; =============== Act_Robbit_Cooldown ===============
 Act_Robbit_Cooldown:
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	ld   a, ACTRTN_ROBBIT_INITJUMP
 	ldh  [hActCur+iActRtnId], a
@@ -6225,7 +6225,7 @@ Act_Cook_Init:
 	ldh  [hActCur+iActSpdY], a
 	; Jump after around half a second
 	ld   a, $20					
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Cook_Run ===============
@@ -6242,9 +6242,9 @@ Act_Cook_Run:
 	jp   z, ActS_IncRtnId
 	
 	; Wait half a second before triggering a jump
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	ldh  a, [hActCur+iActSprMap]	; Reset frame and timer
@@ -6275,7 +6275,7 @@ Act_Cook_JumpD:
 	ret  c
 	; Jump after around half a second of running
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_DecRtnId
 	
 ; =============== Act_Cook_JumpU ===============
@@ -6311,7 +6311,7 @@ Act_CookSpawner:
 Act_CookSpawner_Spawn:
 	; Set the ~1 sec cooldown, only applied on success
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; If there's a chicken running around already, don't spawn a second one
 	ld   a, ACT_COOK
@@ -6337,9 +6337,9 @@ Act_CookSpawner_Spawn:
 ; =============== Act_CookSpawner_Wait ===============
 ; Cooldown after spawning one.
 Act_CookSpawner_Wait:
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	jp   ActS_DecRtnId
 
@@ -6362,15 +6362,15 @@ Act_Batton:
 Act_Batton_InitCeil:
 	; Wait 4 seconds on the ceiling, invulnerable
 	ld   a, 60*4
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Batton_Ceil ===============
 Act_Batton_Ceil:
 	; Wait for it...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; The transition to flight anim starts with sprite $01 (and ends at $04)
@@ -6378,7 +6378,7 @@ Act_Batton_Ceil:
 	ldh  [hActCur+iBattonFlySprMapId], a
 	; Show the transition sprite for 8 frames (the bat is still invulnerable)
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Batton_ToFlight ===============
@@ -6394,13 +6394,13 @@ Act_Batton_ToFlight:
 	ld   [wActCurSprMapBaseId], a
 	
 	; Wait those 8 frames, and then...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	ld   a, $08								; Reset the anim timer
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	ldh  a, [hActCur+iBattonFlySprMapId]	; Advance through the animation
 	inc  a
@@ -6424,7 +6424,7 @@ Act_Batton_ToFlight:
 	
 	; To save time, only re-check the player's position every 16 frames
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
@@ -6446,15 +6446,15 @@ Act_Batton_Fly:
 	; Otherwise, adjust the target speed every 16 frames.
 	; This is often enough to smoothly home in towards the player, but not too often
 	; that we waste time every frame (especially with multiple bats on screen)
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	call ActS_AngleToPl			; Target the player at half speed
 	call ActS_HalfSpdSub		; still at half speed
 	ld   a, $10					; Perform next update 16 frames later
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret
 	
 ; =============== Act_Batton_InitFlyU ===============
@@ -6560,7 +6560,7 @@ Act_Friender_Init:
 	
 	; Wait for 16 frames before firing
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Friender_PreFire ===============
@@ -6571,9 +6571,9 @@ Act_Friender_PreFire:
 	ret  c
 	
 	; Wait for it...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Use sprite with open mouth, as that's where the flame shot comes from
@@ -6606,7 +6606,7 @@ Act_Friender_Fire:
 	
 	; Delay the next shot by 4 frames
 	ld   a, $04
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Friender_FireCooldown ===============
@@ -6615,9 +6615,9 @@ Act_Friender_FireCooldown:
 	call Act_Friender_ChkExplode
 	ret  c
 	; Cooldown between shots..
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; If there are still shots left, go back to Act_Friender_Fire
@@ -6631,7 +6631,7 @@ Act_Friender_FireCooldown:
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Friende_WaitNoAnim ===============
@@ -6641,14 +6641,14 @@ Act_Friende_WaitNoAnim:
 	ret  c
 	
 	; Wait for those 16 frames...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Display the leg animation for 32 frames
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
@@ -6664,14 +6664,14 @@ Act_Friender_WaitAnim:
 	call ActS_Anim2
 	
 	; Wait for those 32 frames...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Return to Act_Friender_PreFire, waiting 16 more frames before shooting
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, ACTRTN_FRIENDER_PREFIRE
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -6738,7 +6738,7 @@ Act_GoblinHorn_Init:
 	call ActS_SetSpeedY
 	; Move for ~1 second 
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_GoblinHorn_MoveU ===============
@@ -6746,23 +6746,23 @@ Act_GoblinHorn_Init:
 Act_GoblinHorn_MoveU:
 	; Move up at 0.125px/frame for that ~1 second (total movement: 1 block)
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Wait for ~1 second
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_GoblinHorn_Idle ===============
 ; Horn is idle
 Act_GoblinHorn_Idle:
 	; Wait for it
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Move down at 0.5px/frame
@@ -6773,7 +6773,7 @@ Act_GoblinHorn_Idle:
 	
 	; Move for 16 frames 
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_GoblinHorn_MoveD ===============
@@ -6781,9 +6781,9 @@ Act_GoblinHorn_Idle:
 Act_GoblinHorn_MoveD:
 	; Move down at 0.5px/frame for 16 frames (total movement: half a block)
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; After that, despawn the horn.
 	xor  a
@@ -6833,7 +6833,7 @@ Act_Goblin_WaitPl:
 	
 	; Wait 16 frames before doing the spawn checks (normal delay is ~1 second)
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; 16 frames are significantly shorter than the normal delay of ~2 seconds (as it needs to wait for the spikes)
 	; which is set from the 2nd time onwards.
@@ -6850,14 +6850,14 @@ Act_Goblin_WaitPl:
 Act_Goblin_SpawnPuchi:
 
 	; Wait before trying to spawn them.
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01						; Timer--
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   nz, ActS_IncRtnId			; Timer > 0? If so, switch
 	
 	; From the 2nd time onwards, delay spawns by ~1 second
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; If the player isn't within 2 blocks, switch routines.
 	; This maps to the player being in the horizontal range of the Goblin platform.
@@ -6985,7 +6985,7 @@ Act_PuchiGoblin_Init:
 	
 	; Do that for $40 frames; by the end it will have moved another block
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
@@ -6997,16 +6997,16 @@ Act_PuchiGoblin_MoveOutH:
 	
 	; Move forward for those $40 frames
 	call ActS_ApplySpeedFwdX
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Start moving 1.25px/frame up for 32 frames (40px)
 	ld   bc, $0140
 	call ActS_SetSpeedY
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
@@ -7017,9 +7017,9 @@ Act_PuchiGoblin_MoveU:
 	
 	; Move up for those 32 frames
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; From this point, track the player's position every 16 frames
@@ -7028,7 +7028,7 @@ Act_PuchiGoblin_MoveU:
 	call ActS_HalfSpdSub
 	
 	ld   a, $10				; Next tracking in
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
@@ -7042,9 +7042,9 @@ Act_PuchiGoblin_TrackPl:
 	call ActS_ApplySpeedFwdY
 	
 	; Wait those 16 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Take a new snapshot
@@ -7053,7 +7053,7 @@ Act_PuchiGoblin_TrackPl:
 	call ActS_HalfSpdSub
 	; Take the next one after 16 frames
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret
 	
 ; =============== Act_ScwormBase ===============
@@ -7069,18 +7069,18 @@ Act_ScwormBase:
 Act_ScwormBase_Init:
 	; ~1 second cooldown between shots
 	ld   a, $30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_ScwormBase_Shot ===============
 Act_ScwormBase_Shot:
 	; Handle the cooldown
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	ld   a, $30						; Reset cooldown timer for next time
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	call ActS_GetPlDistanceX
 	cp   BLOCK_H*4					; Is the player within 4 blocks?
@@ -7171,16 +7171,16 @@ Act_ScwormShot_JumpD:
 	ret  c
 	; Stay on the ground for ~1 second
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_ScwormShot_Ground ===============
 Act_ScwormShot_Ground:
 	; Wait ~1 second animating on the ground
 	call Act_ScwormShot_Anim
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; After that, despawn with a small explosion
 	jp   ActS_Explode
@@ -7212,7 +7212,7 @@ Act_Matasaburo:
 Act_Matasaburo_Init:
 	; Stay in the next routine for ~1 second 
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Matasaburo_Blow0 ===============
@@ -7244,14 +7244,14 @@ Act_Matasaburo_Blow0:
 	ld   [wActCurSprMapBaseId], a
 	
 	; After ~1 second, switch to the next mode
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; 16 frames in the next mode
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Matasaburo_Blow1 ===============
@@ -7286,14 +7286,14 @@ Act_Matasaburo_Blow1:
 	ld   [wActCurSprMapBaseId], a
 	
 	; After 16 frames, switch to the previous mode
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; ~1 second, consistent with the init routine
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_DecRtnId
 
 ; =============== Act_KaminariGoro ===============
@@ -7318,7 +7318,7 @@ Act_KaminariGoro_Init:
 	
 	; Wait ~2 seconds before throwing a lightning bolt.
 	ld   a, $80
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_KaminariGoro_Move ===============
@@ -7335,9 +7335,9 @@ Act_KaminariGoro_Move:
 	call ActS_FacePl
 	
 	; Wait for those ~2 seconds before throwing
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;
@@ -7349,7 +7349,7 @@ Act_KaminariGoro_Move:
 	;       Thankfully, due to the animation length and speed used (($80 * 1/8) % 2 => 0) that offset 
 	;       will always be $00,  but altering the throw timing will make the bug show up.
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, $02
 	ld   [wActCurSprMapBaseId], a
 	
@@ -7374,14 +7374,14 @@ Act_KaminariGoro_Throw:
 	call Act_KaminariGoro_SyncPos
 	
 	; Wait those 16 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Done, materialize a new lightning bolt
 	ld   a, $80							; Throw it after ~2 seconds
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, ACTRTN_KAMINARIGORO_MOVE	; Back to the main routine
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -7548,7 +7548,7 @@ Act_Telly_Init:
 	call ActS_HalfSpdSub	;
 	
 	ld   a, $10				; Take next snapshot after 16 frames
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Telly_Move ===============
@@ -7562,16 +7562,16 @@ Act_Telly_Move:
 	call ActS_ApplySpeedFwdY
 	
 	; After 16 frames pass, take a new snapshot
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01						; Timer--
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz							; Timer != 0? If so, return
 	call ActS_AngleToPl				; Take snapshot of player position
 	call ActS_HalfSpdSub			; Move there at 1/4th of the speed
 	call ActS_HalfSpdSub			;
 	
 	ld   a, $10						; Take next snapshot after 16 frames
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret
 	
 ; =============== Act_PipiSpawner ===============
@@ -7588,15 +7588,15 @@ Act_PipiSpawner:
 Act_PipiSpawner_SetWait:
 	; Wait ~1 second before trying to spawn a Pipi.
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_PipiSpawner_Main ===============
 Act_PipiSpawner_Main:
 	; Wait that ~1 second
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Regardless of the checks passing or failing, wait another second before trying to spawn another
 	ld   a, ACT_PIPISPAWN_SETWAIT
@@ -7763,13 +7763,13 @@ Act_Wily1_Turn0:
 	; Use sprite $00 for 16 frames
 	ld   a, $00
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wily1_Turn1 ===============
@@ -7779,13 +7779,13 @@ Act_Wily1_Turn1:
 	; Use sprite $02 for 16 frames
 	ld   a, $02
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wily1_Turn2 ===============
@@ -7795,9 +7795,9 @@ Act_Wily1_Turn2:
 	; Use sprite $03 for 16 frames
 	ld   a, $03
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; The Wily Machine is now facing the camera, and it needs to continue turning.
@@ -7805,7 +7805,7 @@ Act_Wily1_Turn2:
 	call ActS_FacePl
 	
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wily1_Turn3 ===============
@@ -7815,13 +7815,13 @@ Act_Wily1_Turn3:
 	; Use sprite $02 for 16 frames
 	ld   a, $02
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wily1_Turn4 ===============
@@ -7831,9 +7831,9 @@ Act_Wily1_Turn4:
 	; Use sprite $00 for 16 frames
 	ld   a, $00
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Go back to whatever we were doing before
@@ -7880,7 +7880,7 @@ Act_Wily1_ChkPlBehind:
 	;
 	
 	ld   a, $10						; Show for 16 frames
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	ld   hl, hActCur+iActRtnId		; Seek HL to iActRtnId
 	ld   a, [hl]					; A = iActRtnId
@@ -7966,7 +7966,7 @@ Act_Wily2_InitFire:
 	ld   a, $02
 	ldh  [hActCur+iWily2ShotsLeft], a
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
@@ -7980,9 +7980,9 @@ Act_Wily2_Fire:
 	call Act_Wily2_ChkDeath
 	
 	; Wait for the cooldown...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Fire an energy ball forward.
@@ -7993,7 +7993,7 @@ Act_Wily2_Fire:
 	
 	; Set cooldown for next shot
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; If we fired all of them, start moving
 	ld   hl, hActCur+iWily2ShotsLeft
@@ -8012,16 +8012,16 @@ Act_Wily2_InitMoveFwd:
 	call Act_Wily2_ChkDeath
 	
 	; Wait for that ~half a sec of cooldown after the last shot...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Move forwards at 0.5px/frame for ~1.5 seconds
 	ld   bc, $0080
 	call ActS_SetSpeedX
 	ld   a, $60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
@@ -8035,9 +8035,9 @@ Act_Wily2_MoveFwd:
 
 	; Move forward for the previously set amount
 	call ActS_ApplySpeedFwdX
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; At this point, we're typically waiting near the center of the screen.
@@ -8055,7 +8055,7 @@ Act_Wily2_MoveFwd:
 	
 	; Wait ~2 seconds, typically near the center of the screen
 	ld   a, $80
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
@@ -8075,14 +8075,14 @@ Act_Wily2_Wait:
 	call ActS_Anim2
 	
 	; Wait for it...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Move back for ~1.5 seconds
 	ld   a, $60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wily2_MoveBak ===============
@@ -8095,9 +8095,9 @@ Act_Wily2_MoveBak:
 	
 	; Move backwards at 0.5px/frame (for either ~1.5 or ~2 seconds, depending on how we got here)
 	call ActS_ApplySpeedFwdX
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; For later, set up movement at 0.5px/frame
@@ -8106,7 +8106,7 @@ Act_Wily2_MoveBak:
 	;--
 	; [POI] Ignored, will be overwritten
 	ld   a, $60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	;--
 	
 	; Start firing shots again, looping the pattern
@@ -8129,9 +8129,9 @@ Act_Wily2_Turn:
 	call Act_Wily2_ChkDeath
 	
 	; Show the sprite for 16 frames...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  a, $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Then turn around
@@ -8140,7 +8140,7 @@ Act_Wily2_Turn:
 	; Move away from the player for ~2 seconds.
 	; As the player might be very nearby, this is half a second longer than normal.
 	ld   a, $80
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, ACTRTN_WILY2_MOVEBAK
 	ldh  [hActCur+iActRtnId], a
 	ret 
@@ -8180,7 +8180,7 @@ Act_Wily2_ChkPlBehind:
 	;
 	
 	ld   a, $10						; Stay in that mode for 16 frames
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	ld   hl, hActCur+iActRtnId		; Seek HL to iActRtnId
 	;--
@@ -8276,7 +8276,7 @@ Act_Wily3_Init:
 	
 	; Wait 16 frames before firing the missile 
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
@@ -8284,9 +8284,9 @@ Act_Wily3_Init:
 ; Fires an homing missile.
 Act_Wily3_FireMissile:
 	; Wait for it...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Spawn the homing missile
@@ -8300,16 +8300,16 @@ Act_Wily3_FireMissile:
 	
 	; Cooldown of ~2 seconds before firing the Goombas
 	ld   a, $80
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wily3_FireMet ===============
 ; Fires multiple Mets.
 Act_Wily3_FireMet:
 	; Wait those ~2 seconds
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;
@@ -8366,7 +8366,7 @@ Act_Wily3_FireMet:
 	
 	; Delay ~2 seconds after shooting, to wait for the Mets to have fallen offscreen
 	ld   a, $80
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wily3_WaitSkUp ===============
@@ -8374,14 +8374,14 @@ Act_Wily3_FireMet:
 Act_Wily3_WaitSkUp:
 	; Wait those ~2 seconds...
 	; During this time, sprite
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Stay in the next routine for ~half a second
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wily3_WaitSkDown ===============
@@ -8393,14 +8393,14 @@ Act_Wily3_WaitSkDown:
 	ld   [wActCurSprMapBaseId], a
 	
 	; Show that for ~half a second
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Then fire the homing missile, looping the pattern.
 	ld   a, $80						; Delay that by ~2 secs
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	ld   a, ACTRTN_WILY3_FIREMISSILE
 	ldh  [hActCur+iActRtnId], a		; Loop back. Exiting this routine retracts the skull.
@@ -8453,7 +8453,7 @@ Act_WilyShip_Init:
 	
 	; Stand still for ~2 seconds
 	ld   a, $80
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Next mode
 	ld   hl, hActCur+iWilyShipRtnId
@@ -8468,9 +8468,9 @@ Act_WilyShip_Wait:
 	call ActS_Anim2
 	
 	; Wait for those ~2 seconds...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Set up movement speed for later routines
@@ -8524,7 +8524,7 @@ Act_WilyShip_MoveR:
 	
 	; But continue moving while scrolling the screen for ~2 seconds more
 	ld   a, $80
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Switch to the next routine.
 	; If we're in the transition between the 2nd and 3rd phases, at this point
@@ -8557,9 +8557,9 @@ Act_WilyShip_MoveScrollR:
 	call c, Act_WilyShip_ScrollR
 	
 	; Do the above for ~2 seconds
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; After that, start moving down
@@ -8650,7 +8650,7 @@ Act_Quint:
 Act_Quint_Init:
 	; Stand on the ground (show sprite $00) for ~2 seconds
 	ld   a, $80
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Quint_IntroStand ===============
@@ -8666,9 +8666,9 @@ Act_Quint_IntroStand:
 	;
 
 	; Wait for it...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;
@@ -8759,7 +8759,7 @@ Act_Quint_JumpD:
 	
 	; Then wait 8 frames idling
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Quint_InitGround ===============
@@ -8772,16 +8772,16 @@ Act_Quint_InitGround:
 	; This already accounts for the 2-frame $05-$06 1/8 animation (see Act_Quint_GroundDebris).
 	ld   a, $06
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; After that, set up the spawned debris
 	ld   a, $0C								; Number of times we loop to Act_Quint_GroundDebris
 	ldh  [hActCur+iQuintDebrisTimer], a
 	ld   a, $08								; Cooldown between spawn attempts
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Quint_GroundDebris ===============
@@ -8798,15 +8798,15 @@ Act_Quint_GroundDebris:
 	ld   a, $05
 	ld   [wActCurSprMapBaseId], a
 	; Wait those 8 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Set timer for the 2nd frame of the animation.
 	; Between the two cooldowns, 16 frames will pass before the next spawn check.
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	;
 	; Spawn the debris only if its timer is >= 6 and divisible by 2.
@@ -8862,14 +8862,14 @@ Act_Quint_GroundWait:
 	; Use sprite $06, as part of the animation
 	ld   a, $06
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Wait 8 more frames (total 16) before spawning debris, in case we loop back.
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	; Loop back if we aren't done spawning debris.
 	ld   hl, hActCur+iQuintDebrisTimer
 	dec  [hl]					; Timer--
@@ -8973,16 +8973,16 @@ Act_Quint_PlWarpOut:
 	ld   [wPlMode], a
 	
 	ld   a, 60						; Wait for a second before ending the level
-	ldh  [hActCur+iActTimer0C], a	; It should be enough to let the player fully teleport out
+	ldh  [hActCur+iActTimer], a	; It should be enough to let the player fully teleport out
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Quint_EndLvl ===============
 ; Defeat sequence - end level.
 Act_Quint_EndLvl:
 	; Wait for that second...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Then end the lemvel
 	ld   a, LVLEND_BOSSDEAD
@@ -9063,7 +9063,7 @@ Act_Wily3Part_Spr0:
 									
 	ld   [hl], a					; Reset the request signal (A will be 0, which is why it uses "sub" over "cp")
 	ld   a, $20						; Display the second sprite for ~half a second
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wily3Part_Spr1 ===============
@@ -9076,9 +9076,9 @@ Act_Wily3Part_Spr1:
 	ld   [wActCurSprMapBaseId], a
 	
 	; Show that for ~half a second
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Then go back to sprite #0
@@ -9166,7 +9166,7 @@ Act_QuintSakugarne_FallV:
 	ret  c
 	; Wait 4 frames before setting up a jump
 	ld   a, $04
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_QuintSakugarne_InitJump ===============
@@ -9175,9 +9175,9 @@ Act_QuintSakugarne_InitJump:
 	; (only for these few frames it's on the ground)
 	ld   a, $01
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;
@@ -9220,15 +9220,15 @@ Act_QuintSakugarne_JumpD:
 	; This is timed with the end of Quint's intro animation,
 	; as the Sakugarne is baked into his sprites there.
 	ld   a, $04
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_QuintSakugarne_WaitEnd ===============
 Act_QuintSakugarne_WaitEnd:
 	; Wait those 4 frames...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Then despawn
 	xor  a
@@ -9527,7 +9527,7 @@ Act_Wily3Missile:
 Act_Wily3Missile_Init:
 	; Home in for the first ~second
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Wily3Missile_TrackPl ===============
@@ -9535,9 +9535,9 @@ Act_Wily3Missile_TrackPl:
 	call ActS_AngleToPl			; Track player position
 	call ActS_ApplySpeedFwdX	; Move precisely there
 	call ActS_ApplySpeedFwdY	; ""
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01					; Done with this part?
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz						; If not, return
 	jp   ActS_IncRtnId
 	
@@ -9800,7 +9800,7 @@ Act_WilyCtrl_P3Intro0:
 	
 	; Move right for ~1.5 seconds
 	ld   a, $60
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_WilyCtrl_P3Intro_MoveR ================
@@ -9812,24 +9812,24 @@ Act_WilyCtrl_P3Intro_MoveR:
 	
 	; Move the spaceship right 0.5px/frame for those ~1.5 seconds
 	call ActS_ApplySpeedFwdX
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; At this point, the spaceship should be fully offscreen.
 	; Wait ~half a second doing nothing to simulate the docking happening.
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_WilyCtrl_P3Spawn ================
 ; Wily Machine - 3rd phase intro - spawn actors.
 Act_WilyCtrl_P3Spawn:
 	; Wait for that ~half a second...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;
@@ -9989,13 +9989,14 @@ Act_RushCoil_WaitPl:
 	; The timer is initially set to 3 seconds.
 	; When 1 second remains, start flashing.
 	;
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   60
 	jr   nc, .chkColi
 	
 	; Flash by alternating between frames $00 and $08 every 4 frames.
+	; iActSprMap is guaranteed to be $00 when we get here.
 	push af
 		sla  a							; At double timer speed...
 		and  %1000						; Every 8 frames... (/2)
@@ -10095,9 +10096,9 @@ Act_RushMarine_ChkSpawnPos:
 Act_RushMarine_WaitPl:
 
 	; When 1 second remains, start flashing.
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   60
 	jr   nc, .chkColi
 	
@@ -10281,9 +10282,9 @@ Act_RushJet_ChkSpawnPos:
 Act_RushJet_WaitPl:
 
 	; When 1 second remains, start flashing.
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   60
 	jr   nc, .chkColi
 	
@@ -10467,9 +10468,9 @@ Act_Sakugarne:
 Act_Sakugarne_WaitPl:
 
 	; When 1 second remains, start flashing.
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   60
 	jr   nc, .chkColi
 	
@@ -10523,7 +10524,7 @@ Act_Sakugarne_WaitPl:
 	
 	; Graphics are loaded 4 tiles/frame, so loading 16 tiles will take up 4 frames.
 	ld   a, $04
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	jp   ActS_IncRtnId
 	
@@ -10532,9 +10533,9 @@ Act_Sakugarne_WaitPl:
 Act_Sakugarne_WaitGfxLoad:
 	; Wait 4 frames while the GFX set hopefully loads.
 	; During this time the normal player sprite will still be visible.
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Same inconsistency as Rush Marine
@@ -10681,7 +10682,7 @@ Act_Helper_TeleportIn_MoveDChkSpawn:
 	ret  c
 	; When reached, advance to the next routine
 	ld   a, $00						; Init anim
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]
 	ret
@@ -10700,7 +10701,7 @@ Act_Helper_TeleportIn_MoveDChkSpawn:
 	
 	ldh  [hActCur+iActY], a			; Otherwise, align with player position
 	ld   a, $00						; Init anim
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]
 	ret
@@ -10720,7 +10721,7 @@ Act_Helper_TeleportIn_MoveDChkSpawn:
 	
 	ldh  [hActCur+iActY], a			; Otherwise, align with player position
 	ld   a, $00						; Init anim
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]
 	ret
@@ -10733,7 +10734,7 @@ Act_Helper_TeleportIn_MoveDChkSpawn:
 	ret  c
 	; When reached, advance to the next routine
 	ld   a, $00						; Init anim
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]
 	ret
@@ -10741,9 +10742,9 @@ Act_Helper_TeleportIn_MoveDChkSpawn:
 ;================ Act_Helper_TeleportIn_Anim ================
 ; Teleport in - ground animation
 Act_Helper_TeleportIn_Anim:
-	ldh  a, [hActCur+iActTimer0C]	; Timer++
+	ldh  a, [hActCur+iActTimer]	; Timer++
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Starting from a pre-incremented $00, this will animate from $00 to $05
 	srl  a							; SprMapId = Timer / 2 
@@ -10790,7 +10791,7 @@ Act_Helper_TeleportIn_ChkSolid:
 	ld   a, SFX_TELEPORTIN			; PLay landing sound
 	ldh  [hSFXSet], a
 	ld   a, 60*3					; If the player doesn't interact within 3 seconds, automatically teleport it out
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 .warpOut:
 	; If we got here, a solid block was in the way, so teleport out immediately.
@@ -10806,7 +10807,7 @@ Act_Helper_TeleportOut_InitAnim:
 	ld   a, $02					; Use normal teleport sprite
 	call ActS_SetSprMapId
 	ld   a, $0A					; Wait 8 frames (see below)
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, $05					; Start from sprite $05
 	ld   [wActCurSprMapBaseId], a
 	ld   hl, wWpnHelperWarpRtn	; Next mode
@@ -10816,9 +10817,9 @@ Act_Helper_TeleportOut_InitAnim:
 ;================ Act_Helper_TeleportOut_Anim ================
 ; Teleport out - ground animation. 
 Act_Helper_TeleportOut_Anim:
-	ldh  a, [hActCur+iActTimer0C]	; Timer--
+	ldh  a, [hActCur+iActTimer]	; Timer--
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Starting from a pre-decremented $0A, this will animate from $04 to $01
 	srl  a							; SprMapId = Timer / 2 
@@ -10872,18 +10873,18 @@ Act_Bubble_Init:
 	call ActS_SetSpeedY
 	
 	; Randomize time before turning the first time.
-	call Rand					; iActTimer0C = (Rand & $F7) + $0F
+	call Rand					; iActTimer = (Rand & $F7) + $0F
 	and  $FF^$08
 	add  $0F
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_Bubble_MoveU ================
 Act_Bubble_MoveU:
 	; Turn horizontally every ~half a second
-	ldh  a, [hActCur+iActTimer0C]	; iActTimer0C++
+	ldh  a, [hActCur+iActTimer]	; iActTimer++
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	and  $1F						; Timer % $20 != 0?
 	call z, ActS_FlipH				; If so, turn around
 	
@@ -10915,15 +10916,15 @@ Act_Bubble_MoveU:
 	ld   a, $01
 	call ActS_SetSprMapId
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_Bubble_Pop ================
 Act_Bubble_Pop:
 	; Wait those 8 frames...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Then despawn
 	xor  a
@@ -11139,7 +11140,7 @@ Act_HardMan:
 Act_HardMan_InitPunchAnim:
 	; Already done by ActS_InitAnimRange
 	ld   a, $00
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Throw the first towards the player
 	call ActS_FacePl
@@ -11159,7 +11160,7 @@ Act_HardMan_PlayPunchAnim:
 	ret  z							; If not, return
 	
 	ld   a, $00						; Reset anim timer
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_HardMan_ThrowFist ================
@@ -11169,9 +11170,9 @@ Act_HardMan_ThrowFist:
 	; Always throw them towards the player, even if they try to pass through.
 	call ActS_FacePl
 	
-	ldh  a, [hActCur+iActTimer0C]	; Timer++
+	ldh  a, [hActCur+iActTimer]	; Timer++
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	;
 	; Handle the timing sequence.
@@ -11227,16 +11228,16 @@ Act_HardMan_ThrowFist:
 	ld   a, $04
 	ld   [wActCurSprMapBaseId], a
 	ld   a, $00						; Reset for next mode
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId				; Next mode
 	
 ;================ Act_HardMan_InitJump ================
 ; Sets up an high jump directly at the player.
 Act_HardMan_InitJump:
 	; Delay it by half a second
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	cp   30
 	ret  nz
 	
@@ -11311,7 +11312,7 @@ Act_HardMan_JumpD:
 	; If we got all the way here, Hard Man failed to find the player.
 	
 	ld   a, 60					; Shake for a second
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, PL_MODE_FROZEN		; Freeze the player while it happens
 	ld   [wPlMode], a
 	ldh  a, [hScrollY]			; Backup untouched coord
@@ -11349,7 +11350,7 @@ Act_HardMan_Drop:
 	
 	; When we do, freeze the player identically to Act_HardMan_JumpD 
 	ld   a, 60					; Shake for a second
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, PL_MODE_FROZEN		; Freeze the player while it happens
 	ld   [wPlMode], a
 	ldh  a, [hScrollY]			; Backup untouched coord
@@ -11367,9 +11368,9 @@ Act_HardMan_Shake:
 	
 	; Shake the screen vertically for that second
 	call Act_HardMan_SetShake
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; After it's done, restore the original scroll value
 	ld   a, [wHardYShakeOrg]
@@ -11411,7 +11412,7 @@ Act_HardMan_RiseD:
 	xor  a ; PL_MODE_GROUND		; Unfreeze the player
 	ld   [wPlMode], a
 	ld   a, $06					; Wait for 6 frames before looping
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_HardMan_Cooldown ================
@@ -11420,9 +11421,9 @@ Act_HardMan_Cooldown:
 	; Wait 6 frames of cooldown using sprite $07
 	ld   a, $07
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Then loop the pattern from the beginning.
@@ -11493,7 +11494,7 @@ Act_TopMan:
 Act_TopMan_InitThrow:
 	; Use sprite $00 for half a second
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, $00
 	call ActS_SetSprMapId
 	
@@ -11503,14 +11504,14 @@ Act_TopMan_InitThrow:
 ; Arm motion - sprite $00.
 Act_TopMan_Throw0:
 	; Wait that half a second
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Use sprite $02 for half a second
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, $02
 	call ActS_SetSprMapId
 	
@@ -11520,14 +11521,14 @@ Act_TopMan_Throw0:
 ; Arm motion - sprite $02.
 Act_TopMan_Throw1:
 	; Wait that half a second
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Use sprite $01 for 15 frames
 	ld   a, $0F
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, $01
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
@@ -11535,14 +11536,14 @@ Act_TopMan_Throw1:
 ;================ Act_TopMan_SpawnTop ================
 Act_TopMan_SpawnTop:
 	; Wait those 15 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Cooldown of 2 seconds after spawning them, using sprite $02
 	ld   a, 60*2
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, $00
 	call ActS_SetSprMapId
 	
@@ -11553,14 +11554,14 @@ Act_TopMan_SpawnTop:
 ;================ Act_TopMan_InitSpin ================
 Act_TopMan_InitSpin:
 	; Wait those 2 seconds before doing it
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Spin in place for 2 seconds
 	ld   a, 60*2
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   b, ACTCOLI_ENEMYREFLECT	; Reflect shots while spinning
 	call ActS_SetColiType
 	jp   ActS_IncRtnId
@@ -11573,9 +11574,9 @@ Act_TopMan_Spin:
 	ld   c, $02
 	call ActS_Anim4
 	; Do that for aforemented 2 seconds
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Then start moving forward at 2px/frame, to the other side of the screen
 	ld   bc, $0200
@@ -11688,7 +11689,7 @@ Act_MagnetMan_JumpD:
 	
 	; Then temporarily stand on the ground for 6 frames, using sprite $00
 	ld   a, $06
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, $00
 	call ActS_SetSprMapId
 	
@@ -11698,9 +11699,9 @@ Act_MagnetMan_JumpD:
 ; Sets up the second of the two forward hops.
 Act_MagnetMan_InitFwdJump1:
 	; Wait those 6 frames...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Y Speed = 3px/frame
@@ -11755,7 +11756,7 @@ Act_MagnetMan_ChkAttack:
 	ld   a, $03						; Use attract sprite $03 (part of an anim)
 	call ActS_SetSprMapId
 	ld   a, 60*3					; Waste 3 seconds doing this
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, ACTRTN_MAGNETMAN_ATTRACT
 	ldh  [hActCur+iActRtnId], a
 	ret
@@ -11764,7 +11765,7 @@ Act_MagnetMan_ChkAttack:
 ; Sets up the timer for missile spawning, also used for cooldown.
 Act_MagnetMan_InitSpawnMissile:
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_MagnetMan_SpawnMissile ================
@@ -11774,9 +11775,9 @@ Act_MagnetMan_SpawnMissile:
 	; Always face the player while in this pose, which is a bit pointless given those projectiles may hit a wall.
 	call ActS_FacePl
 	
-	ldh  a, [hActCur+iActTimer0C]	; Timer--
+	ldh  a, [hActCur+iActTimer]	; Timer--
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	push af
 		ld   b, a
 			; Alternate between sprites $05 and $06 every 8 frames.
@@ -11815,7 +11816,7 @@ Act_MagnetMan_SpawnMissile:
 Act_MagnetMan_InitCooldown:
 	; Use sprite $00 for 6 frames
 	ld   a, $06
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, $00
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
@@ -11824,9 +11825,9 @@ Act_MagnetMan_InitCooldown:
 ; Ground cooldown.
 Act_MagnetMan_Cooldown:
 	; Wait on the ground for those 6 frames...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Loop pattern to the start
 	ld   a, ACTRTN_MAGNETMAN_INITFWDJUMP0
@@ -11852,9 +11853,9 @@ Act_MagnetMan_Attract:
 	jr   nz, .end				; If so, jump
 	
 	
-	ldh  a, [hActCur+iActTimer0C]	; TImer--
+	ldh  a, [hActCur+iActTimer]	; TImer--
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	push af	; Save timer
 		; Alternate between sprites $03 and $04 every 4 frames.
 		; wActCurSprMapBaseId = Timer / 4 % 2
@@ -11906,16 +11907,16 @@ Act_NeedleMan_InitChkAttack:
 	ld   a, $00
 	call ActS_SetSprMapId
 	ld   a, $06
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_NeedleMan_ChkAttack ================
 ; Chosses a random attack.
 Act_NeedleMan_ChkAttack:
 	; Stay on the ground for those 6 frames, before choosing an attack
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;
@@ -12157,7 +12158,7 @@ Act_NeedleMan_ThrSpawn:
 	
 	; Cooldown of 6 frames after spawning needle
 	ld   a, $06
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_NeedleMan_ThrCooldown ================
@@ -12165,9 +12166,9 @@ Act_NeedleMan_ThrSpawn:
 Act_NeedleMan_ThrCooldown:
 	; Wait those 6 frames.
 	; While this happens, gravity is not processed, making Needle Man freeze in the air.
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	ld   a, ACTRTN_NEEDLEMAN_JUMPTHRD
@@ -12213,7 +12214,7 @@ Act_CrashMan_InitWalk:
 	ld   bc, $00E0					; Move 0.875px/frame forward
 	call ActS_SetSpeedX
 	ld   a, $80						; Walk for ~2 seconds at most
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_CrashMan_Walk ================
@@ -12246,9 +12247,9 @@ Act_CrashMan_Walk:
 	; After waiting ~2 seconds, retaliate on our own.
 	; This is unlike RM2, where Crash Man can wait indefinitely until the player shoots.
 	;
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a	; Timer--
+	ldh  [hActCur+iActTimer], a	; Timer--
 	jp   z, ActS_IncRtnId			; Timer == 0? If so, jump
 	
 	; Move forward at 0.875px/frame, turning around when a solid wall is in the way
@@ -12298,7 +12299,7 @@ Act_CrashMan_JumpU:
 	ret  c
 	; Wait 8 frames before
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_CrashMan_JumpShootD ================
@@ -12316,9 +12317,9 @@ Act_CrashMan_JumpShootD:
 	call ActS_ApplySpeedDownYColi
 	
 	; Wait for those 8 frames...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	;
@@ -12339,7 +12340,7 @@ Act_CrashMan_JumpShootD:
 .nextMode:
 	; Continue the jump down while displaying the shooting sprite $09 for 8 frames.
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_CrashMan_JumpD1 ================
@@ -12354,13 +12355,13 @@ Act_CrashMan_JumpD1:
 	call ActS_ApplySpeedDownYColi
 	
 	; Wait for those 8 frames...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Continue the jump down while displaying sprite $09 until we touch the ground
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_CrashMan_JumpD2 ================
@@ -12408,7 +12409,7 @@ Act_MetalMan_InitWalk:
 	ldh  [hActCur+iMetalManWalkTimer], a
 	;--
 	ld   a, $10						; Not used
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	;--
 	jp   ActS_IncRtnId
 	
@@ -12461,7 +12462,7 @@ Act_MetalMan_AtkJumpU:
 	
 	; Wait 4 frames before throwing one
 	ld   a, $04
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_MetalMan_AtkJumpSpawnD ================
@@ -12481,9 +12482,9 @@ Act_MetalMan_AtkJumpSpawnD:
 	jp   nc, Act_MetalMan_SwitchToWalk
 	
 	; Wait those 4 frames before spawning a Metal Blade
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	ld   a, ACT_METALBLADE
@@ -12492,7 +12493,7 @@ Act_MetalMan_AtkJumpSpawnD:
 	
 	; Display throw sprite for 8 frames, while still falling down
 	ld   a, $08
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_MetalMan_AtkJumpD ================
@@ -12507,14 +12508,14 @@ Act_MetalMan_AtkJumpD:
 	jp   nc, Act_MetalMan_SwitchToWalk
 	
 	; Wait those 8 frames
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Throw another Metal Blade after 16 frames
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ld   a, ACTRTN_METALMAN_ATKJUMPSPAWND
 	ldh  [hActCur+iActRtnId], a		; Back to previous routine
 	ret
@@ -12544,7 +12545,7 @@ Act_MetalMan_Unused_AtkJumpEndD:
 Act_MetalMan_Unused_InitAtkJumpCooldown:
 	; Cooldown of 16 frames, presumably after spawning the Metal Blade
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_MetalMan_Unused_AtkJumpCooldown ================
@@ -12558,9 +12559,9 @@ Act_MetalMan_Unused_AtkJumpCooldown:
 	
 	; Wait those 10 frames.
 	; While this happens, gravity is not processed, making Metal Man freeze in the air.
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  a, $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; And then...
 	jp   ActS_IncRtnId
@@ -12654,7 +12655,7 @@ Act_WoodMan_SpawnShield:
 	
 	; After spawning it, idle for 16 frames (before spawning the rising leaves)
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	;
 	; Spawn the Leaf Shield.
@@ -12671,7 +12672,7 @@ Act_WoodMan_SpawnShield:
 	ld   bc, ($00 << 8)|$04	; 4px up
 	call ActS_SpawnRel
 	jp   c, ActS_IncRtnId
-	ld   de, iActTimer0C
+	ld   de, iActTimer
 	add  hl, de
 	ld   [hl], $10*0
 	
@@ -12679,7 +12680,7 @@ Act_WoodMan_SpawnShield:
 	ld   bc, ($00 << 8)|$04	; 4px up
 	call ActS_SpawnRel
 	jp   c, ActS_IncRtnId
-	ld   de, iActTimer0C
+	ld   de, iActTimer
 	add  hl, de
 	ld   [hl], $10*1
 	
@@ -12687,7 +12688,7 @@ Act_WoodMan_SpawnShield:
 	ld   bc, ($00 << 8)|$04	; 4px up
 	call ActS_SpawnRel
 	jp   c, ActS_IncRtnId
-	ld   de, iActTimer0C
+	ld   de, iActTimer
 	add  hl, de
 	ld   [hl], $10*2
 	
@@ -12695,7 +12696,7 @@ Act_WoodMan_SpawnShield:
 	ld   bc, ($00 << 8)|$04	; 4px up
 	call ActS_SpawnRel
 	jp   c, ActS_IncRtnId
-	ld   de, iActTimer0C
+	ld   de, iActTimer
 	add  hl, de
 	ld   [hl], $10*3
 	
@@ -12706,16 +12707,16 @@ Act_WoodMan_SpawnShield:
 Act_WoodMan_Idle:
 	; Wait 16 frames in the idle animation
 	call Act_WoodMan_AnimIdle
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Spawn three rising leaves
 	ld   a, $03
 	ldh  [hActCur+iWoodManRiseLeft], a
 	; Wait 16 frames (total 32)
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_WoodMan_SpawnRise ================
@@ -12723,9 +12724,9 @@ Act_WoodMan_Idle:
 Act_WoodMan_SpawnRise:
 	; Wait 16 frames in the idle animation (cooldown)
 	call Act_WoodMan_AnimIdle
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Spawn a leaf moving straight up
@@ -12735,7 +12736,7 @@ Act_WoodMan_SpawnRise:
 	
 	; Wait 16 frames before spawning another one
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; If we haven't spawned all 3 leaves, loop this routine
 	ld   hl, hActCur+iWoodManRiseLeft
@@ -12777,7 +12778,7 @@ Act_WoodMan_ThrowShield:
 	
 	; Wait ~half a second before
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_WoodMan_SpawnFallLeaves ================
@@ -12786,9 +12787,9 @@ Act_WoodMan_SpawnFallLeaves:
 	; Rise arms up for ~half a second...
 	ld   a, $07
 	ld   [wActCurSprMapBaseId], a
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; ...before making three leaves SLOWLY fall down the screen.
@@ -12933,7 +12934,7 @@ Act_AirMan_Init:
 	call ActS_SetSpeedX
 	; Wait ~1 second idling before spawning the whirlwinds
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_AirMan_Idle ================
@@ -12949,9 +12950,9 @@ Act_AirMan_Idle:
 	ld   [wActCurSprMapBaseId], a
 	
 	; Wait that ~1 second before doing anythinh...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; 
@@ -12968,9 +12969,9 @@ Act_AirMan_Idle:
 	ldh  [hActCur+iAirManPatId], a
 	
 	; Initialize relative path ID, will be decremented every frame.
-	; The whirlwind that gets spawned will use the path iAirManPatId + iActTimer0C - 1.
+	; The whirlwind that gets spawned will use the path iAirManPatId + iActTimer - 1.
 	ld   a, $04
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_AirMan_SpawnShot ================
@@ -12997,20 +12998,20 @@ Act_AirMan_SpawnShot:
 	add  hl, de
 	ldh  a, [hActCur+iAirManPatId]			; Read base path ID
 	ld   b, a
-	ldh  a, [hActCur+iActTimer0C]			; Read relative path ID
+	ldh  a, [hActCur+iActTimer]			; Read relative path ID
 	dec  a									; - 1
 	add  b									; Add base to it
 	ld   [hl], a							; Save result to iAirManShotPathId
 	
 	; Do the above 4 times in a row, to quickly spawn all whirlwinds without spiking the CPU
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Then wait for the wind to despawn, polling every 16 frames
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_AirMan_WaitShotDespawn ================
@@ -13039,13 +13040,13 @@ Act_AirMan_WaitShotDespawn:
 	ld   [wActCurSprMapBaseId], a
 	
 	; Poll every 16 frames...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	; Set next check delay
 	ld   a, $10
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Keep waiting if all whirlwinds haven't been offscreened yet
 	ld   a, ACT_WHIRLWIND
@@ -13072,7 +13073,7 @@ Act_AirMan_WaitShotDespawn:
 	ldh  [hActCur+iActRtnId], a
 	; Initialize relative path ID
 	ld   a, $04
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret
 	
 ;================ Act_AirMan_InitJump0 ================
@@ -13241,7 +13242,7 @@ Act_HardKnuckle_Move0:
 	
 	; Then, keep moving for 24 frames at the same speed, going a bit over the target
 	ld   a, $18
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_HardKnuckle_SetMove1 ================
@@ -13250,9 +13251,9 @@ Act_HardKnuckle_SetMove1:
 	; Keep moving for those 24 frames...
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Then take a new snapshot of the player location
@@ -13261,15 +13262,15 @@ Act_HardKnuckle_SetMove1:
 	
 	; Stop for 6 frames
 	ld   a, $06
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_HardKnuckle_WaitMove1 ================
 ; Waits for those 6 frames before moving.
 Act_HardKnuckle_WaitMove1:
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	jp   ActS_IncRtnId
 	
@@ -13300,7 +13301,7 @@ Act_TopManShot_Init:
 	
 	; Move diagonally up for ~1 second.
 	ld   a, $30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_TopManShot_MoveU ================
@@ -13314,14 +13315,14 @@ Act_TopManShot_MoveU:
 	; The initial speed values come from Act_TopMan_SpawnShots.
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Wait half a second idling
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_TopManShot_Wait ================
@@ -13332,9 +13333,9 @@ Act_TopManShot_Wait:
 	call ActS_Anim2
 	
 	; Wait for that half a second...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Take a snapshot of the player position
@@ -13371,7 +13372,7 @@ Act_MagnetManShot_Init:
 	ld   bc, $0200				; Move forward at 2px/frame
 	call ActS_SetSpeedX
 	ld   a, $0C					; Move for 12 frames with no checks	
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_MagnetManShot_MoveNoChkH ================
@@ -13382,9 +13383,9 @@ Act_MagnetManShot_MoveNoChkH:
 	; Move forward at 2px/frame for 12 frames
 	call ActS_ApplySpeedFwdXColi		; Touched a solid block?
 	jr   nc, Act_MagnetManShot_Explode	; If so, explode
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01							; Timer--
-	ldh  [hActCur+iActTimer0C], a		; Timer != 0?
+	ldh  [hActCur+iActTimer], a		; Timer != 0?
 	ret  nz								; If so, return
 	jp   ActS_IncRtnId
 	
@@ -13474,15 +13475,15 @@ Act_CrashManShot_MoveToPl:
 Act_CrashManShot_SetExplDelay:
 	; Explode in ~half a second
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_CrashManShot_WaitExpl ================
 Act_CrashManShot_WaitExpl:
 	; Wait for that ~half a second...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	jp   ActS_IncRtnId
 	
@@ -13564,7 +13565,7 @@ Act_AirManShot_InitMoveToPos:
 	
 	; Move for ~1 second
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_AirManShot_MoveToPos ================
@@ -13577,14 +13578,14 @@ Act_AirManShot_MoveToPos:
 	; Move diagonally forwards for $40 frames
 	call ActS_ApplySpeedFwdX
 	call ActS_ApplySpeedFwdY
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Wait ~1 second
 	ld   a, $40
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_AirManShot_Wait ================
@@ -13595,9 +13596,9 @@ Act_AirManShot_Wait:
 	call ActS_AnimCustom
 	
 	; Wait for that ~1 second...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Start moving the whirlwind straight forward, at 1px/frame
@@ -13666,11 +13667,11 @@ Act_WoodManLeafShield_Around:
 	;
 	
 	; X POSITION
-	; iActX = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer0C % $40]
-	ldh  a, [hActCur+iActTimer0C]
+	; iActX = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer % $40]
+	ldh  a, [hActCur+iActTimer]
 	and  $3F									; Wrap around every $40 entries
 	ld   hl, Act_WoodManLeafShield_SinePat.x	; HL = Ptr to table base
-	ld   b, $00									; BC = iActTimer0C % $40
+	ld   b, $00									; BC = iActTimer % $40
 	ld   c, a
 	add  hl, bc									; HL = Ptr to rel. offset
 	ldh  a, [hActCur+iLeafShieldOrgX]			; Get absolute coordinate
@@ -13678,9 +13679,9 @@ Act_WoodManLeafShield_Around:
 	ldh  [hActCur+iActX], a						; Overwrite
 	
 	; Y POSITION
-	; iActY = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer0C % $40]
+	; iActY = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer % $40]
 	ld   hl, Act_WoodManLeafShield_SinePat.y	; Same thing but for the other coordinate
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	and  $3F
 	ld   b, $00
 	ld   c, a
@@ -13690,9 +13691,9 @@ Act_WoodManLeafShield_Around:
 	ldh  [hActCur+iActY], a
 	
 	; Increment table index for next time we get here
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Wait until we've been signaled by Act_WoodMan to throw the shield.
 	; For performance reasons, we're given a movement speed to apply to the origin point.
@@ -13726,11 +13727,11 @@ Act_WoodManLeafShield_Thrown:
 	;
 	
 	; X POSITION
-	; iActX = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer0C % $40]
-	ldh  a, [hActCur+iActTimer0C]
+	; iActX = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer % $40]
+	ldh  a, [hActCur+iActTimer]
 	and  $3F									; Wrap around every $40 entries
 	ld   hl, Act_WoodManLeafShield_SinePat.x	; HL = Ptr to table base
-	ld   b, $00									; BC = iActTimer0C % $40
+	ld   b, $00									; BC = iActTimer % $40
 	ld   c, a
 	add  hl, bc									; HL = Ptr to rel. offset
 	ldh  a, [hActCur+iLeafShieldOrgX]			; Get absolute coordinate
@@ -13738,9 +13739,9 @@ Act_WoodManLeafShield_Thrown:
 	ldh  [hActCur+iActX], a						; Overwrite
 	
 	; Y POSITION
-	; iActY = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer0C % $40]
+	; iActY = iLeafShieldOrgX + Act_WoodManLeafShield_SinePat.y[iActTimer % $40]
 	ld   hl, Act_WoodManLeafShield_SinePat.y	; Same thing but for the other coordinate
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	and  $3F
 	ld   b, $00
 	ld   c, a
@@ -13750,9 +13751,9 @@ Act_WoodManLeafShield_Thrown:
 	ldh  [hActCur+iActY], a
 	
 	; Increment table index for next time we get here
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	add  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	ret
 	
@@ -13812,7 +13813,7 @@ Act_WoodManLeafFall_Init:
 	ld   bc, $0060			; 0.375px/frame down
 	call ActS_SetSpeedY
 	ld   a, $10				; Turn every 16 frames
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_WoodManLeafFall_Move ================
@@ -13826,16 +13827,16 @@ Act_WoodManLeafFall_Move:
 	;
 	; Turn every 16 frames
 	;
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01						; TurnTimer--
-	ldh  [hActCur+iActTimer0C], a	; Has it elapsed?
+	ldh  [hActCur+iActTimer], a	; Has it elapsed?
 	ret  nz							; If not, keep moving at that direction
 	
 	ldh  a, [hActCur+iActSprMap]	; Otherwise, turn around horizontally
 	xor  ACTDIR_R
 	ldh  [hActCur+iActSprMap], a
 	ld   a, $10						; Move for 16 frames to the other side
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret
 	
 ;================ Act_CrashManShotExpl ================
@@ -13852,7 +13853,7 @@ Act_CrashManShotExpl:
 Act_CrashManShotExpl_Init:
 	; Show for ~half a second
 	ld   a, $20
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
 	
 ;================ Act_CrashManShotExpl_Anim ================
@@ -13862,9 +13863,9 @@ Act_CrashManShotExpl_Anim:
 	call ActS_Anim4
 	
 	; Display the above, maintaining the oversized hitbox, for that ~half a second.
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Then despawn the explosion.
@@ -14349,7 +14350,7 @@ Act_SharedIntro_Init:
 	; Wait half a second with the empty bar, while doing nothing.
 	; Ideally, instead of doing nothing, it should have made the boss fall from the top of the screen.
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	; Next mode
 	ld   hl, wBossMode
@@ -14366,9 +14367,9 @@ Act_SharedIntro_Init:
 ; Delay, then set up intro anim.
 Act_BossIntro_InitAnim:
 	; Wait for that half a second with the empty life bar
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Set up the boss intro animation
@@ -14386,14 +14387,14 @@ Act_BossIntro_InitAnim:
 ; Generic delay, as the Wily bosses don't have intros like the men.
 Act_WilyIntro_Wait0:
 	; Wait that half a second
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	; Wait another half a second
 	ld   a, 30
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	
 	ld   hl, wBossMode
 	inc  [hl]
@@ -14418,9 +14419,9 @@ Act_BossIntro_PlayAnim:
 ; Generic delay, as the Wily bosses don't have intros like the men.
 Act_WilyIntro_Wait1:
 	; Wait that half a second...
-	ldh  a, [hActCur+iActTimer0C]
+	ldh  a, [hActCur+iActTimer]
 	sub  $01
-	ldh  [hActCur+iActTimer0C], a
+	ldh  [hActCur+iActTimer], a
 	ret  nz
 	
 	ld   hl, wBossMode

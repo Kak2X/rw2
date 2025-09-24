@@ -286,7 +286,7 @@ WpnCtrl_Sakugarne:
 	ldi  [hl], a ; iShot9
 	ldi  [hl], a ; iShotA
 	ldi  [hl], a ; iShotB
-	ld   [hl], a ; iShotC
+	ld   [hl], a ; iShotRealEnd
 	ret
 	
 ; =============== WpnCtrl_ChkSpawnHelper ===============
@@ -975,7 +975,7 @@ WpnS_ProcSlot:
 		
 		; Worth noting the slot struct is only $0D bytes long, but it is aligned to a $10-byte boundary for convenience.
 		ld   de, hShotCur	; DE = Working area (destination)
-		ld   b, iShotC		; B = Bytes to copy
+		ld   b, iShotRealEnd		; B = Bytes to copy
 	.wkInLoop:
 		ldi  a, [hl]		; Read byte from slot, SlotPtr++
 		ld   [de], a		; Copy over to wk
@@ -998,7 +998,7 @@ WpnS_ProcSlot:
 	;
 	pop  de 			; DE = Slot ptr (destination)
 	ld   hl, hShotCur	; HL = Working area (source)
-	ld   b, iShotC		; B = Bytes to copy
+	ld   b, iShotRealEnd		; B = Bytes to copy
 .wkOutLoop:
 	ldi  a, [hl]		; Read byte from wk, WkPtr++
 	ld   [de], a		; Copy back to slot
@@ -5651,9 +5651,9 @@ Ending_Sc1:
 	ldi  [hl], a ; wScEd1FramesLeft
 	ldi  [hl], a ; wScAct0SprMapBaseId
 	ldi  [hl], a ; wScAct1SprMapBaseId
-	ldi  [hl], a ; wScEdEvSrcPtr_Low
-	ldi  [hl], a ; wScEdEvSrcPtr_High
-	ldi  [hl], a ; wScEdEvEna
+	ldi  [hl], a ; wScEvSrcPtr_Low
+	ldi  [hl], a ; wScEvSrcPtr_High
+	ldi  [hl], a ; wScEvEna
 	ldi  [hl], a ; $CD05
 	
 	;
@@ -5709,11 +5709,11 @@ Ending_Sc1:
 	; over multiple frames, by the time it'd write over the visible part we have already scrolled it offscreen.
 	ld   hl, TilemapDef_Ending_Space
 	ld   a, l					; Set event source
-	ld   [wScEdEvSrcPtr_Low], a
+	ld   [wScEvSrcPtr_Low], a
 	ld   a, h
-	ld   [wScEdEvSrcPtr_High], a
+	ld   [wScEvSrcPtr_High], a
 	ld   a, $FF					; Trigger event
-	ld   [wScEdEvEna], a
+	ld   [wScEvEna], a
 	ld   a, $50					; For ~1.5 seconds
 	ld   [wScEd1FramesLeft], a
 	; While this happens, the player keeps moving 0.5px/frame left.
@@ -6176,7 +6176,7 @@ EndingSc1_Anim:
 	; is scrolled out of view, then no further updates are necessary. 
 	;
 	
-	ld   a, [wScEdEvEna]
+	ld   a, [wScEvEna]
 	and  a				; Tilemap update triggered/in progress?
 	ret  z				; If not, return
 	
@@ -6193,9 +6193,9 @@ EndingSc1_Anim:
 	; Similar multi-frame events are handled manually later on, in the credits sequence.
 	;
 	
-	ld   a, [wScEdEvSrcPtr_Low]		; HL = Source event (where we last left off)
+	ld   a, [wScEvSrcPtr_Low]		; HL = Source event (where we last left off)
 	ld   l, a
-	ld   a, [wScEdEvSrcPtr_High]
+	ld   a, [wScEvSrcPtr_High]
 	ld   h, a
 	ld   de, wTilemapBuf			; DE = Destination
 	ld   bc, $0015					; BC = Event size (3-byte header + 18 tiles)
@@ -6205,14 +6205,14 @@ EndingSc1_Anim:
 	inc  a							; Trigger event
 	ld   [wTilemapEv], a
 	ld   a, l						; Save back what we reached
-	ld   [wScEdEvSrcPtr_Low], a
+	ld   [wScEvSrcPtr_Low], a
 	ld   a, h
-	ld   [wScEdEvSrcPtr_High], a
+	ld   [wScEvSrcPtr_High], a
 	
 	ld   a, [hl]
 	and  a							; Did we reach the null terminator?
 	ret  nz							; If not, return (trigger another event next frame)
-	ld   [wScEdEvEna], a			; Otherwise, we're done
+	ld   [wScEvEna], a			; Otherwise, we're done
 	ret
 	
 ; =============== EndingSc1_AnimExpl ===============
@@ -6287,9 +6287,9 @@ Credits_Sc1:
 	;
 	ld   hl, TilemapDef_Credits_Space	; Set event source
 	ld   a, l
-	ld   [wScEdEvSrcPtr_Low], a
+	ld   [wScEvSrcPtr_Low], a
 	ld   a, h
-	ld   [wScEdEvSrcPtr_High], a
+	ld   [wScEvSrcPtr_High], a
 	
 .mkFieldLoop:
 
@@ -6323,9 +6323,9 @@ Credits_Sc1:
 	jp   z, .mkFieldLoop
 	
 	; ... overwrite the next row with starfield tiles,
-	ld   a, [wScEdEvSrcPtr_Low]		; HL = Source event (where we last left off)
+	ld   a, [wScEvSrcPtr_Low]		; HL = Source event (where we last left off)
 	ld   l, a
-	ld   a, [wScEdEvSrcPtr_High]
+	ld   a, [wScEvSrcPtr_High]
 	ld   h, a
 	ld   de, wTilemapBuf			; DE = Destination
 	ld   bc, $000D					; BC = Event size (3-byte header + 10 tiles)
@@ -6335,9 +6335,9 @@ Credits_Sc1:
 	inc  a							; Trigger event
 	ld   [wTilemapEv], a
 	ld   a, l						; Save back what we reached
-	ld   [wScEdEvSrcPtr_Low], a
+	ld   [wScEvSrcPtr_Low], a
 	ld   a, h
-	ld   [wScEdEvSrcPtr_High], a
+	ld   [wScEvSrcPtr_High], a
 
 	; Continue until we reach the end terminator for this event
 	ld   a, [hl]
@@ -6577,9 +6577,9 @@ Credits_Sc5:
 	; As the viewport moves down, this text will immediately scroll up into the visible area.
 	ld   hl, TilemapDef_Credits_Thank	
 	ld   a, l
-	ld   [wScEdEvSrcPtr_Low], a
+	ld   [wScEvSrcPtr_Low], a
 	ld   a, h
-	ld   [wScEdEvSrcPtr_High], a
+	ld   [wScEvSrcPtr_High], a
 .loop:
 
 	; Wait 64 frames, scrolling the text up and starfield down at 0.25px/frame.
@@ -6597,9 +6597,9 @@ Credits_Sc5:
 	; ... overwrite the next row with the event data.
 	; As this writes the whole thing, by the time we're done everything will have been written,
 	; including the Capcom logo.
-	ld   a, [wScEdEvSrcPtr_Low]		; HL = Source event (where we last left off)
+	ld   a, [wScEvSrcPtr_Low]		; HL = Source event (where we last left off)
 	ld   l, a
-	ld   a, [wScEdEvSrcPtr_High]
+	ld   a, [wScEvSrcPtr_High]
 	ld   h, a
 	ld   de, wTilemapBuf			; DE = Destination
 	ld   bc, $0010					; BC = Event size (3-byte header + 13 tiles)
@@ -6609,9 +6609,9 @@ Credits_Sc5:
 	inc  a							; Trigger event
 	ld   [wTilemapEv], a
 	ld   a, l						; Save back what we reached
-	ld   [wScEdEvSrcPtr_Low], a
+	ld   [wScEvSrcPtr_Low], a
 	ld   a, h
-	ld   [wScEdEvSrcPtr_High], a
+	ld   [wScEvSrcPtr_High], a
 
 	; Continue until we reach the end terminator for this event
 	ld   a, [hl]
