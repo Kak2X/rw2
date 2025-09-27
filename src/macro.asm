@@ -90,6 +90,12 @@ ENDC
 	ENDC
 ENDM
 
+; =============== wd ===============
+; Reverse dw pointer
+MACRO wd
+	db HIGH(\1),LOW(\1)
+ENDM
+
 ; =============== dp ===============
 ; Shorthand for far pointers in standard order.
 MACRO dp

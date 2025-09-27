@@ -1,0 +1,33 @@
+	;  Y   X   TILE ID
+	db $09,$30,$3E ; $00
+	db $09,$88,$3F ; $01
+	db $F9,$58,$3F ; $02
+	db $F9,$90,$3D ; $03
+	db $E9,$48,$3F ; $04
+	db $E9,$98,$3F ; $05
+	db $D9,$18,$3F ; $06
+	db $D9,$68,$3F ; $07
+	db $C9,$30,$3D ; $08
+	db $C9,$88,$3F ; $09
+	db $B9,$28,$3F ; $0A
+	db $B9,$A0,$3D ; $0B
+	db $A9,$60,$3D ; $0C
+	db $99,$30,$3E ; $0D
+	db $99,$88,$3F ; $0E
+	db $91,$28,$3F ; $0F
+	db $89,$30,$3D ; $10
+	db $79,$28,$3F ; $11
+	db $79,$A0,$3D ; $12
+	db $61,$88,$3F ; $13
+	db $51,$50,$3E ; $14
+	db $51,$80,$3D ; $15
+	db $51,$90,$3E ; $16
+	db $41,$28,$3F ; $17
+	db $31,$60,$3D ; $18
+	db $21,$30,$3E ; $19
+.end: ; [TCRF] Unused stars that don't get drawn to avoid going over the sprite limit, mostly dummy entries.
+	db $21,$90,$3E ; $1A
+	db $11,$08,$3D ; $1B
+	db $11,$08,$3D ; $1C
+	db $11,$08,$3D ; $1D
+	db $11,$08,$3D ; $1E

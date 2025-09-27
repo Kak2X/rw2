@@ -196,7 +196,7 @@ ActS_ExecCode:
 	dw Act_Wily3				; ACT_WILY3
 	dw Act_Quint				; ACT_QUINT
 	dw Act_Wily3Part			; ACT_WILY3PART
-	dw Act_Wily2Intro		; ACT_WILY2INTRO
+	dw Act_Wily2Intro			; ACT_WILY2INTRO
 	dw Act_QuintSakugarne		; ACT_QUINT_SG
 	dw Act_QuintDebris			; ACT_QUINT_DEBRIS
 	dw Act_Wily1Bomb			; ACT_WILY1BOMB
@@ -948,7 +948,7 @@ Act_HammerJoe_Init:
 	;       Hammer Joe's placement makes it impossible to trigger, but if it could,
 	;       the first slot would be treated as the hammer.
 	ld   a, ACT_HAMMER
-	ld   bc, ($00 << 8)|LOW(-$1E)	; 30px above, right above the top of the collosion box
+	ld   bc, ($00 << 8)|LOW(-$1E)	; 30px above, right above the top of the collision box
 	call ActS_SpawnRel
 	ld   a, l						; Keep track of child
 	ldh  [hActCur+iActChildSlotPtr], a
@@ -2286,9 +2286,9 @@ Act_GiantSpringer_Main:
 	; Always move towards the player
 	call ActS_FacePl
 	
-	; Whenver the player gets nearby, activate the springout animation.
+	; Whenever the player gets nearby, activate the springout animation.
 	; This is a misleading animation, as while it looks like an attack
-	; the actor's collosion box doesn't change at all.
+	; the actor's collision box doesn't change at all.
 	call ActS_GetPlDistanceX
 	cp   DISTANCE_SPRINGOUT		; Distance >= $20?
 	jr   nc, .far				; If so, jump
@@ -2468,7 +2468,7 @@ Act_GiantSpringerShot_MoveU:
 	ldh  [hActCur+iArcIdY], a
 	
 	ldh  [hActCur+iActTimer], a
-	; Use diagonal missile sprite
+	; Use horizontal missile sprite
 	ld   a, $00
 	call ActS_SetSprMapId
 	jp   ActS_IncRtnId
@@ -3553,7 +3553,7 @@ Act_Cannon_Shoot:
 	ldh  [hActCur+iActTimer], a
 	
 	;
-	; $00-$1D -> Sprite $02
+	; $00-$1D -> Sprite $03
 	;
 	cp   $1E			; Timer >= $1E?
 	jr   nc, .chkSh0	; If so, jump
@@ -7367,6 +7367,7 @@ Act_KaminariGoro_Move:
 ; Movement - throw pose.
 Act_KaminariGoro_Throw:
 	; Display the throw sprite $03 for 16 frames.
+	; [POI] This is identical to $02! Its data is separate copy of $02.
 	ld   a, $03
 	ld   [wActCurSprMapBaseId], a
 	
@@ -12305,7 +12306,7 @@ Act_CrashMan_JumpU:
 ;================ Act_CrashMan_JumpShootD ================
 ; Jump, post-peak. (can shoot Crash Bomb)
 Act_CrashMan_JumpShootD:
-	; Use jumping sprite
+	; Use jumping sprite (identical to $07)
 	ld   a, $08
 	ld   [wActCurSprMapBaseId], a
 	
@@ -14785,109 +14786,34 @@ ActS_WriteTilemapToRect:
 	scf  
 	ret
 	
-Tilemap_Act_Miniboss: db $0B
-L027F52: db $1B
-L027F53: db $2B
-L027F54: db $3B
-L027F55: db $0C
-L027F56: db $1C
-L027F57: db $2C
-L027F58: db $3C
-L027F59: db $0D
-L027F5A: db $1D
-L027F5B: db $2D
-L027F5C: db $3D
-L027F5D: db $0E
-L027F5E: db $1E
-L027F5F: db $2E
-L027F60: db $3E
-L027F61: db $0F
-L027F62: db $1F
-L027F63: db $2F
-L027F64: db $3F
-Tilemap_Act_TamaDead: db $71
-L027F66: db $71
-L027F67: db $71
-L027F68: db $71
-L027F69: db $71
-L027F6A: db $71
-L027F6B: db $71
-L027F6C: db $71
-L027F6D: db $71
-L027F6E: db $71
-L027F6F: db $71
-L027F70: db $71
-L027F71: db $71
-L027F72: db $71
-L027F73: db $71
-L027F74: db $71
-L027F75: db $71
-L027F76: db $71
-L027F77: db $71
-L027F78: db $71
-Tilemap_Act_FrienderDead: db $2A
-L027F7A: db $3A
-L027F7B: db $2A
-L027F7C: db $3A
-L027F7D: db $29
-L027F7E: db $39
-L027F7F: db $29
-L027F80: db $39
-L027F81: db $2A
-L027F82: db $3A
-L027F83: db $2A
-L027F84: db $3A
-L027F85: db $29
-L027F86: db $39
-L027F87: db $29
-L027F88: db $39
-L027F89: db $2A
-L027F8A: db $3A
-L027F8B: db $2A
-L027F8C: db $3A
-Tilemap_Act_Goblin: db $0A
-L027F8E: db $1A
-L027F8F: db $2A
-L027F90: db $3A
-L027F91: db $4A
-L027F92: db $4F
-L027F93: db $0B
-L027F94: db $1B
-L027F95: db $2B
-L027F96: db $3B
-L027F97: db $4B
-L027F98: db $48
-L027F99: db $0C
-L027F9A: db $1C
-L027F9B: db $2C
-L027F9C: db $3C
-L027F9D: db $4C
-L027F9E: db $49
-L027F9F: db $0D
-L027FA0: db $1D
-L027FA1: db $2D
-L027FA2: db $3D
-L027FA3: db $4D
-L027FA4: db $49
-L027FA5: db $0E
-L027FA6: db $1E
-L027FA7: db $2E
-L027FA8: db $3E
-L027FA9: db $4E
-L027FAA: db $02
-L027FAB: db $22
-L027FAC: db $32
-L027FAD: db $21
-L027FAE: db $31
-L027FAF: db $01
-L027FB0: db $03
-LvlPart_Act_Goblin: db $22
-L027FB2: db $24
-L027FB3: db $34
-L027FB4: db $23
-L027FB5: db $25
-L027FB6: db $35
-L027FB7: db $2D
-L027FB8: db $2E
-L027FB9: db $2F
+Tilemap_Act_Miniboss:
+	db $0B,$1B,$2B,$3B ; $00
+	db $0C,$1C,$2C,$3C ; $01
+	db $0D,$1D,$2D,$3D ; $02
+	db $0E,$1E,$2E,$3E ; $03
+	db $0F,$1F,$2F,$3F ; $04
+Tilemap_Act_TamaDead:
+	db $71,$71,$71,$71 ; $00
+	db $71,$71,$71,$71 ; $01
+	db $71,$71,$71,$71 ; $02
+	db $71,$71,$71,$71 ; $03
+	db $71,$71,$71,$71 ; $04
+Tilemap_Act_FrienderDead:
+	db $2A,$3A,$2A,$3A ; $00
+	db $29,$39,$29,$39 ; $01
+	db $2A,$3A,$2A,$3A ; $02
+	db $29,$39,$29,$39 ; $03
+	db $2A,$3A,$2A,$3A ; $04
+Tilemap_Act_Goblin:
+	db $0A,$1A,$2A,$3A,$4A,$4F ; $00
+	db $0B,$1B,$2B,$3B,$4B,$48 ; $01
+	db $0C,$1C,$2C,$3C,$4C,$49 ; $02
+	db $0D,$1D,$2D,$3D,$4D,$49 ; $03
+	db $0E,$1E,$2E,$3E,$4E,$02 ; $04
+	db $22,$32,$21,$31,$01,$03 ; $05
+LvlPart_Act_Goblin:
+	db $22,$24,$34 ; $00
+	db $23,$25,$35 ; $02
+	db $2D,$2E,$2F ; $04
+	
 	mIncJunk "L027FBA"

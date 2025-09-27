@@ -524,8 +524,8 @@ DEF iRomActColiBoxH       EQU $00 ; Collision box, horizontal radius
 DEF iRomActColiBoxV       EQU $01 ; Collision box, vertical radius (still half width, but the origin is at the bottom of the sprite)
 DEF iRomActColiType       EQU $02 ; Collision type (ACTCOLI_*)
 DEF iRomActColiDamage     EQU $03 ; Damage dealt (ACTCOLI_ENEMYPASS, ACTCOLI_ENEMYHIT, ACTCOLI_ENEMYREFLECT) or subtype (ACTCOLI_PLATFORM)
-DEF iRomActColiHealthLow  EQU $04 ; Health (low nybbble)
-DEF iRomActColiHealthHigh EQU $05 ; Health (high nybble)
+DEF iRomActColiHealth     EQU $04 ; Health
+DEF iRomActColiSpecDeath  EQU $05 ; If set, support overriding the default death sequence
 DEF iRomActColiDmgP       EQU $06 ; Damage received by the default weapon
 DEF iRomActColiDmgTp      EQU $07 ; Damage received by Top Spin
 DEF iRomActColiDmgAr      EQU $08 ; Damage received by Air Shooter

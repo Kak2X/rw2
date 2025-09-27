@@ -503,6 +503,7 @@ DEF ACTCOLI_ITEM         EQU 6 ; Item
 DEF ACTCOLI_UNUSED_PASS2 EQU 7 ; Intangible
 DEF ACTCOLI_8_START      EQU 8 ; Partially vulnerable
 DEF ACTCOLIB_PARTIAL     EQU 7 ; Partially vulnerable
+DEF ACTCOLI_PARTIAL      EQU 1 << ACTCOLIB_PARTIAL
 
 ; iActColiSubtype
 DEF ACTCOLISUB_TOPSOLID EQU $00 ; Top-Solid Platform

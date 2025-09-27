@@ -790,7 +790,7 @@ GFXSet_Load:
 .set0: db $E4, $E4, $E4, $00 ; GFXSET_TITLE
 .set1: db $E4, $1C, $C4, $00 ; GFXSET_STAGESEL
 .set2: db $E4, $1C, $C4, $00 ; GFXSET_PASSWORD
-.set3: db $E4, $1C, $C4, $00 ; GFXSET_LEVEL (Gets overwritten by Lvl_InitSettings)
+.set3: db $E4, $1C, $C4, $00 ; GFXSET_LEVEL (Gets overwritten by Lvl_InitSettings / Lvl_PalTbl)
 .set4: db $E4, $E4, $E4, $00 ; GFXSET_GETWPN
 .set5: db $E4, $1C, $E4, $00 ; GFXSET_CASTLE
 .set6: db $E4, $1C, $E4, $00 ; GFXSET_STATION
@@ -1393,9 +1393,9 @@ LoadTilemapDef:
 	ret  z
 	
 	; bytes0-1: Destination pointer
-	ld   h, a
+	ld   h, a		; High byte first
 	inc  de
-	ld   a, [de]
+	ld   a, [de]	; Low byte next
 	ld   l, a
 	inc  de
 	
@@ -1673,15 +1673,16 @@ Lvl_LoadData:
 	;   The entire level is loaded all at once and the data is read/ordered as-is.
 	;   This has a few implications:
 	;   - There's no hard concept of rooms loading their own layout data
-	;   - Room transitions simply work by warping the player to another point of the same level.
+	;   - Room transitions simply work by warping the player to another point of the same map.
 	; - Actor layout ($200 bytes)
 	;   Split into two $100 tables, all indexed by column number.
 	;   The first contains the Y position & nospawn flag of the actor, while the second one
 	;   has a mix of Actor IDs and GFX set IDs.
 	;   A few notes:
 	;   - The X position isn't stored anywhere here.
-	;     Instead, the index to the actor layout represents the column number.
+	;     Instead, the index to the actor layout represents the column number, and the actor is spawned at its center.
 	;     This means there can be at most one actor/column.
+	;     Actors that don't want to spawn at the center of the column have their init code adjust the position.
 	;   - The game determines if a given entry is for a GFX set ID
 	;     by checking for the respective value in the first table to be 0. 
 	;   - The nospawn flag is always set to 0 in the compressed data, otherwise the actor wouldn't load.
@@ -1701,7 +1702,7 @@ Lvl_LoadData:
 	ld   d, a
 	
 	; Decompress it to wLvlLayout.
-	; The RLE format takes advantage of how the data never has the MSB set, allowing for some shortcuts.
+	; The RLE format takes advantage of how the decompressed data never has the MSB set, allowing for some shortcuts.
 	; The bytes are read in sequence, and:
 	; - If the MSB isn't set, the current byte is copied directly to the destination.
 	; - If the MSB is set, the next byte is repeated <current byte> times.
@@ -2832,65 +2833,7 @@ Lvl_RoomColTbl:
 		DEF I = I + 1
 	ENDR
 
-TilemapDef_StatusBar: db $9C
-L000BB3: db $00
-L000BB4: db $14
-L000BB5: db $5D
-L000BB6: db $5D
-L000BB7: db $5D
-L000BB8: db $5D
-L000BB9: db $5D
-L000BBA: db $5E
-L000BBB: db $5F
-L000BBC: db $68
-L000BBD: db $68
-L000BBE: db $68
-L000BBF: db $68
-L000BC0: db $68
-L000BC1: db $6D
-L000BC2: db $6F
-L000BC3: db $53
-L000BC4: db $5D
-L000BC5: db $5D
-L000BC6: db $5D
-L000BC7: db $5D
-L000BC8: db $5D
-L000BC9: db $9C
-L000BCA: db $20
-L000BCB: db $14
-L000BCC: db $5D
-L000BCD: db $5D
-L000BCE: db $5D
-L000BCF: db $5D
-L000BD0: db $5D
-L000BD1: db $60
-L000BD2: db $61
-L000BD3: db $6C
-L000BD4: db $6C
-L000BD5: db $6C
-L000BD6: db $6C
-L000BD7: db $6C
-L000BD8: db $6E
-L000BD9: db $50
-L000BDA: db $54
-L000BDB: db $5D
-L000BDC: db $5D
-L000BDD: db $5D
-L000BDE: db $5D
-L000BDF: db $5D
-L000BE0: db $9C
-L000BE1: db $40
-L000BE2: db $CF
-L000BE3: db $5D
-L000BE4: db $9C
-L000BE5: db $53
-L000BE6: db $CF
-L000BE7: db $5D
-L000BE8: db $9E
-L000BE9: db $20
-L000BEA: db $54
-L000BEB: db $5D
-L000BEC: db $00
+TilemapDef_StatusBar: INCLUDE "data/game/statusbar_bg.asm"
 
 ; =============== Pl_ResetAllProgress ===============
 ; Resets all progress from the game.
@@ -6838,14 +6781,26 @@ ActS_Spawn:
 		dec  b
 		jr   nz, .cpLoop
 		
-		; The two digits of the actor's health are stored separately in the ROM.
-		; This is related to how actors with special behavior on death die when their health reaches $10,
-		; where the lower nybble is in practice the real health, but it's still a byte waste.
-		ld   b, [hl]	; Read low nybble (byte4)
+		
+		;
+		; Calculate the actor's health.
+		; This is mainly specified in byte4, the actor's health value... 
+		;
+		ld   b, [hl]	; B = byte4 (Health)
 		inc  hl
-		ld   a, [hl]	; Read high nybble (byte5)
-		swap a			; Swap it where it belongs
-		add  b			; Merge them
+		
+		; ...however, the health plays a part with actors that override the default death actions.
+		; The default death handler for non-boss actors just converts the actor into an explosion and spawns a randomized item drop.
+		; Any actor that needs to do anything else (ie: killing a child actor, notifying another actor, ...) must set the override flag to $01.
+		;
+		; As for how this is implemented, the death handler knows nothing about overrides, so the whole thing is hacked around the health system.
+		; Actors that override the death sequence are given 16 more health, and their code is expected to check if their health goes below 17,
+		; executing their death logic if so. This higher threshold prevents the normal death handler from kicking in.
+		; There are a few helper subroutines that check for that threshold and kill the actor, such as ActS_ChkExplodeNoChild 
+		; and ActS_ChkExplodeWithChild.
+		ld   a, [hl]	; A = byte5 (Override default death)
+		swap a			; *= $10, which has effect if 
+		add  b			; Add it over to the health
 		ld   [de], a	; Save to iActColiHealth
 		inc  de
 		
@@ -6964,6 +6919,8 @@ ActS_ChkExplodeWithChild:
 	; This is because actor health is decremented by the weapon shot collision code,
 	; but that does not account for child actors, so if we used the normal thresold of $00,
 	; only the parent would have died.
+	; Which works for us, given actors that call ActS_ChkExplodeWithChild are assumed to be
+	; those that perform special actions on death, and are given $10 more health for it.
 	
 	; The leads into the assumption that no weapon should deal more than 16 damage to these actors.
 
@@ -8592,7 +8549,7 @@ ActS_ApplySpeedUpYColi:
 	;
 	; Y COMPONENT
 	; 
-	; Since the origin is at the bottom edge of the sprite's collosion box, but collision sizes are half-width:
+	; Since the origin is at the bottom edge of the sprite's collision box, but collision sizes are half-width:
 	; wTargetRelY = tNewYPos - (wTmpColiBoxV * 2) + 1
 	;
 	ld   a, [wTmpColiBoxV]		; Get collision
@@ -9795,82 +9752,7 @@ Module_Game_PlDead:
 	xor  a  ; C flag = Clear
 	ret
 	
-TilemapDef_GameOver: db $98
-L002954: db $44
-L002955: db $0C
-L002956: db $20
-L002957: db $47
-L002958: db $41
-L002959: db $4D
-L00295A: db $45
-L00295B: db $20
-L00295C: db $20
-L00295D: db $4F
-L00295E: db $56
-L00295F: db $45
-L002960: db $52
-L002961: db $20
-L002962: db $98
-L002963: db $C4
-L002964: db $0C
-L002965: db $20
-L002966: db $20
-L002967: db $41
-L002968: db $20
-L002969: db $42
-L00296A: db $55
-L00296B: db $54
-L00296C: db $54
-L00296D: db $4F
-L00296E: db $4E
-L00296F: db $20
-L002970: db $20
-L002971: db $99
-L002972: db $04
-L002973: db $0C
-L002974: db $53
-L002975: db $54
-L002976: db $41
-L002977: db $47
-L002978: db $45
-L002979: db $20
-L00297A: db $53
-L00297B: db $45
-L00297C: db $4C
-L00297D: db $45
-L00297E: db $43
-L00297F: db $54
-L002980: db $99
-L002981: db $84
-L002982: db $0C
-L002983: db $20
-L002984: db $20
-L002985: db $42
-L002986: db $20
-L002987: db $42
-L002988: db $55
-L002989: db $54
-L00298A: db $54
-L00298B: db $4F
-L00298C: db $4E
-L00298D: db $20
-L00298E: db $20
-L00298F: db $99
-L002990: db $C4
-L002991: db $0C
-L002992: db $20
-L002993: db $20
-L002994: db $43
-L002995: db $4F
-L002996: db $4E
-L002997: db $54
-L002998: db $49
-L002999: db $4E
-L00299A: db $55
-L00299B: db $45
-L00299C: db $20
-L00299D: db $20
-L00299E: db $00
+TilemapDef_GameOver: INCLUDE "data/gameover/gameover_bg.asm"
 
 ; =============== Module_Game_BossDead ===============
 ; Gameplay loop when the boss explodes.
@@ -10612,26 +10494,7 @@ StageSel_DrawCursor:
 	
 ; =============== StageSel_CursorSprTbl ===============
 StageSel_CursorSprTbl:
-StageSel_CursorCrash:
-	db $18,$18,$3F,$00
-	db $40,$18,$3F,$00
-	db $18,$40,$3F,$00
-	db $40,$40,$3F,$00
-StageSel_CursorMetal:
-	db $18,$68,$3F,$00
-	db $40,$68,$3F,$00
-	db $18,$90,$3F,$00
-	db $40,$90,$3F,$00
-StageSel_CursorWood:
-	db $68,$18,$3F,$00
-	db $90,$18,$3F,$00
-	db $68,$40,$3F,$00
-	db $90,$40,$3F,$00
-StageSel_CursorAir:
-	db $68,$68,$3F,$00
-	db $90,$68,$3F,$00
-	db $68,$90,$3F,$00
-	db $90,$90,$3F,$00
+	INCLUDE "data/stagesel/cursor_rspr.asm"
 	
 ; =============== StageSel_BossIntro ===============
 ; Handles a stage getting selected.
@@ -11195,7 +11058,7 @@ StageSel_BossActStartPosTbl:
 ; Each of these is hardcoded to be 10 characters long.
 ; [TCRF] This explicitly accounts for the second set of bosses.
 StageSel_BossNameTbl:
-SETCHARMAP bossname
+SETCHARMAP generic
 	db " HARD MAN " ; LVL_HARD
 	db " TOP  MAN " ; LVL_TOP
 	db "MAGNET MAN" ; LVL_MAGNET
@@ -11489,14 +11352,7 @@ WilyCastle_DrawRockman:
 	jp   CopyMemory
 ; =============== WilyCastle_RockmanSpr ===============
 WilyCastle_RockmanSpr: 
-	db $70,$80,$30,$00
-	db $70,$88,$31,$00
-	db $78,$80,$40,$00
-	db $78,$88,$41,$00
-	db $80,$80,$6B,$00
-	db $80,$88,$6C,$00
-	db $88,$80,$7B,$00
-	db $88,$88,$7C,$00
+	INCLUDE "data/castle/pl_rspr.asm"
 .end:
 
 ; =============== WilyStation_LoadVRAM ===============
@@ -11695,7 +11551,7 @@ WilyCastle_DoCutscene:
 	;
 	ld   hl, TilemapDef_WilyCastle_TrapGone
 	ld   de, wTilemapBuf
-	ld   bc, TilemapDef_WilyCastle_TrapGone_End-TilemapDef_WilyCastle_TrapGone
+	ld   bc, TilemapDef_WilyCastle_TrapGone.end-TilemapDef_WilyCastle_TrapGone
 	call CopyMemory
 	ld   a, $01					; Trigger event
 	ld   [wTilemapEv], a
@@ -11744,22 +11600,8 @@ WilyCastle_DoCutscene_MoveWily:
 	inc  [hl]
 	ret
 	
-TilemapDef_WilyCastle_TrapGone: db $9B
-L0032B8: db $C8
-L0032B9: db $04
-L0032BA: db $18
-L0032BB: db $19
-L0032BC: db $18
-L0032BD: db $19
-L0032BE: db $9B
-L0032BF: db $E8
-L0032C0: db $04
-L0032C1: db $28
-L0032C2: db $29
-L0032C3: db $28
-L0032C4: db $29
-L0032C5: db $00
-TilemapDef_WilyCastle_TrapGone_End:
+TilemapDef_WilyCastle_TrapGone: INCLUDE "data/game/castlesc_trapgone_bg.asm"
+.end:
 
 ; =============== WilyCastle_CloseWonTeleporters ===============
 ; Closes teleporter doors leading to already completed levels.
@@ -11881,12 +11723,8 @@ WilyCastle_DoorTilemapPtr:
 	dw $994E ; $03 (bottom-right, Needle)
 
 ; =============== Tilemap_WilyCastle_ClosedDoor ===============
-Tilemap_WilyCastle_ClosedDoor: db $2A
-L00332A: db $72
-L00332B: db $0D
-L00332C: db $0E
-L00332D: db $0F
-L00332E: db $2F
+Tilemap_WilyCastle_ClosedDoor:
+	db $2A,$72,$0D,$0E,$0F,$2F
 
 ; =============== Lvl_GetBlockId ===============
 ; Gets the block ID the sensor coordinates are pointing to and performs basic collision checks.
@@ -14489,26 +14327,21 @@ Lvl_ClearBitTbl:
 	db $00    ; LVL_CASTLE (unselectable)
 	db $00    ; LVL_STATION (unselectable)
 
-Lvl_PalTbl: db $E4
-L003C25: db $E4
-L003C26: db $E4
-L003C27: db $E4
-L003C28: db $E4
-L003C29: db $E4
-L003C2A: db $E4
-L003C2B: db $E4
-L003C2C: db $E4
-L003C2D: db $E4
-L003C2E: db $E0
-L003C2F: db $EC
-L003C30: db $E4
-L003C31: db $E4
-L003C32: db $E1
-L003C33: db $E1
-L003C34: db $E4
-L003C35: db $E4
-L003C36: db $E4
-L003C37: db $E4
+; =============== Lvl_PalTbl ===============
+; Palettes associated to each stage, see Lvl_InitSettings.
+; Every stage has a 2-frame animated palette, most use the same one
+; and repeat the same colors twice, disabling the animation.
+Lvl_PalTbl:
+	db $E4,$E4 ; LVL_HARD
+	db $E4,$E4 ; LVL_TOP
+	db $E4,$E4 ; LVL_MAGNET
+	db $E4,$E4 ; LVL_NEEDLE
+	db $E4,$E4 ; LVL_CRASH
+	db $E0,$EC ; LVL_METAL
+	db $E4,$E4 ; LVL_WOOD
+	db $E1,$E1 ; LVL_AIR
+	db $E4,$E4 ; LVL_CASTLE
+	db $E4,$E4 ; LVL_STATION
 
 ; =============== Lvl_BGMTbl ===============
 ; Assigns music tracks to each level.
