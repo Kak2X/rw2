@@ -10296,7 +10296,11 @@ Module_Title:
 	; [POI] Disable the invulnerability cheat.
 	;       Curiously, this address wasn't reset at boot, it only gets written to here.
 	;       Presumably you could hold something to enable the cheat mode here?
+IF CHEAT_ON
+	ld   a, $01
+ELSE
 	xor  a
+ENDC
 	ldh  [hCheatMode], a
 	
 	; If GAME START is selected, the cursor's Y position will be $60.
