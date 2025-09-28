@@ -87,7 +87,7 @@ WpnCtrlS_StartShootAnim:
 	
 	; Play shoot sound
 	ld   a, SFX_SHOOT
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ret
 	
 ; =============== WEAPON FIRE CODE ===============
@@ -2249,7 +2249,7 @@ Module_Password:
 	
 	;--
 	ld   a, BGM_PASSWORD
-	ldh  [hBGMSet], a
+	mPlayBGM
 	
 	;
 	; Init memory
@@ -2337,7 +2337,7 @@ Module_Password:
 	; Good SFX reuse
 	push af
 		ld   a, SFX_BOSSBAR
-		ldh  [hSFXSet], a
+		mPlaySFX
 	pop  af
 	
 	; Which direction we're moving to?
@@ -2380,7 +2380,7 @@ Module_Password:
 	; Play toggle sound
 	;
 	ld   a, SFX_SHOOT
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 	;
 	; Toggle the selection
@@ -3243,7 +3243,7 @@ Freeze_Do:
 	; The sound used when toggling this is unique to this subroutine,
 	; making it normally unused.
 	ld   a, SFX_FREEZETOGGLE
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 	; Stay here until pressing SELECT to unpause
 .loop:
@@ -3254,7 +3254,7 @@ Freeze_Do:
 	jr   z, .loop			; If not, keep waiting
 	
 	ld   a, SFX_FREEZETOGGLE
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ret
 	
 ; =============== Game_Unused_RefillCur ===============
@@ -3295,7 +3295,7 @@ WilyStation_Sc1:
 	call WilyCastle_LoadVRAM
 	call StartLCDOperation
 	ld   a, BGM_WILYCASTLE
-	ldh  [hBGMSet], a
+	mPlayBGM
 	
 	; Wait for 2 seconds
 	ld   a, 60*2
@@ -4077,7 +4077,7 @@ Ending_Sc1:
 	call GfxCopy_Req
 
 	ld   a, BGM_TITLE
-	ldh  [hBGMSet], a
+	mPlayBGM
 	
 	;
 	; Spawn the two actors.
@@ -4444,7 +4444,7 @@ Ending_Sc2:
 	;--
 	
 	ld   a, BGM_STAGESELECT
-	ldh  [hBGMSet], a
+	mPlayBGM
 
 	
 	;--
@@ -4525,10 +4525,9 @@ Ending_Sc2:
 	xor  a				; Init timer
 	ld   [wScEdWilyExplTimer], a
 	
-	ld   a, SND_MUTE	; Play nuke SFX
-	ldh  [hBGMSet], a
+	mStopSnd			; Play nuke SFX
 	ld   a, SFX_UFOCRASH
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 .nkLoop:
 	;--
@@ -4744,7 +4743,7 @@ EndingSc1_AnimExpl:
 	ld   [hl], a
 	
 	ld   a, SFX_EXPLODE	; Play explosion SFX
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ret
 	
 ; =============== Module_Credits ===============
@@ -4752,7 +4751,7 @@ EndingSc1_AnimExpl:
 ; This never returns, and if it did you'd reach an infinite loop.
 Module_Credits:
 	ld   a, BGM_ENDING
-	ldh  [hBGMSet], a
+	mPlayBGM
 	
 Credits_Sc1:
 	;

@@ -273,7 +273,7 @@ Act_ExplSm_Init:
 	ldh  [hActCur+iActY], a
 	
 	ld   a, SFX_ENEMYDEAD		; Play explosion sound
-	ldh  [hSFXSet], a
+	mPlaySFX
 	jp   ActS_IncRtnId
 	
 ; =============== Act_ExplSm_Anim ===============
@@ -2720,7 +2720,7 @@ Act_Block_DelayShow:
 	; [wGameTime shift = $01/$04]
 	
 	ld   a, SFX_BLOCK			; Play block appear sound
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ld   b, ACTCOLI_PLATFORM	; Make platform tangible
 	call ActS_SetColiType
 	
@@ -7928,7 +7928,7 @@ Act_Wily1_ChkDeath:
 	call ActS_SpawnLargeExpl
 	
 	ld   a, SFX_EXPLODE			; Play explosion sound
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 	; Return to the actor loop
 	pop  hl
@@ -8220,7 +8220,7 @@ Act_Wily2_ChkDeath:
 	call ActS_SpawnLargeExpl
 	
 	ld   a, SFX_EXPLODE			; Play explosion sound
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 	; Return to the actor loop
 	pop  hl
@@ -8944,7 +8944,7 @@ Act_Quint_WarpLand:
 	call ActS_SetSpeedY
 	; ...play appropriate sound effect
 	ld   a, SFX_TELEPORTOUT
-	ldh  [hSFXSet], a
+	mPlaySFX
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Quint_WarpMove ===============
@@ -10792,7 +10792,7 @@ Act_Helper_TeleportIn_ChkSolid:
 	ld   a, AHW_ACTIVE				; Mark helper item as active
 	ld   [wWpnHelperWarpRtn], a
 	ld   a, SFX_TELEPORTIN			; PLay landing sound
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ld   a, 60*3					; If the player doesn't interact within 3 seconds, automatically teleport it out
 	ldh  [hActCur+iActTimer], a
 	jp   ActS_IncRtnId
@@ -10839,7 +10839,7 @@ Act_Helper_TeleportOut_Anim:
 	ld   bc, $0400
 	call ActS_SetSpeedY
 	ld   a, SFX_TELEPORTOUT			; Play teleport sound
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]
 	ret
@@ -13897,7 +13897,7 @@ Act_GroundExpl:
 Act_GroundExpl_Init:
 	; Weird sound effect choice
 	ld   a, SFX_ENEMYDEAD
-	ldh  [hSFXSet], a
+	mPlaySFX
 	; Use sprites $00-$02 at 1/8 speed
 	ld   de, ($00 << 8)|$02
 	ld   c, $08
@@ -14362,7 +14362,7 @@ Act_SharedIntro_Init:
 	; Play boss music.
 	; Every boss, including the final boss, uses the same music.
 	ld   a, BGM_BOSS
-	ldh  [hBGMSet], a
+	mPlayBGM
 	ret
 	
 ;================ Act_BossIntro_InitAnim ================
@@ -14451,7 +14451,7 @@ Act_SharedIntro_RefillBar:
 	and  $07					; Health % 8 != 0?
 	jr   nz, .chkEnd			; If so, skip
 	ld   a, SFX_BOSSBAR
-	ldh  [hSFXSet], a
+	mPlaySFX
 .chkEnd:
 	; Wait for the gauge to fully refill
 	ld   a, [wBossIntroHealth]

@@ -3171,7 +3171,7 @@ Shutter_Open:
 	ld   a, SHUTTER_OPEN	; Open up by 1 strip
 	ld   [wShutterEvMode], a
 	ld   a, SFX_SHUTTER		; Play shutter SFX
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 	jp   Pl_DoCtrl_NoMove
 
@@ -3260,7 +3260,7 @@ Shutter_Close:
 	ld   a, SHUTTER_CLOSE	; Close down by 1 strip
 	ld   [wShutterEvMode], a
 	ld   a, SFX_SHUTTER		; Play shutter SFX
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 	jp   Pl_DoCtrl_NoMove
 	
@@ -4247,7 +4247,7 @@ PlMode_Fall:
 	or   a
 	jp   nz, Pl_DrawSprMap
 	ld   a, SFX_LAND
-	ldh  [hSFXSet], a
+	mPlaySFX
 	jp   Pl_DrawSprMap
 	
 ; =============== PlMode_Climb ===============
@@ -5084,7 +5084,7 @@ PlMode_WarpInLand:
 	jp   Pl_DrawSprMap
 .end:
 	ld   a, SFX_TELEPORTIN		; Play landing sound
-	ldh  [hSFXSet], a
+	mPlaySFX
 	xor  a ; PL_MODE_GROUND
 	ld   [wPlMode], a
 	ret
@@ -5129,7 +5129,7 @@ PlMode_WarpOutAnim:
 	jp   Pl_DrawSprMap
 .end:
 	ld   a, SFX_TELEPORTOUT		; Play teleport sound
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ld   hl, wPlMode
 	inc  [hl] ; PL_MODE_WARPOUTMOVE
 	jp   Pl_DrawSprMap
@@ -5182,7 +5182,7 @@ PlMode_Teleporter:
 	jp   Pl_DrawSprMap
 .end:
 	ld   a, SFX_TELEPORTOUT
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ld   hl, wPlMode
 	inc  [hl] ; PL_MODE_TLPEND
 	jp   Pl_DrawSprMap
@@ -9222,7 +9222,7 @@ Game_Main_ToWilyCastle:
 	call WilyCastle_DrawRockman
 	call StartLCDOperation
 	ld   a, BGM_WILYINTRO		; Play BGM
-	ldh  [hBGMSet], a
+	mPlayBGM
 	call FlashBGPalLong			; Display for 9 seconds
 	
 	;
@@ -9574,10 +9574,9 @@ Module_Game_PlDead:
 		jr   .playExpl
 	.explode0:
 		; The first explosion that spawns also plays its respective sound effect
-		ld   a, SND_MUTE		; And kill the level music
-		ldh  [hBGMSet], a
+		mStopSnd			; And kill the level music
 		ld   a, SFX_EXPLODE
-		ldh  [hSFXSet], a
+		mPlaySFX
 	.explode1:
 		; Use the origin coordinates set when we died.
 		ld   a, [wExplodeOrgX]
@@ -9740,7 +9739,7 @@ Module_Game_PlDead:
 	
 	; PASSWORD SCREEN
 	ld   a, BGM_PASSWORD
-	ldh  [hBGMSet], a
+	mPlayBGM
 	call Module_PasswordView ; BANK $01
 	
 	; GAME OVER
@@ -9791,8 +9790,7 @@ Module_Game_BossDead:
 	; Also deleting all actors.
 	call ActS_ForceDespawnAll
 	
-	ld   a, SND_MUTE		; Stop the music straight away
-	ldh  [hBGMSet], a
+	mStopSnd				; Stop the music straight away
 	
 	;
 	; Handle the explosion animation for ~3 seconds, similarly to the player but simpler.
@@ -9806,7 +9804,7 @@ Module_Game_BossDead:
 		jr   nz, .doGame	; If so, skip
 		
 		ld   a, SFX_EXPLODE		; Play explosion sound on every spawn
-		ldh  [hSFXSet], a
+		mPlaySFX
 		ld   a, [wExplodeOrgX]	; Use the boss coordinates as origin
 		ld   [wActSpawnX], a
 		ld   a, [wExplodeOrgY]
@@ -9822,7 +9820,7 @@ Module_Game_BossDead:
 	; Wait for two seconds while the jingle plays.
 	;
 	ld   a, BGM_STAGECLEAR
-	ldh  [hBGMSet], a
+	mPlayBGM
 	ld   b, 60*2
 	call NonGame_DoFor
 	
@@ -9894,7 +9892,7 @@ Module_Game_BossDead:
 	.abSpawn:
 		call ActS_SpawnAbsorb		; Spawn the 8 explosion actors
 		ld   a, SFX_WEAPONABSORB	; Play respective SFX
-		ldh  [hSFXSet], a
+		mPlaySFX
 		jr   .abPlay
 	.abKill:
 		call ActS_ForceDespawnAll	; Delete all actors
@@ -10040,7 +10038,7 @@ Module_Game_InitScrOn:
 	add  hl, bc
 	ld   a, [hl]
 	ld   a, a				; [POI] What?
-	ldh  [hBGMSet], a
+	mPlayBGM
 	ret
 	
 ; =============== Game_TickTime ===============
@@ -10111,7 +10109,7 @@ Game_DoRefill:
 	ld   hl, wStatusBarRedraw	; Trigger redraw
 	set  BARID_PL, [hl]
 	ld   a, SFX_BAR			; Play refill sound
-	ldh  [hSFXSet], a
+	mPlaySFX
 
 .chkAmmo:
 	;
@@ -10157,7 +10155,7 @@ Game_DoRefill:
 	ld   hl, wStatusBarRedraw
 	set  BARID_WPN, [hl]
 	ld   a, SFX_BAR
-	ldh  [hSFXSet], a
+	mPlaySFX
 .end:
 	; Fall-through
 	
@@ -10228,7 +10226,7 @@ Module_Title:
 	;--
 	
 	ld   a, BGM_TITLE
-	ldh  [hBGMSet], a
+	mPlayBGM
 	
 	;
 	; Define the cursor sprite.
@@ -10292,7 +10290,7 @@ Module_Title:
 	jr   z, .sel									; If not, we've definitely pressed A or START
 	; Otherwise, toggle the selection
 	ld   a, SFX_CURSORMOVE
-	ldh  [hSFXSet], a
+	mPlaySFX
 	jr   .changeSel
 .sel:
 	; [POI] Disable the invulnerability cheat.
@@ -10370,7 +10368,7 @@ Module_StageSel:
 	;--
 	
 	ld   a, BGM_STAGESELECT
-	ldh  [hBGMSet], a
+	mPlayBGM
 	
 	xor  a
 	ld   [wStageSelCursor], a
@@ -10441,7 +10439,7 @@ Module_StageSel:
 	ld   [wStageSelCursor], a
 	
 	ld   a, SFX_CURSORMOVE
-	ldh  [hSFXSet], a
+	mPlaySFX
 	jr   .loop
 	
 .chkMoveV:
@@ -10458,7 +10456,7 @@ Module_StageSel:
 	ld   [wStageSelCursor], a
 	
 	ld   a, SFX_CURSORMOVE
-	ldh  [hSFXSet], a
+	mPlaySFX
 	jr   .loop
 	
 ; =============== StageSel_DrawCursor ===============
@@ -10525,7 +10523,7 @@ StageSel_BossIntro:
 	
 	; The stage intro sound plays immediately, there's no separate selection sound.
 	ld   a, BGM_STAGESTART
-	ldh  [hBGMSet], a
+	mPlayBGM
 	
 	; Flash the palette for 32 frames.
 	; This is enough time to let the boss graphics fully load.
@@ -11153,7 +11151,7 @@ Module_GetWpn:
 	;--
 	
 	ld   a, BGM_WEAPONGET
-	ldh  [hBGMSet], a
+	mPlayBGM
 	
 	;
 	; Scroll the Rockman/Rush picture to the left until it's fully onscreen.
@@ -11266,7 +11264,7 @@ GetWpn_WriteTxt:
 	inc  a							; Trigger event
 	ld   [wTilemapEv], a
 	ld   a, SFX_BOSSBAR				; Play text writer sound
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 .wait:
 	ld   a, $06			; Wait 6 frames between text printings
@@ -12198,7 +12196,7 @@ Wpn_OnActColi:
 	
 	; Play hit sound
 	ld   a, SFX_ENEMYHIT
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 	;
 	; If we hit a boss, make that invulnerability period last longer,
@@ -12357,7 +12355,7 @@ Wpn_OnActColi:
 	jr   nz, .deflectCr		; If not, jump
 	; At least no weapon ammo is consumed.
 	ld   a, SFX_DEFLECT
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ret
 .deflectCr:
 	;
@@ -12389,7 +12387,7 @@ Wpn_OnActColi:
 	ld   [wPlMode], a
 	; Play deflect sound
 	ld   a, SFX_DEFLECT
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ret
 	
 .deflectNorm:
@@ -12406,7 +12404,7 @@ Wpn_OnActColi:
 	ldh  [hShotCur+iShotFlags], a
 	; Play respective sound
 	ld   a, SFX_DEFLECT
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ret
 	
 ; =============== Pl_DoActColi ===============
@@ -12582,7 +12580,7 @@ Pl_OnActColi:
 	
 	; Play hurt SFX
 	ld   a, SFX_DAMAGED
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 	; Stay in the hurt pose for around half a second
 	ld   a, $20
@@ -12937,7 +12935,7 @@ Pl_OnActColi:
 	
 	; Obtain 2 coins
 	ld   a, SFX_1UP
-	ldh  [hSFXSet], a
+	mPlaySFX
 	ret
 	
 ; --------------- .ammoLg ---------------
@@ -12984,7 +12982,7 @@ Pl_OnActColi:
 	
 	; Play whatever the E-Tank sound is supposed to be
 	ld   a, SFX_ETANK
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 ; --------------- .noItem ---------------
 ; Placeholder entry.
@@ -13163,7 +13161,7 @@ Pause_Do:
 		
 		; Play pause sound
 		ld   a, SFX_TELEPORTIN	
-		ldh  [hSFXSet], a
+		mPlaySFX
 		
 		; Scroll the status bar up 8px at a time until it reaches the top of the screen, while GFX_Pause loads in.
 		; The status bar is assumed to be at Y position $80 at the start of the loop, so... 
@@ -13365,7 +13363,7 @@ Pause_Do:
 		
 		; Play refill sound
 		ld   a, SFX_BAR
-		ldh  [hSFXSet], a
+		mPlaySFX
 		
 		ld   a, [wPlHealth]
 		cp   BAR_MAX			; Reached the max health value?
@@ -13487,7 +13485,7 @@ Pause_Do:
 	call GfxCopy_Req
 	
 	ld   a, SFX_TELEPORTOUT
-	ldh  [hSFXSet], a
+	mPlaySFX
 	
 	;
 	; Scroll the status bar down 8px at a time until it reaches the bottom of the screen.
