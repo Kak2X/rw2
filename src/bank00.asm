@@ -11613,7 +11613,7 @@ WilyCastle_DoCutscene_MoveWily:
 	inc  [hl]
 	ret
 	
-TilemapDef_WilyCastle_TrapGone: INCLUDE "data/game/castlesc_trapgone_bg.asm"
+TilemapDef_WilyCastle_TrapGone: INCLUDE "data/scene/castle/trapgone_bg.asm"
 .end:
 
 ; =============== WilyCastle_CloseWonTeleporters ===============

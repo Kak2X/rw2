@@ -204,7 +204,7 @@ wNeedleSpawnTimer:        db      ; $CF5C ; Handles Needle Man's shot timing. Co
 wActHurtSlotPtr:          db      ; $CF5D ; Marks the actor the player got damaged by
 wWpnHelperUseTimer:       db      ; $CF5E ; Timer for automatic weapon ammo drain, used by weapons that consume ammo over time
 wUnused_CF5F:             db      ; $CF5F ; Only initialized to $00.
-wLvlEnd:                  db      ; $CF60 ; Marks how the level ended, either when someone has died (EXPL_*) or an instant stage warp if a stage ID is written to the upper nybble.
+wLvlEnd:                  db      ; $CF60 ; Marks how the level ended (LVLEND_*), either when someone has died or an instant stage warp if a stage ID is written to the upper nybble.
 wBossHealth:              db      ; $CF61 ; Boss health (copied from the boss' iActColiHealth, to later update wBossHealthBar)
 wTmpColiActId:            db      ; $CF62 ; Temporary location to store the actor ID during shot-actor collision checks.
 wExplodeOrgX:             db      ; $CF63 ; X Origin of player/boss explosions

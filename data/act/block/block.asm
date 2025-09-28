@@ -81,7 +81,7 @@ Act_Block_DelayShow:
 ; =============== Act_Block_Solid0 ===============
 ; First of four routines that manually handle the block's animation.
 ; ActS_Anim* is not being used because not only the amount of time to wait on each sprite is
-; higher than what it suppports, each sprite is also displayed for a different amount of frames.
+; higher than what it supports, each sprite is also displayed for a different amount of frames.
 ;
 ; Use visible sprite $01 for 10 frames
 Act_Block_Solid0:
