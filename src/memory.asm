@@ -345,12 +345,14 @@ hScrEvVDestPtr_Low:       db      ; $FFB4
 hScrEvVDestPtr_High:      db      ; $FFB5
 hBGPAnim0:                db      ; $FFB6 ; BG palette animation, 1st palette
 hBGPAnim1:                db      ; $FFB7 ; BG palette animation, 2nd palette
-
+SECTION "Sound Driver - 1", HRAM[$FFB8]
+ds $FFF5-$FFB8
 SECTION "HRAM - 2", HRAM[$FFF5]
 hBGP:                    db      ; $FFF5 ; BG palette
 hOBP0:                   db      ; $FFF6 ; OBJ0 palette
 hOBP1:                   db      ; $FFF7 ; OBJ1 palette
-
+SECTION "Sound Driver - 2", HRAM[$FFF8]
+ds $FFF9-$FFF8
 SECTION "HRAM - 3", HRAM[$FFF9]
 hCheatMode:              db      ; $FFF9 ; [TCRF] Full invulnerability. Shots pass through & pits act like bouncy surfaces.
 hWarmBootFlag:           db      ; $FFFA ; [TCRF] Value checked during boot, but has no effect due to the lack of soft-reset
@@ -583,6 +585,10 @@ DEF iScExplY              EQU $00 ; Y Position
 DEF iScExplX              EQU $01 ; X Position
 DEF iScExplSprMapId       EQU $02 ; Sprite mapping ID
 DEF iScExplTimer          EQU $03 ; Animation timer
+
+; Pause_BarTbl indexes
+DEF iPBar_Ptr             EQU $00
+DEF iPBar_Tiles           EQU $02
 
 ; Password dot locations
 DEF iDotA1                EQU $00
