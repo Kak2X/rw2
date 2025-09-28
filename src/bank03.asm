@@ -853,8 +853,8 @@ TopManShot_SprMapPtrTbl:
 	dw SprMap_TopManShot_Unused_2;X
 MagnetManShot_SprMapPtrTbl:
 	dw SprMap_MagnetManShotH
-	dw SprMap_MagnetManShot_Unused_HV;X
-	dw SprMap_MagnetManShotV
+	dw SprMap_MagnetManShot_Unused_U;X
+	dw SprMap_MagnetManShotD
 NeedleManShot_SprMapPtrTbl:
 	dw SprMap_NeedleManShot
 CrashManShot_SprMapPtrTbl:

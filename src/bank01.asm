@@ -4833,9 +4833,9 @@ Credits_Sc2:
 	; As the background is *currently* reserved to the scrolling starfield, the text is drawn using sprites.
 	;
 
-	ld   hl, GFX_Credits_OBJ ; Source GFX ptr
+	ld   hl, GFX_Credits ; Source GFX ptr
 	ld   de, $8000 ; VRAM Destination ptr (1st section)
-	ld   bc, (BANK(GFX_Credits_OBJ) << 8)|$80 ; B = Source GFX bank number (BANK $0B) C = Number of tiles to copy
+	ld   bc, (BANK(GFX_Credits) << 8)|$80 ; B = Source GFX bank number (BANK $0B) C = Number of tiles to copy
 	call GfxCopy_Req
 	
 	;
@@ -5043,9 +5043,9 @@ Credits_Sc5:
 	;
 	
 	; Load the credits text font on the background section, as we're writing text there.
-	ld   hl, GFX_Credits_OBJ ; Source GFX ptr
+	ld   hl, GFX_Credits ; Source GFX ptr
 	ld   de, $9200 ; VRAM Destination ptr (3rd section)
-	ld   bc, (BANK(GFX_Credits_OBJ) << 8)|$60 ; B = Source GFX bank number (BANK $0B) C = Number of tiles to copy
+	ld   bc, (BANK(GFX_Credits) << 8)|$60 ; B = Source GFX bank number (BANK $0B) C = Number of tiles to copy
 	call GfxCopy_Req
 	
 	; With the tilemap fully black, set viewport to Y position $60.

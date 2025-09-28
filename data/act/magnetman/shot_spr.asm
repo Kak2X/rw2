@@ -7,7 +7,7 @@ SprMap_MagnetManShotH:
 	db $FA,$00,$ED,$40 ; $03
 .end:
 
-SprMap_MagnetManShot_Unused_HV:
+SprMap_MagnetManShot_Unused_U:
 	db (.end-.start)/4 ; $04 OBJ
 .start:
 	db $F2,$F8,$EE,$00 ; $00 ;X
@@ -16,7 +16,7 @@ SprMap_MagnetManShot_Unused_HV:
 	db $FA,$00,$EF,$20 ; $03 ;X
 .end:
 
-SprMap_MagnetManShotV:
+SprMap_MagnetManShotD:
 	db (.end-.start)/4 ; $04 OBJ
 .start:
 	db $F2,$F8,$EF,$40 ; $00

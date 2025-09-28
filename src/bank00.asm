@@ -813,10 +813,6 @@ GFXSet_Load:
 	dw LoadGFX_GameOver    ; GFXSET_GAMEOVER
 	dw LoadGFX_Space       ; GFXSET_SPACE
 	
-; The graphics being loaded are sometimes cropped from larger graphic sets.
-; For example, GFX_TitleCursor is directly inside GFX_StageSel,
-; while GFX_StageSel itself loads less tiles in the password screen code.
-	
 ; =============== LoadGFX_Title ===============
 LoadGFX_Title:
 	push af
@@ -825,7 +821,6 @@ LoadGFX_Title:
 		ld   [MBC1RomBank], a
 	pop  af
 	
-	; !!! PARTIAL
 	ld   hl, GFX_TitleCursor	; HL = Source ptr
 	ld   de, $8000				; DE = Destination ptr
 	ld   bc, $0080				; BC = Bytes to copy
@@ -846,19 +841,27 @@ LoadGFX_Title:
 ; =============== LoadGFX_StageSel ===============	
 LoadGFX_StageSel:
 	push af
-		ld   a, BANK(GFX_StageSel) ; BANK $0A
+		ld   a, BANK(GFX_Password) ; BANK $0A
 		ldh  [hRomBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
-	; GFX_StageSel contains both the BG and OBJ graphics, so it needs to be loaded twice.
+	; This copies $800 bytes starting from GFX_Password.
+	; This effectively loads:
+	; - GFX_Password for the borders/backdrop
+	; - GFX_Title_Dots & GFX_TitleCursor, which are useless but are in the way
+	; - GFX_StageSel, containing the cursor and the boss portraits.
+	ASSERT GFX_StageSel - GFX_Password == $300, "GFX_StageSel is required to be $300 bytes after GFX_Password"
+	
+	; On top of that, even though there's only one tile used for sprites before the boss loads in,
+	; that whole set gets loaded twice for both OBJ and BG.
 
-	ld   hl, GFX_StageSel
+	ld   hl, GFX_Password
 	ld   de, $8000			; For OBJ
 	ld   bc, $0800
 	call CopyMemory
 	
-	ld   hl, GFX_StageSel
+	ld   hl, GFX_Password
 	ld   de, $9000			; For BG
 	ld   bc, $0800
 	call CopyMemory
@@ -873,13 +876,14 @@ LoadGFX_StageSel:
 ; =============== LoadGFX_Password ===============	
 LoadGFX_Password:
 	push af
-		ld   a, BANK(GFX_StageSel) ; BANK $0A
+		ld   a, BANK(GFX_Password) ; BANK $0A
 		ldh  [hRomBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
-	; !!! PARTIAL (crops out boss pics)
-	ld   hl, GFX_StageSel
+	; Loads in $100 bytes more than intended.
+	; This makes it load GFX_TitleCursor, which isn't necessary.
+	ld   hl, GFX_Password
 	ld   de, $9000
 	ld   bc, $0300
 	call CopyMemory
@@ -955,11 +959,11 @@ LoadGFX_Level:
 	; Load shared graphics (status bar, ...)
 	;
 	push af
-	ld   a, BANK(GFX_LvlShared) ; BANK $0A
+	ld   a, BANK(GFX_BgShared) ; BANK $0A
 	ldh  [hRomBank], a
 	ld   [MBC1RomBank], a
 	pop  af
-	ld   hl, GFX_LvlShared
+	ld   hl, GFX_BgShared
 	ld   de, $9500
 	ld   bc, $0300
 	call CopyMemory
@@ -1004,12 +1008,12 @@ LoadGFX_GetWpn:
 ; =============== LoadGFX_WilyCastle ===============
 LoadGFX_WilyCastle:
 	push af
-		ld   a, BANK(GFX_Space0OBJ) ; BANK $0C
+		ld   a, BANK(GFX_SpaceOBJ) ; BANK $0C
 		ldh  [hRomBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
-	ld   hl, GFX_Space0OBJ
+	ld   hl, GFX_SpaceOBJ
 	ld   de, $8000
 	ld   bc, $0800
 	call CopyMemory
@@ -1049,17 +1053,17 @@ LoadGFX_WilyStation:
 ; =============== LoadGFX_WilyCastle ===============
 LoadGFX_GameOver:
 	push af
-		ld   a, BANK(GFX_GameOverFont) ; BANK $0B
+		ld   a, BANK(GFX_NormalFont) ; BANK $0B
 		ldh  [hRomBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
-	ld   hl, GFX_GameOverFont
+	ld   hl, GFX_NormalFont
 	ld   de, $8400
 	ld   bc, $0200
 	call CopyMemory
 	
-	ld   hl, GFX_GameOverFont
+	ld   hl, GFX_NormalFont
 	ld   de, $9400
 	ld   bc, $0200
 	call CopyMemory
@@ -1092,23 +1096,32 @@ LoadGFX_GameOver:
 ; =============== LoadGFX_Space ===============
 LoadGFX_Space:
 	push af
-		ld   a, BANK(GFX_Space1OBJ) ; BANK $0B
+		ld   a, BANK(Marker_GFX_Wpn) ; BANK $0B
 		ldh  [hRomBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
-	ld   hl, GFX_Space1OBJ
+	; This copies $800 bytes starting from Marker_GFX_Wpn, to loads all weapon sets at once.
+	; What we actually need though are some graphics scattered here and there:
+	; - Rush Marine's sprite from GFX_Wpn_RcWdHa, which is reused as a spaceship...
+	; - ...with a few altered tiles stored within GFX_Wpn_Rj.
+	; - The explosion in GFX_Wpn_MeNe, which is also used when the ground explodes during
+	;   the Wily Castle cutscene.
+	ASSERT GFX_Wpn_RcWdHa-Marker_GFX_Wpn == $000, "GFX_Wpn_RcWdHa should at the same location as Marker_GFX_Wpn"
+	ASSERT GFX_Wpn_Rm-Marker_GFX_Wpn     == $100, "GFX_Wpn_Rm should be $100 bytes from Marker_GFX_Wpn"
+	ASSERT GFX_Wpn_MeNe-Marker_GFX_Wpn   == $700, "GFX_Wpn_MeNe should be $700 bytes from Marker_GFX_Wpn"
+	ld   hl, Marker_GFX_Wpn
 	ld   de, $8800
 	ld   bc, $0800
 	call CopyMemory
 	
 	push af
-		ld   a, BANK(GFX_Space0OBJ) ; BANK $0C
+		ld   a, BANK(GFX_SpaceOBJ) ; BANK $0C
 		ldh  [hRomBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
-	ld   hl, GFX_Space0OBJ
+	ld   hl, GFX_SpaceOBJ
 	ld   de, $8000
 	ld   bc, $0800
 	call CopyMemory
@@ -3573,10 +3586,8 @@ PlMode_Ground:
 	call Pause_StartHelperWarp	; Try to teleport Rush/Sakugarne out, *if they aren't teleporting out already*
 	jr   c, .chkLadderU				; Did we teleport anything out? If so, skip (don't activate the shutter yet)
 	
-	; Only activate the shutter if not standing on solid ground.
-	; The shutter animation assumes the player to be on the ground, which is why it's used to
-	; determine where to draw the shutter tiles on screen.
-	; Touching the door while riding Rush Jet will break that assumption.
+	; Only activate the shutter if standing on solid ground, as the shutter animations
+	; uses that assumption to determine where to draw the shutter tiles on screen.
 	
 	; X Sensor: Player's X origin (middle)
 	ld   a, [wPlRelX]
@@ -10667,9 +10678,9 @@ StageSel_BossIntro:
 	; 
 	
 	; Load the font to VRAM
-	ld   hl, GFX_GameOverFont	; Source GFX ptr
+	ld   hl, GFX_NormalFont	; Source GFX ptr
 	ld   de, $9400				; VRAM Destination ptr
-	ld   bc, (BANK(GFX_GameOverFont) << 8) | $20 ; BANK $0B | Number of tiles to copy
+	ld   bc, (BANK(GFX_NormalFont) << 8) | $20 ; BANK $0B | Number of tiles to copy
 	call GfxCopy_Req
 	; Normally we would call GfxCopyEv_Wait, but that wouldn't animate the starfield.
 	; The 32 tiles should load within 8 frames, so wait that much.
@@ -13472,7 +13483,7 @@ Pause_Do:
 	;--
 	
 	ld   de, $8500 ; VRAM Destination ptr
-	ld   bc, (BANK(GFX_Wpn_P) << 8)|$10 ; BANK $0B ; Source GFX bank number, Number of tiles to copy
+	ld   bc, (BANK(Marker_GFX_Wpn) << 8)|$10 ; BANK $0B ; Source GFX bank number, Number of tiles to copy
 	call GfxCopy_Req
 	
 	ld   a, SFX_TELEPORTOUT
@@ -13548,6 +13559,7 @@ Pause_CopyFontTileGFX:
 		; There's an assumption here.
 		; GFX_Pause must stored on a byte boundary that doesn't make it conflict with the index, since it's using
 		; "or" rather than "and". In practice, it should be stored on a $200-byte boundary, given it's $200 bytes long.
+		ASSERT GFX_Pause % $200 == 0, "GFX_Pause should be stored on a $200 byte boundary"
 		or   HIGH(GFX_Pause)	; Add the base value
 		ld   h, a
 		
@@ -13578,17 +13590,17 @@ Pause_CopyFontTileGFX:
 ;
 ; To save space, graphics for multiple weapons may be stored into the same art set.
 Pause_WpnGfxPtrTbl:
-	db HIGH(GFX_Wpn_P) ; WPN_P 
-	db HIGH(GFX_Space1OBJ) ; WPN_RC ; TODO: GFX_Wpn_RcWdHa as alternate label
+	db HIGH(GFX_Player+$500) ; WPN_P ; [POI] This could point anywhere, it doesn't matter. It points to a completely blank area inside GFX_Player.
+	db HIGH(GFX_Wpn_RcWdHa) ; WPN_RC
 	db HIGH(GFX_Wpn_Rm) ; WPN_RM
 	db HIGH(GFX_Wpn_Rj) ; WPN_RJ
 	db HIGH(GFX_Wpn_Tp) ; WPN_TP
 	db HIGH(GFX_Wpn_Ar) ; WPN_AR
-	db HIGH(GFX_Space1OBJ) ; WPN_WD
+	db HIGH(GFX_Wpn_RcWdHa) ; WPN_WD
 	db HIGH(GFX_Wpn_MeNe) ; WPN_ME
 	db HIGH(GFX_Wpn_Sg) ; WPN_CR
 	db HIGH(GFX_Wpn_MeNe) ; WPN_NE
-	db HIGH(GFX_Space1OBJ) ; WPN_HA
+	db HIGH(GFX_Wpn_RcWdHa) ; WPN_HA
 	db HIGH(GFX_Wpn_Ar) ; WPN_MG
 	db HIGH(GFX_Wpn_Sg) ; WPN_SG (wWpnSGRide = $00)
 	db HIGH(GFX_Wpn_SgRide) ; WPN_SG (wWpnSGRide = $01)
@@ -14263,7 +14275,7 @@ ENDM
 ; These each set has a fixed size of $800 bytes.
 ActS_GFXSetTbl:
 	mGfxDef2 GFX_Player       ; $00 ; ACTGFX_PLAYER    ; 
-	mGfxDef2 GFX_Space1OBJ    ; $01 ; ACTGFX_SPACE1    ; [POI] Only loaded manually, not through here. It also overlaps with GFX_Wpn_RcWdHa.
+	mGfxDef2 GFX_Wpn_RcWdHa   ; $01 ; ACTGFX_SPACE1    ; [POI] Only loaded manually by LoadGFX_Space, not through here.
 	mGfxDef2 GFX_ActLvlHard   ; $02 ; ACTGFX_LVLHARD   ; 
 	mGfxDef2 GFX_Bikky        ; $03 ; ACTGFX_BIKKY     ; 
 	mGfxDef2 GFX_ActLvlTop    ; $04 ; ACTGFX_LVLTOP    ; 
@@ -14287,7 +14299,7 @@ ActS_GFXSetTbl:
 	
 ; =============== Lvl_GFXSetTbl ===============
 ; Maps each stage to their graphics.
-; These have a fixed size of $500 bytes, as the remaining $300 are taken up by GFX_LvlShared.
+; These have a fixed size of $500 bytes, as the remaining $300 are taken up by GFX_BgShared.
 Lvl_GFXSetTbl:
 	mGfxDef2 GFX_LvlHard    ; $00 ; LVL_HARD
 	mGfxDef2 GFX_LvlTop     ; $01 ; LVL_TOP

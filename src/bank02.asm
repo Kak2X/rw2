@@ -9780,6 +9780,8 @@ Act_WilyCtrl_P2Wait:
 	;
 	; To make the whole thing work, the only tile shown on screen is for a simple horizontal
 	; pipe (tile $04), which is the same between GFX_LvlCastle and GFX_LvlStation.
+	; For some reason this is copying $80 tiles, which is more than it needs to, and so it
+	; carries a copy of GFX_BgShared in the last $30 tiles.
 	ld   bc, (BANK(GFX_LvlCastle) << 8) | $80 ; Source GFX bank number + Number of tiles to copy
 	ld   hl, GFX_LvlCastle ; Source GFX ptr
 	ld   de, $9000 ; VRAM Destination ptr (start of 3rd section)

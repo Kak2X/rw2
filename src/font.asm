@@ -79,7 +79,7 @@ NEWCHARMAP ascii
 	CHARMAP "y", $79
 	CHARMAP "z", $7A
 
-; Character select, password error, boss intro screen, game over (GFX_GameOverFont)
+; Character select, password error, game over (GFX_NormalFont)
 NEWCHARMAP generic
 	CHARMAP " ", $40
 	CHARMAP "A", $41
