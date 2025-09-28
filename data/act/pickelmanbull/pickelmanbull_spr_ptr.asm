@@ -1,0 +1,3 @@
+PickelmanBull_SprMapPtrTbl:
+	dw SprMap_PickelmanBull0
+	dw SprMap_PickelmanBull1

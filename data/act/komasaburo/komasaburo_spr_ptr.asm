@@ -1,0 +1,4 @@
+Komasaburo_SprMapPtrTbl:
+	dw SprMap_Komasaburo_Idle0
+	dw SprMap_Komasaburo_Idle1
+	dw SprMap_Komasaburo_Shoot

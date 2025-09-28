@@ -1,0 +1,4 @@
+Mechakkero_SprMapPtrTbl:
+	dw SprMap_Mechakkero_Ground
+	dw SprMap_Mechakkero_GroundEye
+	dw SprMap_Mechakkero_Jump

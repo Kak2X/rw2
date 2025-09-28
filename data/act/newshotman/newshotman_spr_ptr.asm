@@ -1,0 +1,4 @@
+NewShotman_SprMapPtrTbl:
+	dw SprMap_NewShotman_Idle0
+	dw SprMap_NewShotman_Idle1
+	dw SprMap_NewShotman_Shoot

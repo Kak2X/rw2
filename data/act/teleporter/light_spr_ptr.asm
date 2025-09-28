@@ -1,0 +1,3 @@
+TeleporterLight_SprMapPtrTbl:
+	dw SprMap_TeleporterLight0
+	dw SprMap_TeleporterLight1

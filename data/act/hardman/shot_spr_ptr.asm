@@ -1,0 +1,2 @@
+HardKnuckle_SprMapPtrTbl:
+	dw SprMap_HardKnuckle

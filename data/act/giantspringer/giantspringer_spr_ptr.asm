@@ -1,0 +1,7 @@
+GiantSpringer_SprMapPtrTbl:
+	dw SprMap_GiantSpringer_Move
+	dw SprMap_GiantSpringer_Shoot
+	dw SprMap_GiantSpringer_Out0
+	dw SprMap_GiantSpringer_Out1
+	dw SprMap_GiantSpringer_Out2
+	dw SprMap_GiantSpringer_Out1

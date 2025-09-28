@@ -1,0 +1,6 @@
+HammerJoe_SprMapPtrTbl:
+	dw SprMap_HammerJoe_SwClose0
+	dw SprMap_HammerJoe_SwClose1
+	dw SprMap_HammerJoe_SwOpen0
+	dw SprMap_HammerJoe_SwOpen1
+	dw SprMap_HammerJoe_Throw

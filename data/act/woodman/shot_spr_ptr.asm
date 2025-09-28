@@ -1,0 +1,6 @@
+WoodManLeafShield_SprMapPtrTbl:
+	dw SprMap_WoodManLeafRise
+WoodManLeafRise_SprMapPtrTbl:
+	dw SprMap_WoodManLeafRise
+WoodManLeafFall_SprMapPtrTbl:
+	dw SprMap_WoodManLeafFall

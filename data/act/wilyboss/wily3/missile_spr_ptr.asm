@@ -1,0 +1,2 @@
+Wily3Missile_SprMapPtrTbl:
+	dw SprMap_Wily3Missile

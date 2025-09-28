@@ -3521,13 +3521,13 @@ PlMode_Ground:
 	call Pl_IsInTopSolidBlock	; Inside a top-solid block?
 	jp   z, .startFall			; If so, jump
 	;--
-	; No Pl_DoWpnCtrl call, preventing shots from being fired
+	; No WpnCtrl_Do call, preventing shots from being fired
 	call Pl_DoConveyor
 	call Pl_DoHurtSpeed ; Replaces Pl_DoMoveSpeed
 	call Pl_BgColiApplySpeedX
 	jp   .chkGround ; Skip very fat ahead
 .notHurt:
-	call Pl_DoWpnCtrl ; BANK $01
+	call WpnCtrl_Do ; BANK $01
 	call Pl_DoConveyor
 	call Pl_DoMoveSpeed
 	call Pl_BgColiApplySpeedX
@@ -3842,7 +3842,7 @@ PlMode_Ground:
 ; =============== PlMode_Jump ===============
 ; Player is doing a normal jump.
 PlMode_Jump:
-	call Pl_DoWpnCtrl ; BANK $01
+	call WpnCtrl_Do ; BANK $01
 	; Handle horizontal movement
 	call Pl_DoMoveSpeed
 	call Pl_BgColiApplySpeedX
@@ -3861,7 +3861,7 @@ PlMode_Jump:
 ; Like PlMode_Jump, except it prevents the player from cutting the jump early.
 ; This makes it useful for things like the Sakugarne or the end of stage jumps.
 PlMode_FullJump:
-	call Pl_DoWpnCtrl ; BANK $01
+	call WpnCtrl_Do ; BANK $01
 	; Handle horizontal movement
 	call Pl_DoMoveSpeed
 	call Pl_BgColiApplySpeedX
@@ -4046,7 +4046,7 @@ PlMode_Fall:
 	;       (specifically, they don't handle it, but the hurt timer is still ticking down)
 	jr   .setSpr
 .noHurt:
-	call Pl_DoWpnCtrl ; BANK $01
+	call WpnCtrl_Do ; BANK $01
 	call Pl_DoMoveSpeed
 	call Pl_BgColiApplySpeedX
 .setSpr:
@@ -4253,7 +4253,7 @@ PlMode_Fall:
 ; =============== PlMode_Climb ===============
 ; Player is climbing a ladder (both idle and actual climbing).
 PlMode_Climb:
-	call Pl_DoWpnCtrl ; BANK $01
+	call WpnCtrl_Do ; BANK $01
 	
 	; Always use the same frame while climbing
 	ld   a, PLSPR_CLIMB
@@ -4701,7 +4701,7 @@ PlMode_Slide:
 PlMode_RushMarine:
 	; Rush Marine can fire normal shots.
 	; Unfortunately there's no animation for it, but there's no space left for it in VRAM.
-	call Pl_DoWpnCtrl ; BANK $01
+	call WpnCtrl_Do ; BANK $01
 	
 	;
 	; Rush Marine has its own momentum system, handling speed by itself.
@@ -11365,7 +11365,7 @@ WilyCastle_DrawRockman:
 	jp   CopyMemory
 ; =============== WilyCastle_RockmanSpr ===============
 WilyCastle_RockmanSpr: 
-	INCLUDE "data/castle/pl_rspr.asm"
+	INCLUDE "data/scene/castle/pl_rspr.asm"
 .end:
 
 ; =============== WilyStation_LoadVRAM ===============
@@ -13600,11 +13600,11 @@ Pause_WpnGfxPtrTbl:
 	db HIGH(GFX_Wpn_Ar) ; WPN_AR
 	db HIGH(GFX_Wpn_RcWdHa) ; WPN_WD
 	db HIGH(GFX_Wpn_MeNe) ; WPN_ME
-	db HIGH(GFX_Wpn_Sg) ; WPN_CR
+	db HIGH(GFX_Wpn_SgCr) ; WPN_CR
 	db HIGH(GFX_Wpn_MeNe) ; WPN_NE
 	db HIGH(GFX_Wpn_RcWdHa) ; WPN_HA
 	db HIGH(GFX_Wpn_Ar) ; WPN_MG
-	db HIGH(GFX_Wpn_Sg) ; WPN_SG (wWpnSGRide = $00)
+	db HIGH(GFX_Wpn_SgCr) ; WPN_SG (wWpnSGRide = $00)
 	db HIGH(GFX_Wpn_SgRide) ; WPN_SG (wWpnSGRide = $01)
 
 

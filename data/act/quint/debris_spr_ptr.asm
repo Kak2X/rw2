@@ -1,0 +1,2 @@
+QuintDebris_SprMapPtrTbl:
+	dw SprMap_QuintDebris

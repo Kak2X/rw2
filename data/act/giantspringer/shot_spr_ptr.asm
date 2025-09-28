@@ -1,0 +1,9 @@
+GiantSpringerShot_SprMapPtrTbl:
+	dw SprMap_GiantSpringerShotU
+	dw SprMap_GiantSpringerShot_Unused_UL;X
+	dw SprMap_GiantSpringerShotL
+	dw SprMap_GiantSpringerShot_Unused_UR;X
+	dw SprMap_GiantSpringerShot_Unused_R;X
+	dw SprMap_GiantSpringerShot_Unused_DR;X
+	dw SprMap_GiantSpringerShot_Unused_D;X
+	dw SprMap_GiantSpringerShot_Unused_DL;X

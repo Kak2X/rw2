@@ -1,0 +1,3 @@
+QuintSakugarne_SprMapPtrTbl:
+	dw SprMap_QuintSakugarne_Jump
+	dw SprMap_QuintSakugarne_Ground

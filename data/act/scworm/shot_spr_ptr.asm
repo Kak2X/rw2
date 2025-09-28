@@ -1,0 +1,5 @@
+ScwormShot_SprMapPtrTbl:
+	dw SprMap_ScwormShot_Exiting0
+	dw SprMap_ScwormShot_Exiting1
+	dw SprMap_ScwormShot_Idle0
+	dw SprMap_ScwormShot_Idle1

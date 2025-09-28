@@ -1,0 +1,3 @@
+KaminariCloud_SprMapPtrTbl:
+	dw SprMap_KaminariCloud0
+	dw SprMap_KaminariCloud1

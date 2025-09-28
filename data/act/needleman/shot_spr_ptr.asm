@@ -1,0 +1,2 @@
+NeedleManShot_SprMapPtrTbl:
+	dw SprMap_NeedleManShot

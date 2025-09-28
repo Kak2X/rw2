@@ -1,0 +1,5 @@
+CrashManShotExpl_SprMapPtrTbl:
+	dw SprMap_CrashManShotExpl0
+	dw SprMap_CrashManShotExpl1
+	dw SprMap_CrashManShotExpl2
+	dw SprMap_CrashManShotExpl3

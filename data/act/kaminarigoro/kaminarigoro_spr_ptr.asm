@@ -1,0 +1,5 @@
+KaminariGoro_SprMapPtrTbl:
+	dw SprMap_KaminariGoro_Idle0
+	dw SprMap_KaminariGoro_Idle1
+	dw SprMap_KaminariGoro_Throw0
+	dw SprMap_KaminariGoro_Throw1

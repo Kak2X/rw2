@@ -1,0 +1,2 @@
+RobbitCarrot_SprMapPtrTbl:
+	dw SprMap_RobbitCarrot

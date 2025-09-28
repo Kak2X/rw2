@@ -41,9 +41,9 @@ Act_Helper_TeleportIn_Init:
 	
 	; Otherwise, request the loading.
 	; It will take 2 frames, which is well ahead of our limit given the teleport animation uses shared graphics.
-	ld   hl, GFX_Wpn_Sg ; Source GFX ptr
+	ld   hl, GFX_Wpn_SgCr ; Source GFX ptr
 	ld   de, $8500 ; VRAM Destination ptr (2nd set)
-	ld   bc, (BANK(GFX_Wpn_Sg) << 8) | $08 ; Source GFX bank number + Number of tiles to copy
+	ld   bc, (BANK(GFX_Wpn_SgCr) << 8) | $08 ; Source GFX bank number + Number of tiles to copy
 	jp   GfxCopy_Req
 	;--
 	

@@ -1,0 +1,2 @@
+FrienderFlame_SprMapPtrTbl:
+	dw SprMap_FrienderFlame

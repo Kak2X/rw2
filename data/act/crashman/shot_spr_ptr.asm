@@ -1,0 +1,2 @@
+CrashManShot_SprMapPtrTbl:
+	dw SprMap_CrashManShot
