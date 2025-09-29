@@ -14,6 +14,6 @@ GfxDef_PasswordCursor:
 	wd $8000
 	db $00|(.eof-.start) ; TILESIZE
 .start:
-	INCBIN "data/password/cursor_gfx.bin"
+	INCBIN "src/password/cursor_gfx.bin"
 .eof: db $00
 

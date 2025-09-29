@@ -52,7 +52,7 @@ GFXSet_Load:
 	
 ; =============== .palTbl ===============
 ; Palettes associated with each set of graphics.	
-.palTbl: INCLUDE "data/pal_tbl.asm"
+.palTbl: INCLUDE "src/pal_tbl.asm"
 
 ; =============== .exec ===============
 ; Jump table to set-specific init code.

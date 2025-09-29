@@ -219,5 +219,5 @@ Module_Game_PlDead:
 	xor  a  ; C flag = Clear
 	ret
 	
-TilemapDef_GameOver: INCLUDE "data/gameover/gameover_bg.asm"
+TilemapDef_GameOver: INCLUDE "src/gameover/gameover_bg.asm"
 

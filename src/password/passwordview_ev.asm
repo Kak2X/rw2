@@ -8,7 +8,7 @@ SETCHARMAP generic
 	db " PRESS A BUTTON "
 .eof: db $00
 
-TilemapDef_PasswordDotsTemplate: INCLUDE "data/password/dots_template_bg.asm"
+TilemapDef_PasswordDotsTemplate: INCLUDE "src/password/dots_template_bg.asm"
 .end:
-TilemapDef_Password: INCLUDE "data/password/password_bg.asm"
+TilemapDef_Password: INCLUDE "src/password/password_bg.asm"
 

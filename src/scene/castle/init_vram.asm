@@ -29,6 +29,6 @@ WilyCastle_DrawRockman:
 	jp   CopyMemory
 ; =============== WilyCastle_RockmanSpr ===============
 WilyCastle_RockmanSpr: 
-	INCLUDE "data/scene/castle/pl_rspr.asm"
+	INCLUDE "src/scene/castle/pl_rspr.asm"
 .end:
 

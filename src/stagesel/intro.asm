@@ -441,7 +441,7 @@ Act_StageSelBoss_Starfield:
 ; =============== Starfield_InitPos ===============	
 ; =============== Starfield_Do ===============
 ; =============== Starfield_ReqDrawBG ===============
-INCLUDE "data/stagesel/intro_starfield.asm"	
+INCLUDE "src/stagesel/intro_starfield.asm"	
 
 ; =============== StageSel_BossActStartPosTbl ===============
 ; Spawn positions for boss actors for each picture.
@@ -458,7 +458,7 @@ SETCHARMAP generic
 ; Each of these is hardcoded to be 10 characters long.
 ; [TCRF] This explicitly accounts for the second set of bosses.
 StageSel_BossNameTbl:
-	INCLUDE "data/stagesel/intro_bossname_tbl.asm"
+	INCLUDE "src/stagesel/intro_bossname_tbl.asm"
 
 ; =============== StageSel_MkEmptyPicTilemap ===============
 ; Builds the TilemapDef for clearing out the specified boss pic.

@@ -1,8 +1,0 @@
-GFX_ActLvlHard: INCBIN "data/game/lvl/hard/act_gfx.bin"
-GFX_Bikky: INCBIN "data/game/act/bikky/bikky_gfx.bin"
-GFX_ActLvlTop: INCBIN "data/game/lvl/top/act_gfx.bin"
-GFX_ActLvlMagnet: INCBIN "data/game/lvl/magnet/act_gfx.bin"
-GFX_MagnetMan: INCBIN "data/game/act/boss/magnetman/magnetman_gfx.bin"
-GFX_ActLvlNeedle: INCBIN "data/game/lvl/needle/act_gfx.bin"
-GFX_NeedleMan: INCBIN "data/game/act/boss/needleman/needleman_gfx.bin"
-GFX_ActLvlCrash: INCBIN "data/game/lvl/crash/act_gfx.bin"

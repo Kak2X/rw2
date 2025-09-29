@@ -196,4 +196,4 @@ StageSel_DrawCursor:
 	
 ; =============== StageSel_CursorSprTbl ===============
 StageSel_CursorSprTbl:
-	INCLUDE "data/stagesel/cursor_rspr.asm"
+	INCLUDE "src/stagesel/cursor_rspr.asm"
