@@ -1,0 +1,8 @@
+	db " HARD MAN " ; LVL_HARD
+	db " TOP  MAN " ; LVL_TOP
+	db "MAGNET MAN" ; LVL_MAGNET
+	db "NEEDLE MAN" ; LVL_NEEDLE
+	db "CLASH  MAN" ; LVL_CRASH
+	db "METAL  MAN" ; LVL_METAL
+	db " WOOD MAN " ; LVL_WOOD
+	db " AIR  MAN " ; LVL_AIR

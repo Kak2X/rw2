@@ -1,4 +1,4 @@
-L074000:;C
+Sound_Do:;C
 	ldh  a, [hBGMSet]
 	cp   $FF
 	jp   z, L0740A4
