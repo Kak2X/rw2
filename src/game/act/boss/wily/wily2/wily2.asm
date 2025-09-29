@@ -283,7 +283,7 @@ Act_Wily2_ChkDeath:
 	ld   [wWilyShipX], a
 	call ActS_SpawnLargeExpl
 	
-	ld   a, SFX_EXPLODE			; Play explosion sound
+	ld   c, SFX_DROP_ECHO			; Play explosion sound
 	mPlaySFX
 	
 	; Return to the actor loop

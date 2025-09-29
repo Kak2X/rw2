@@ -25,7 +25,7 @@ Module_GetWpn:
 	call StartLCDOperation
 	;--
 	
-	ld   a, BGM_WEAPONGET
+	ld   c, BGM_TITLE
 	mPlayBGM
 	
 	;
@@ -138,8 +138,8 @@ GetWpn_WriteTxt:
 	
 	inc  a							; Trigger event
 	ld   [wTilemapEv], a
-	ld   a, SFX_BOSSBAR				; Play text writer sound
-	mPlaySFX
+	;ld   c, SFX_BOSSBAR				; Play text writer sound
+	;mPlaySFX
 	
 .wait:
 	ld   a, $06			; Wait 6 frames between text printings

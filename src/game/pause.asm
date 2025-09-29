@@ -169,7 +169,7 @@ Pause_Do:
 		call GfxCopy_Req
 		
 		; Play pause sound
-		ld   a, SFX_TELEPORTIN	
+		ld   c, SFX_SCOREEND	
 		mPlaySFX
 		
 		; Scroll the status bar up 8px at a time until it reaches the top of the screen, while GFX_Pause loads in.
@@ -371,7 +371,7 @@ Pause_Do:
 		rst  $10 ; Wait tilemap load
 		
 		; Play refill sound
-		ld   a, SFX_BAR
+		ld   c, SFX_CURSORMOVE
 		mPlaySFX
 		
 		ld   a, [wPlHealth]
@@ -493,7 +493,7 @@ Pause_Do:
 	ld   bc, (BANK(Marker_GFX_Wpn) << 8)|$10 ; BANK $0B ; Source GFX bank number, Number of tiles to copy
 	call GfxCopy_Req
 	
-	ld   a, SFX_TELEPORTOUT
+	ld   c, SFX_CURSORMOVE
 	mPlaySFX
 	
 	;

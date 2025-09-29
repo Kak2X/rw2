@@ -104,9 +104,9 @@ Game_Main_ToWilyCastle:
 	call WilyCastle_LoadVRAM	; Prepare VRAM
 	call WilyCastle_DrawRockman
 	call StartLCDOperation
-	ld   a, BGM_WILYINTRO		; Play BGM
+	ld   c, BGM_GAMEOVER		; Play BGM
 	mPlayBGM
-	call FlashBGPalLong			; Display for 9 seconds
+	call FlashBGPalLong			; Display for 3 seconds
 	
 	;
 	; Load in the Wily Castle level, starting with an in-engine cutscene.

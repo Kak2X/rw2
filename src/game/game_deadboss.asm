@@ -24,7 +24,7 @@ Module_Game_BossDead:
 	; Also deleting all actors.
 	call ActS_ForceDespawnAll
 	
-	mStopSnd				; Stop the music straight away
+	;mStopSnd				; Stop the music straight away
 	
 	;
 	; Handle the explosion animation for ~3 seconds, similarly to the player but simpler.
@@ -37,7 +37,7 @@ Module_Game_BossDead:
 		and  $3F			; Timer % $40 != 0?
 		jr   nz, .doGame	; If so, skip
 		
-		ld   a, SFX_EXPLODE		; Play explosion sound on every spawn
+		ld   c, SFX_DROP_ECHO		; Play explosion sound on every spawn
 		mPlaySFX
 		ld   a, [wExplodeOrgX]	; Use the boss coordinates as origin
 		ld   [wActSpawnX], a
@@ -53,9 +53,9 @@ Module_Game_BossDead:
 	;
 	; Wait for two seconds while the jingle plays.
 	;
-	ld   a, BGM_STAGECLEAR
+	ld   c, BGM_STAGECLEAR
 	mPlayBGM
-	ld   b, 60*2
+	ld   b, 60*4
 	call NonGame_DoFor
 	
 	;
@@ -125,7 +125,7 @@ Module_Game_BossDead:
 		jr   .abPlay
 	.abSpawn:
 		call ActS_SpawnAbsorb		; Spawn the 8 explosion actors
-		ld   a, SFX_WEAPONABSORB	; Play respective SFX
+		ld   c, SFX_WIND_A	; Play respective SFX
 		mPlaySFX
 		jr   .abPlay
 	.abKill:

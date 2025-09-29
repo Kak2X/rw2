@@ -20,10 +20,10 @@ FlashBGPal:
 	ret
 	
 ; =============== FlashBGPalLong ===============
-; Randomly flashes the BG palette for 9 seconds every 4 frames, taking exclusive control.
+; Randomly flashes the BG palette for 3 seconds every 4 frames, taking exclusive control.
 ; Exclusively used by the Wily Castle cutscene.
 FlashBGPalLong:
-	ld   c, $09		; For 9 seconds...
+	ld   c, $03		; For 3 seconds...
 .loop:
 	ld   b, 60		; For each frame...
 .secLoop:

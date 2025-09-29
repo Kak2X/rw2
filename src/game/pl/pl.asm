@@ -159,7 +159,7 @@ Shutter_Open:
 	ld   [wShutterTimer], a
 	ld   a, SHUTTER_OPEN	; Open up by 1 strip
 	ld   [wShutterEvMode], a
-	ld   a, SFX_SHUTTER		; Play shutter SFX
+	ld   c, SFX_STEP		; Play shutter SFX
 	mPlaySFX
 	
 	jp   Pl_DoCtrl_NoMove
@@ -248,7 +248,7 @@ Shutter_Close:
 	ld   [wShutterTimer], a
 	ld   a, SHUTTER_CLOSE	; Close down by 1 strip
 	ld   [wShutterEvMode], a
-	ld   a, SFX_SHUTTER		; Play shutter SFX
+	ld   c, SFX_STEP		; Play shutter SFX
 	mPlaySFX
 	
 	jp   Pl_DoCtrl_NoMove
@@ -1235,7 +1235,7 @@ PlMode_Fall:
 	ld   a, [wWpnSGRide]		; Play landing sound if not riding the Sakugarne
 	or   a
 	jp   nz, Pl_DrawSprMap
-	ld   a, SFX_LAND
+	ld   c, SFX_STEP
 	mPlaySFX
 	jp   Pl_DrawSprMap
 	
@@ -2072,7 +2072,7 @@ PlMode_WarpInLand:
 	ld   [wPlSprMapId], a		; Save back
 	jp   Pl_DrawSprMap
 .end:
-	ld   a, SFX_TELEPORTIN		; Play landing sound
+	ld   c, SFX_CURSORSELECTED		; Play landing sound
 	mPlaySFX
 	xor  a ; PL_MODE_GROUND
 	ld   [wPlMode], a
@@ -2117,7 +2117,7 @@ PlMode_WarpOutAnim:
 	ld   [wPlSprMapId], a		; Save back
 	jp   Pl_DrawSprMap
 .end:
-	ld   a, SFX_TELEPORTOUT		; Play teleport sound
+	ld   c, SFX_FIREHIT_B		; Play teleport sound
 	mPlaySFX
 	ld   hl, wPlMode
 	inc  [hl] ; PL_MODE_WARPOUTMOVE
@@ -2170,7 +2170,7 @@ PlMode_Teleporter:
 	ld   [wPlSprMapId], a
 	jp   Pl_DrawSprMap
 .end:
-	ld   a, SFX_TELEPORTOUT
+	ld   c, SFX_FIREHIT_B
 	mPlaySFX
 	ld   hl, wPlMode
 	inc  [hl] ; PL_MODE_TLPEND

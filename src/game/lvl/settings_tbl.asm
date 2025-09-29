@@ -59,16 +59,30 @@ Lvl_PalTbl:
 ; =============== Lvl_BGMTbl ===============
 ; Assigns music tracks to each level.
 Lvl_BGMTbl:
-	db BGM_HARDMAN    ; LVL_HARD   
-	db BGM_TOPMAN     ; LVL_TOP    
-	db BGM_MAGNETMAN  ; LVL_MAGNET 
-	db BGM_NEEDLEMAN  ; LVL_NEEDLE 
-	db BGM_CRASHMAN   ; LVL_CRASH  
-	db BGM_METALMAN   ; LVL_METAL  
-	db BGM_WOODMAN    ; LVL_WOOD   
-	db BGM_AIRMAN     ; LVL_AIR    
-	db BGM_WILYCASTLE ; LVL_CASTLE 
-	db BGM_TITLE      ; LVL_STATION
+	db BGM_ZANGIEF    ; LVL_HARD   
+	db BGM_SAGAT      ; LVL_TOP    
+	db BGM_BOXER      ; LVL_MAGNET 
+	db BGM_KEN        ; LVL_NEEDLE 
+	db BGM_GUILE      ; LVL_CRASH  
+	db BGM_RYU        ; LVL_METAL  
+	db BGM_BLANKA     ; LVL_WOOD   
+	db BGM_CHUNLI     ; LVL_AIR    
+	db BGM_5_ENDING   ; LVL_CASTLE 
+	db BGM_DICTATOR   ; LVL_STATION
+	
+; =============== Lvl_BossBGMTbl ===============
+; Assigns boss music tracks to each level.
+Lvl_BossBGMTbl:
+	db BGM_ZANGIEF_ENDING   ; LVL_HARD   
+	db BGM_ZANGIEF_ENDING   ; LVL_TOP    
+	db BGM_ZANGIEF_ENDING   ; LVL_MAGNET 
+	db BGM_ZANGIEF_ENDING   ; LVL_NEEDLE 
+	db BGM_ZANGIEF_ENDING   ; LVL_CRASH  
+	db BGM_ZANGIEF_ENDING   ; LVL_METAL  
+	db BGM_ZANGIEF_ENDING   ; LVL_WOOD   
+	db BGM_ZANGIEF_ENDING   ; LVL_AIR    
+	db BGM_ZANGIEF_ENDING   ; LVL_CASTLE 
+	db BGM_MRKARATE   		; LVL_STATION
 	
 ; =============== Lvl_BGMTbl ===============
 ; Assigns checkpoints to each level, as room IDs.

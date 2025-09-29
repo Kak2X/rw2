@@ -304,7 +304,7 @@ Wpn_OnActColi:
 	ld   [hl], $0C	; iActColiInvulnTimer = $12
 	
 	; Play hit sound
-	ld   a, SFX_ENEMYHIT
+	ld   c, SFX_ENEMYHURT
 	mPlaySFX
 	
 	;
@@ -463,7 +463,7 @@ Wpn_OnActColi:
 	cp   WPN_TP				; Using Top Spin?
 	jr   nz, .deflectCr		; If not, jump
 	; At least no weapon ammo is consumed.
-	ld   a, SFX_DEFLECT
+	ld   c, SFX_SCOREEND
 	mPlaySFX
 	ret
 .deflectCr:
@@ -495,7 +495,7 @@ Wpn_OnActColi:
 	ld   a, PL_MODE_FULLJUMP
 	ld   [wPlMode], a
 	; Play deflect sound
-	ld   a, SFX_DEFLECT
+	ld   c, SFX_SCOREEND
 	mPlaySFX
 	ret
 	
@@ -512,7 +512,7 @@ Wpn_OnActColi:
 	or   SHOT3_DEFLECT
 	ldh  [hShotCur+iShotFlags], a
 	; Play respective sound
-	ld   a, SFX_DEFLECT
+	ld   c, SFX_SCOREEND
 	mPlaySFX
 	ret
 	

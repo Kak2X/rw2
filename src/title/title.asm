@@ -25,7 +25,7 @@ Module_Title:
 	call StartLCDOperation
 	;--
 	
-	ld   a, BGM_TITLE
+	ld   c, BGM_0_ENDING
 	mPlayBGM
 	
 	;
@@ -89,7 +89,7 @@ Module_Title:
 	and  KEY_DOWN|KEY_UP|KEY_SELECT					; Pressed any of the toggle keys?
 	jr   z, .sel									; If not, we've definitely pressed A or START
 	; Otherwise, toggle the selection
-	ld   a, SFX_CURSORMOVE
+	ld   c, SFX_CURSORMOVE
 	mPlaySFX
 	jr   .changeSel
 .sel:

@@ -65,7 +65,7 @@ Game_DoRefill:
 	ld   [wPlHealthBar], a
 	ld   hl, wStatusBarRedraw	; Trigger redraw
 	set  BARID_PL, [hl]
-	ld   a, SFX_BAR			; Play refill sound
+	ld   c, SFX_CURSORMOVE	; Play refill sound
 	mPlaySFX
 
 .chkAmmo:
@@ -111,7 +111,7 @@ Game_DoRefill:
 	ld   [wWpnAmmoBar], a
 	ld   hl, wStatusBarRedraw
 	set  BARID_WPN, [hl]
-	ld   a, SFX_BAR
+	ld   c, SFX_CURSORMOVE
 	mPlaySFX
 .end:
 	; Fall-through

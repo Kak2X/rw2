@@ -201,7 +201,7 @@ Act_Helper_TeleportIn_ChkSolid:
 	
 	ld   a, AHW_ACTIVE				; Mark helper item as active
 	ld   [wWpnHelperWarpRtn], a
-	ld   a, SFX_TELEPORTIN			; PLay landing sound
+	ld   c, SFX_CURSORSELECTED			; PLay landing sound
 	mPlaySFX
 	ld   a, 60*3					; If the player doesn't interact within 3 seconds, automatically teleport it out
 	ldh  [hActCur+iActTimer], a
@@ -248,7 +248,7 @@ Act_Helper_TeleportOut_Anim:
 	ldh  [hActCur+iActSprMap], a
 	ld   bc, $0400
 	call ActS_SetSpeedY
-	ld   a, SFX_TELEPORTOUT			; Play teleport sound
+	ld   c, SFX_FIREHIT_B			; Play teleport sound
 	mPlaySFX
 	ld   hl, wWpnHelperWarpRtn		; Next mode
 	inc  [hl]

@@ -21,7 +21,7 @@ Module_Password:
 	call StartLCDOperation
 	
 	;--
-	ld   a, BGM_PASSWORD
+	ld   c, BGM_CONTINUE
 	mPlayBGM
 	
 	;
@@ -109,7 +109,7 @@ Module_Password:
 
 	; Good SFX reuse
 	push af
-		ld   a, SFX_BOSSBAR
+		ld   c, SFX_CURSORMOVE
 		mPlaySFX
 	pop  af
 	
@@ -152,7 +152,7 @@ Module_Password:
 	;
 	; Play toggle sound
 	;
-	ld   a, SFX_SHOOT
+	ld   c, SFX_LIGHT
 	mPlaySFX
 	
 	;

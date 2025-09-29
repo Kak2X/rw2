@@ -31,9 +31,9 @@ Module_Game_PlDead:
 		jr   .playExpl
 	.explode0:
 		; The first explosion that spawns also plays its respective sound effect
-		mStopSnd			; And kill the level music
-		ld   a, SFX_EXPLODE
-		mPlaySFX
+		; mStopSnd			; And kill the level music
+		ld   c, SNC_PAUSE
+		mPlayBGM
 	.explode1:
 		; Use the origin coordinates set when we died.
 		ld   a, [wExplodeOrgX]
@@ -195,7 +195,7 @@ Module_Game_PlDead:
 	;
 	
 	; PASSWORD SCREEN
-	ld   a, BGM_PASSWORD
+	ld   c, BGM_CONTINUE
 	mPlayBGM
 	call Module_PasswordView ; BANK $01
 	

@@ -22,6 +22,15 @@ ENDC
 ENDM
 
 ; 
+; Sound driver
+; 
+DEF MODE_MBC5     EQU 0 ; Use MBC5-style bankswitching. The driver still must be located within MBC1 range.
+DEF VIBRATO_NOTE  EQU 0 ; Reset the vibrato timer only on new notes
+DEF LOOP1_CHECK   EQU 0 ; Compatibility with bad conditional loop counts
+DEF GBS_MODE      EQU 0
+INCLUDE "driver/main.asm"
+
+; 
 ; BANK $00 - Main Bank #1
 ;
 SECTION "bank00", ROM0
@@ -113,7 +122,7 @@ INCLUDE "src/game/pause_sub.asm"				; Pause drawing & cursor movement routines
 INCLUDE "src/game/act/gfx_ptr.asm"				; Actor art set definitions
 INCLUDE "src/game/lvl/settings_tbl.asm"		; Level settings
 INCLUDE "src/game/lvl_draw_tbl.asm"			; Table of tilemap pointers for each block
-	mIncJunk "L003C94"
+
 
 
 ; 
@@ -728,19 +737,6 @@ BlockLayout_Air: INCBIN "src/game/lvl/air/block16.bin"
 BlockLayout_Castle: INCBIN "src/game/lvl/castle/block16.bin"
 BlockLayout_Station: INCBIN "src/game/lvl/station/block16.bin"
 
-
-; 
-; BANK $06 - N/A
-; 
-SECTION "bank06", ROMX, BANK[$06]
-mFillBank
-
-; 
-; BANK $07 - Sound Driver
-; 
-SECTION "bank07", ROMX, BANK[$07]
-INCLUDE "src/sound/bank07.asm"
-
 ; 
 ; BANK $08 - Level & actor graphics
 ; 
@@ -834,21 +830,3 @@ GFX_Space: INCBIN "src/scene/_space/space_gfx.bin"
 GFX_SpaceOBJ: INCBIN "src/scene/_space/space_obj_gfx.bin"
 GFX_HardMan: INCBIN "src/game/act/boss/hardman/hardman_gfx.bin"
 GFX_TopMan: INCBIN "src/game/act/boss/topman/topman_gfx.bin"
-
-; 
-; BANK $0D - N/A
-; 
-SECTION "bank0D", ROMX, BANK[$0D]
-mFillBank
-
-; 
-; BANK $0E - N/A
-; 
-SECTION "bank0E", ROMX, BANK[$0E]
-mFillBank
-
-; 
-; BANK $0F - N/A
-; 
-SECTION "bank0F", ROMX, BANK[$0F]
-mFillBank

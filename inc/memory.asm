@@ -325,10 +325,7 @@ hLYC:                     db      ; $FF94 ; Scanline number the rLYC/LCDC screen
 hWinX:                    db      ; $FF95 ; X WINDOW scroll position (ie: status bar, ...)
 hWinY:                    db      ; $FF96 ; Y WINDOW scroll position ($FF to disable)
 hWorkOAMPos:              db      ; $FF97 ; Current position on the OAM mirror (low byte of the WorkOAM pointer)
-hBGMSet:                  db      ; $FF98 ; Requested BGM Id
-hSFXSet:                  db      ; $FF99 ; Requested SFX Id
-hBGMCur:                  db      ; $FF9A ; Current BGM Id
-ds $02
+ds $05
 hROMBankLast:             db      ; $FF9D ; Last ROM bank loaded (Bank to restore when done with hROMBank)
 hROMBank:                 db      ; $FF9E ; Current ROM bank loaded
 hTrsRowsProc:             db      ; $FF9F ; Number of block rows processed during vertical transitions
@@ -345,14 +342,12 @@ hScrEvVDestPtr_Low:       db      ; $FFB4
 hScrEvVDestPtr_High:      db      ; $FFB5
 hBGPAnim0:                db      ; $FFB6 ; BG palette animation, 1st palette
 hBGPAnim1:                db      ; $FFB7 ; BG palette animation, 2nd palette
-SECTION "Sound Driver - 1", HRAM[$FFB8]
-ds $FFF5-$FFB8
+
 SECTION "HRAM - 2", HRAM[$FFF5]
 hBGP:                    db      ; $FFF5 ; BG palette
 hOBP0:                   db      ; $FFF6 ; OBJ0 palette
 hOBP1:                   db      ; $FFF7 ; OBJ1 palette
-SECTION "Sound Driver - 2", HRAM[$FFF8]
-ds $FFF9-$FFF8
+
 SECTION "HRAM - 3", HRAM[$FFF9]
 hCheatMode:              db      ; $FFF9 ; [TCRF] Full invulnerability. Shots pass through & pits act like bouncy surfaces.
 hWarmBootFlag:           db      ; $FFFA ; [TCRF] Value checked during boot, but has no effect due to the lack of soft-reset

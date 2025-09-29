@@ -67,8 +67,13 @@ Act_SharedIntro_Init:
 	inc  [hl]
 	
 	; Play boss music.
-	; Every boss, including the final boss, uses the same music.
-	ld   a, BGM_BOSS
+	; For the purposes of this mod, boss music is level-specific.
+	ld   hl, Lvl_BossBGMTbl
+	ld   a, [wLvlId]
+	ld   c, a
+	ld   b, $00
+	add  hl, bc
+	ld   c, [hl]
 	mPlayBGM
 	ret
 	
@@ -157,7 +162,7 @@ Act_SharedIntro_RefillBar:
 	ld   a, [wBossIntroHealth]
 	and  $07					; Health % 8 != 0?
 	jr   nz, .chkEnd			; If so, skip
-	ld   a, SFX_BOSSBAR
+	ld   c, SFX_CURSORMOVE
 	mPlaySFX
 .chkEnd:
 	; Wait for the gauge to fully refill

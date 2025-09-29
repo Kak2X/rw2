@@ -53,7 +53,7 @@ SECTION "LCDCInt", ROM0[$0048]
 	mIncJunk "L00004B"
 ; =============== TIMER INTERRUPT ===============
 SECTION "TimerInt", ROM0[$0050]
-	jp   TimerHandler
+	reti
 	mIncJunk "L000053"
 ; =============== SERIAL INTERRUPT ===============
 ; Not used.

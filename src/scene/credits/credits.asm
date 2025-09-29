@@ -2,7 +2,7 @@
 ; Cast roll and Thank you for playing screen.
 ; This never returns, and if it did you'd reach an infinite loop.
 Module_Credits:
-	ld   a, BGM_ENDING
+	ld   c, BGM_CHUNLI_ENDING
 	mPlayBGM
 	
 Credits_Sc1:

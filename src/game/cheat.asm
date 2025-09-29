@@ -3,7 +3,7 @@
 Freeze_Do:
 	; The sound used when toggling this is unique to this subroutine,
 	; making it normally unused.
-	ld   a, SFX_FREEZETOGGLE
+	ld   c, SFX_STEP
 	mPlaySFX
 	
 	; Stay here until pressing SELECT to unpause
@@ -14,7 +14,7 @@ Freeze_Do:
 	bit  KEYB_SELECT, a		; Pressed SELECT?
 	jr   z, .loop			; If not, keep waiting
 	
-	ld   a, SFX_FREEZETOGGLE
+	ld   c, SFX_STEP
 	mPlaySFX
 	ret
 	

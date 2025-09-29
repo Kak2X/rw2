@@ -318,7 +318,7 @@ Act_Quint_WarpLand:
 	ld   bc, $0400
 	call ActS_SetSpeedY
 	; ...play appropriate sound effect
-	ld   a, SFX_TELEPORTOUT
+	ld   c, SFX_FIREHIT_B
 	mPlaySFX
 	jp   ActS_IncRtnId
 	

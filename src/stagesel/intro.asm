@@ -15,13 +15,20 @@ StageSel_BossIntro:
 	call OAM_ClearAll
 	
 	; The stage intro sound plays immediately, there's no separate selection sound.
-	ld   a, BGM_STAGESTART
-	mPlayBGM
+	ld   c, SFX_CHARSELECTED
+	mPlaySFX
 	
 	; Flash the palette for 32 frames.
 	; This is enough time to let the boss graphics fully load.
 	call FlashBGPal
 	rst  $20 ; But just in case, ensure they are fully loaded
+	
+	; Wait some more frames, to make sure the two sides open up only when the SFX ends
+	ld   a, $10
+.chSelWait:
+	rst  $08
+	dec  a
+	jr   nz, .chSelWait
 	
 	; Blank out the selected portrait, as the boss sprite will spawn there.
 	; This makes the sprite stand out more, for the little time it stays there.
@@ -384,6 +391,11 @@ Act_StageSelBoss_JumpDown:
 ; RTN $03
 ; Jump arc - landed from the jump.
 Act_StageSelBoss_JumpLand:
+
+	; Time this when landing
+	ld   c, BGM_MATCHSTART
+	mPlayBGM
+	
 	; Make boss face left
 	xor  a
 	ldh  [hActCur+iActSprMap], a

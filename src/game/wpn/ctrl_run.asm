@@ -86,7 +86,7 @@ WpnCtrlS_StartShootAnim:
 	ld   [wPlShootType], a
 	
 	; Play shoot sound
-	ld   a, SFX_SHOOT
+	ld   c, SFX_LIGHT
 	mPlaySFX
 	ret
 	
