@@ -10,5 +10,3 @@ To assemble, run one of the included batch scripts:
 
 ## Todo
 - The sound driver is currently not documented at all, but it shouldn't matter much given you really should replace it [with something else](https://github.com/Kak2X/opsnd) that has [actual tooling](https://github.com/Kak2X/suntool).
-- Outside of the sound driver, code and data is all documented but not fully split up from the `src/bank*.asm` files yet.
-
