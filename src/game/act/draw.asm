@@ -4,7 +4,7 @@ ActS_DrawSprMap:
 	DEF tActSprFlags = wTmpCF52
 	push af
 		ld   a, BANK(ActS_SprMapPtrTbl) ; BANK $03
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -251,8 +251,8 @@ ActS_DrawSprMap:
 	ld   [wActLastDrawSlotPtr], a	; Mark end of OAM reached
 .end:
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

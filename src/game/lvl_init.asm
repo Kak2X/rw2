@@ -3,7 +3,7 @@
 Lvl_LoadData:
 	push af
 		ld   a, BANK(Lvl_LayoutPtrTbl) ; BANK $05
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -256,8 +256,8 @@ Lvl_LoadData:
 	call CopyMemory
 	
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

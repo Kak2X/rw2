@@ -10,7 +10,7 @@ Module_Title:
 	call GFXSet_Load
 	push af
 		ld   a, BANK(TilemapDef_Title) ; BANK $04
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -18,8 +18,8 @@ Module_Title:
 	call LoadTilemapDef
 	
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	call StartLCDOperation

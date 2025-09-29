@@ -11,14 +11,14 @@ Module_GetWpn:
 	
 	push af
 		ld   a, BANK(TilemapDef_GetWpn) ; BANK $04
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ld   de, TilemapDef_GetWpn
 	call LoadTilemapDef
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	

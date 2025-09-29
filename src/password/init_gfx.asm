@@ -2,7 +2,7 @@
 LoadGFX_Password:
 	push af
 		ld   a, BANK(GFX_Password) ; BANK $0A
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -15,7 +15,7 @@ LoadGFX_Password:
 	
 	push af
 		ld   a, BANK(GFX_SmallFont) ; BANK $09
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -25,8 +25,8 @@ LoadGFX_Password:
 	call CopyMemory
 	
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

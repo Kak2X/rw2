@@ -329,8 +329,8 @@ hBGMSet:                  db      ; $FF98 ; Requested BGM Id
 hSFXSet:                  db      ; $FF99 ; Requested SFX Id
 hBGMCur:                  db      ; $FF9A ; Current BGM Id
 ds $02
-hRomBankLast:             db      ; $FF9D ; Last ROM bank loaded (Bank to restore when done with hRomBank)
-hRomBank:                 db      ; $FF9E ; Current ROM bank loaded
+hROMBankLast:             db      ; $FF9D ; Last ROM bank loaded (Bank to restore when done with hROMBank)
+hROMBank:                 db      ; $FF9E ; Current ROM bank loaded
 hTrsRowsProc:             db      ; $FF9F ; Number of block rows processed during vertical transitions
 UNION
 hActCur:                  ds $10  ; $FFA0 ; Currently processed actor, copied from the actor slot

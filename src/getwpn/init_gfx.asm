@@ -2,7 +2,7 @@
 LoadGFX_GetWpn:
 	push af
 		ld   a, BANK(GFX_GetWpn) ; BANK $0B
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, GFX_GetWpn
@@ -12,7 +12,7 @@ LoadGFX_GetWpn:
 	
 	push af
 		ld   a, BANK(GFX_SmallFont) ; BANK $09
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, GFX_SmallFont
@@ -21,8 +21,8 @@ LoadGFX_GetWpn:
 	call CopyMemory
 	
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

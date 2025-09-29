@@ -5,14 +5,14 @@ WilyStation_LoadVRAM:
 	call GFXSet_Load
 	push af
 		ld   a, BANK(TilemapDef_WilyStation) ; BANK $04
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ld   de, TilemapDef_WilyStation
 	call LoadTilemapDef
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

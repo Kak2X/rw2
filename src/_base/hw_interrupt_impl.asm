@@ -353,7 +353,7 @@ VBlankHandler:
 	ld   [wGfxEvDestPtr_High], a
 	
 	; Restore main bank
-	ldh  a, [hRomBank]
+	ldh  a, [hROMBank]
 	ld   [MBC1RomBank], a
 	
 VBlankHandler_UpdateScreen:
@@ -502,11 +502,11 @@ TimerHandler:
 	push bc
 	push de
 	push hl
-		; Don't alter hRomBank to save on some stack usage
+		; Don't alter hROMBank to save on some stack usage
 		ld   a, BANK(Sound_Do) ; BANK $07
 		ld   [MBC1RomBank], a
 		call Sound_Do
-		ldh  a, [hRomBank]
+		ldh  a, [hROMBank]
 		ld   [MBC1RomBank], a
 	pop  hl
 	pop  de

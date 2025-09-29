@@ -233,14 +233,14 @@ Wpn_OnActColi:
 		add  hl, bc
 		push af
 			ld   a, BANK(ActS_ColiTbl) ; BANK $03
-			ldh  [hRomBank], a
+			ldh  [hROMBank], a
 			ld   [MBC1RomBank], a
 		pop  af
 		ld   a, [hl]
 		ld   [wWpnActDmg], a
 		push af
-			ldh  a, [hRomBankLast] ; Back to BANK $01
-			ldh  [hRomBank], a
+			ldh  a, [hROMBankLast] ; Back to BANK $01
+			ldh  [hROMBank], a
 			ld   [MBC1RomBank], a
 		pop  af
 		

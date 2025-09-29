@@ -2,7 +2,7 @@
 LoadGFX_Title:
 	push af
 		ld   a, BANK(GFX_TitleCursor) ; BANK $0A
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -17,8 +17,8 @@ LoadGFX_Title:
 	call CopyMemory
 	
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

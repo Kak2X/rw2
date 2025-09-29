@@ -62,14 +62,14 @@ EntryPoint:
 	ldh  [hRandSt3], a
 .warmBoot:
 
-	; BANK $01 is the default switchable bank, so it gets put into hRomBankLast.
+	; BANK $01 is the default switchable bank, so it gets put into hROMBankLast.
 	; Outside of actor processing, which temporarily repoints it to BANK $02,
 	; this will not be changed to anything else, so when subroutines restore
 	; the last ROM bank loaded, they assume it will point there.
 	push af
 		ld   a, $01
-		ldh  [hRomBankLast], a
-		ldh  [hRomBank], a
+		ldh  [hROMBankLast], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	

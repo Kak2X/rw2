@@ -106,7 +106,7 @@ ActS_Spawn:
 			;
 			push af
 				ld   a, BANK(ActS_ColiTbl) ; BANK $03
-				ldh  [hRomBank], a
+				ldh  [hROMBank], a
 				ld   [MBC1RomBank], a
 			pop  af
 			
@@ -171,8 +171,8 @@ ActS_Spawn:
 	pop  hl ; HL = Ptr to newly spawned actor slot
 	
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

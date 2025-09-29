@@ -6,14 +6,14 @@ WilyCastle_LoadVRAM:
 	
 	push af
 		ld   a, BANK(TilemapDef_WilyCastle) ; BANK $04
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ld   de, TilemapDef_WilyCastle
 	call LoadTilemapDef
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

@@ -2,7 +2,7 @@
 LoadGFX_GameOver:
 	push af
 		ld   a, BANK(GFX_NormalFont) ; BANK $0B
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -18,7 +18,7 @@ LoadGFX_GameOver:
 	
 	push af
 		ld   a, BANK(GFX_Unused_HexFont) ; BANK $0A
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -35,8 +35,8 @@ LoadGFX_GameOver:
 	call CopyMemory
 	
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

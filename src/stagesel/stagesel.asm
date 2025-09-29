@@ -9,14 +9,14 @@ Module_StageSel:
 	call GFXSet_Load
 	push af
 		ld   a, BANK(TilemapDef_StageSel) ; BANK $04
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ld   de, TilemapDef_StageSel
 	call LoadTilemapDef
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	

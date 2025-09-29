@@ -2,7 +2,7 @@
 LoadGFX_WilyStation:
 	push af
 		ld   a, BANK(GFX_WilyStation) ; BANK $0C
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -12,8 +12,8 @@ LoadGFX_WilyStation:
 	call CopyMemory
 	
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

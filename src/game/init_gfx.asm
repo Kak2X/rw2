@@ -11,7 +11,7 @@ LoadGFX_Level:
 	ld   hl, ActS_GFXSetTbl		; Seek to first table entry
 	push af
 		ldi  a, [hl]			; Read bank number ($0B), seek to high byte of art pointer
-		ldh  [hRomBank], a		
+		ldh  [hROMBank], a		
 		ld   [MBC1RomBank], a	; Bankswitch
 	pop  af
 	
@@ -36,7 +36,7 @@ LoadGFX_Level:
 	
 	push af
 		ldi  a, [hl]			; Read bank number (byte0)
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a	; Bankswitch
 	pop  af
 	
@@ -52,7 +52,7 @@ LoadGFX_Level:
 	;
 	push af
 	ld   a, BANK(GFX_BgShared) ; BANK $0A
-	ldh  [hRomBank], a
+	ldh  [hROMBank], a
 	ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, GFX_BgShared
@@ -62,8 +62,8 @@ LoadGFX_Level:
 	
 	; We're done, restore the default bank
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

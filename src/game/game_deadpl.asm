@@ -55,8 +55,8 @@ Module_Game_PlDead:
 		call WpnS_Do ; BANK $01		; Process/draw shots
 		push af
 			ld   a, BANK(ActS_Do) ; BANK $02
-			ldh  [hRomBankLast], a
-			ldh  [hRomBank], a
+			ldh  [hROMBankLast], a
+			ldh  [hROMBank], a
 			ld   [MBC1RomBank], a
 		pop  af
 		
@@ -64,8 +64,8 @@ Module_Game_PlDead:
 		
 		push af
 			ld   a, $01
-			ldh  [hRomBankLast], a
-			ldh  [hRomBank], a
+			ldh  [hROMBankLast], a
+			ldh  [hROMBank], a
 			ld   [MBC1RomBank], a
 		pop  af
 		

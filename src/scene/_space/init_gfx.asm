@@ -2,7 +2,7 @@
 LoadGFX_Space:
 	push af
 		ld   a, BANK(Marker_GFX_Wpn) ; BANK $0B
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -22,7 +22,7 @@ LoadGFX_Space:
 	
 	push af
 		ld   a, BANK(GFX_SpaceOBJ) ; BANK $0C
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
@@ -37,8 +37,8 @@ LoadGFX_Space:
 	call CopyMemory
 	
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ret

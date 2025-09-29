@@ -140,7 +140,7 @@ Pl_DrawSprMap:
 	;
 	push af
 		ld   a, BANK(Pl_SprMapPtrTbl) ; BANK $03
-		ldh  [hRomBank], a
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	ld   hl, Pl_SprMapPtrTbl	; HL = Ptr table base
@@ -266,8 +266,8 @@ Pl_DrawSprMap:
 	
 .drawPlEnd:
 	push af
-		ldh  a, [hRomBankLast]
-		ldh  [hRomBank], a
+		ldh  a, [hROMBankLast]
+		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
 	
