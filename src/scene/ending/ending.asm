@@ -27,8 +27,7 @@ Ending_Sc1:
 	ld   bc, (BANK(GFX_Wpn_MeNe) << 8)|$08 ; B = Source GFX bank number (BANK $02) C = Number of tiles to copy
 	call GfxCopy_Req
 
-	ld   a, BGM_TITLE
-	mPlayBGM
+	mPlayBGM BGM_TITLE
 	
 	;
 	; Spawn the two actors.
@@ -394,8 +393,7 @@ Ending_Sc2:
 	call StartLCDOperation
 	;--
 	
-	ld   a, BGM_STAGESELECT
-	mPlayBGM
+	mPlayBGM BGM_STAGESELECT
 
 	
 	;--
@@ -477,8 +475,7 @@ Ending_Sc2:
 	ld   [wScEdWilyExplTimer], a
 	
 	mStopSnd			; Play nuke SFX
-	ld   a, SFX_UFOCRASH
-	mPlaySFX
+	mPlaySFX SFX_UFOCRASH
 	
 .nkLoop:
 	;--
@@ -693,7 +690,6 @@ EndingSc1_AnimExpl:
 	add  c
 	ld   [hl], a
 	
-	ld   a, SFX_EXPLODE	; Play explosion SFX
-	mPlaySFX
+	mPlaySFX SFX_EXPLODE	; Play explosion SFX
 	ret
 	

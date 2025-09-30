@@ -86,8 +86,7 @@ WpnCtrlS_StartShootAnim:
 	ld   [wPlShootType], a
 	
 	; Play shoot sound
-	ld   a, SFX_SHOOT
-	mPlaySFX
+	mPlaySFX SFX_SHOOT
 	ret
 	
 ; =============== WEAPON FIRE CODE ===============

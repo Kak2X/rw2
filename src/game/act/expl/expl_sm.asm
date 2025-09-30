@@ -30,8 +30,7 @@ Act_ExplSm_Init:
 	sub  [hl]
 	ldh  [hActCur+iActY], a
 	
-	ld   a, SFX_ENEMYDEAD		; Play explosion sound
-	mPlaySFX
+	mPlaySFX SFX_ENEMYDEAD		; Play explosion sound
 	jp   ActS_IncRtnId
 	
 ; =============== Act_ExplSm_Anim ===============

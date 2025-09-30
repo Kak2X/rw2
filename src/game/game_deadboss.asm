@@ -37,8 +37,7 @@ Module_Game_BossDead:
 		and  $3F			; Timer % $40 != 0?
 		jr   nz, .doGame	; If so, skip
 		
-		ld   a, SFX_EXPLODE		; Play explosion sound on every spawn
-		mPlaySFX
+		mPlaySFX SFX_EXPLODE	; Play explosion sound on every spawn
 		ld   a, [wExplodeOrgX]	; Use the boss coordinates as origin
 		ld   [wActSpawnX], a
 		ld   a, [wExplodeOrgY]
@@ -53,8 +52,7 @@ Module_Game_BossDead:
 	;
 	; Wait for two seconds while the jingle plays.
 	;
-	ld   a, BGM_STAGECLEAR
-	mPlayBGM
+	mPlayBGM BGM_STAGECLEAR
 	ld   b, 60*2
 	call NonGame_DoFor
 	
@@ -125,8 +123,7 @@ Module_Game_BossDead:
 		jr   .abPlay
 	.abSpawn:
 		call ActS_SpawnAbsorb		; Spawn the 8 explosion actors
-		ld   a, SFX_WEAPONABSORB	; Play respective SFX
-		mPlaySFX
+		mPlaySFX SFX_WEAPONABSORB	; Play respective SFX
 		jr   .abPlay
 	.abKill:
 		call ActS_ForceDespawnAll	; Delete all actors

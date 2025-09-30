@@ -304,8 +304,7 @@ Wpn_OnActColi:
 	ld   [hl], $0C	; iActColiInvulnTimer = $12
 	
 	; Play hit sound
-	ld   a, SFX_ENEMYHIT
-	mPlaySFX
+	mPlaySFX SFX_ENEMYHIT
 	
 	;
 	; If we hit a boss, make that invulnerability period last longer,
@@ -463,8 +462,7 @@ Wpn_OnActColi:
 	cp   WPN_TP				; Using Top Spin?
 	jr   nz, .deflectCr		; If not, jump
 	; At least no weapon ammo is consumed.
-	ld   a, SFX_DEFLECT
-	mPlaySFX
+	mPlaySFX SFX_DEFLECT
 	ret
 .deflectCr:
 	;
@@ -495,8 +493,7 @@ Wpn_OnActColi:
 	ld   a, PL_MODE_FULLJUMP
 	ld   [wPlMode], a
 	; Play deflect sound
-	ld   a, SFX_DEFLECT
-	mPlaySFX
+	mPlaySFX SFX_DEFLECT
 	ret
 	
 .deflectNorm:
@@ -512,7 +509,6 @@ Wpn_OnActColi:
 	or   SHOT3_DEFLECT
 	ldh  [hShotCur+iShotFlags], a
 	; Play respective sound
-	ld   a, SFX_DEFLECT
-	mPlaySFX
+	mPlaySFX SFX_DEFLECT
 	ret
 	

@@ -24,7 +24,6 @@ Module_Game_InitScrOn:
 	ld   c, a
 	add  hl, bc
 	ld   a, [hl]
-	ld   a, a				; [POI] What?
-	mPlayBGM
+	mPlayBGM a
 	ret
 	

@@ -60,8 +60,7 @@ Module_StageSel:
 	call StartLCDOperation
 	;--
 	
-	ld   a, BGM_STAGESELECT
-	mPlayBGM
+	mPlayBGM BGM_STAGESELECT
 	
 	xor  a
 	ld   [wStageSelCursor], a
@@ -131,8 +130,7 @@ Module_StageSel:
 	xor  %01
 	ld   [wStageSelCursor], a
 	
-	ld   a, SFX_CURSORMOVE
-	mPlaySFX
+	mPlaySFX SFX_CURSORMOVE
 	jr   .loop
 	
 .chkMoveV:
@@ -148,8 +146,7 @@ Module_StageSel:
 	xor  %10
 	ld   [wStageSelCursor], a
 	
-	ld   a, SFX_CURSORMOVE
-	mPlaySFX
+	mPlaySFX SFX_CURSORMOVE
 	jr   .loop
 	
 ; =============== StageSel_DrawCursor ===============

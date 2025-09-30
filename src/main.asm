@@ -104,8 +104,7 @@ Game_Main_ToWilyCastle:
 	call WilyCastle_LoadVRAM	; Prepare VRAM
 	call WilyCastle_DrawRockman
 	call StartLCDOperation
-	ld   a, BGM_WILYINTRO		; Play BGM
-	mPlayBGM
+	mPlayBGM BGM_WILYINTRO		; Play BGM
 	call FlashBGPalLong			; Display for 9 seconds
 	
 	;

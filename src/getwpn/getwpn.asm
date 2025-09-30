@@ -25,8 +25,7 @@ Module_GetWpn:
 	call StartLCDOperation
 	;--
 	
-	ld   a, BGM_WEAPONGET
-	mPlayBGM
+	mPlayBGM BGM_WEAPONGET
 	
 	;
 	; Scroll the Rockman/Rush picture to the left until it's fully onscreen.
@@ -138,8 +137,7 @@ GetWpn_WriteTxt:
 	
 	inc  a							; Trigger event
 	ld   [wTilemapEv], a
-	ld   a, SFX_BOSSBAR				; Play text writer sound
-	mPlaySFX
+	mPlaySFX SFX_BOSSBAR			; Play text writer sound
 	
 .wait:
 	ld   a, $06			; Wait 6 frames between text printings

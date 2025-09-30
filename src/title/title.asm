@@ -25,8 +25,7 @@ Module_Title:
 	call StartLCDOperation
 	;--
 	
-	ld   a, BGM_TITLE
-	mPlayBGM
+	mPlayBGM BGM_TITLE
 	
 	;
 	; Define the cursor sprite.
@@ -89,8 +88,7 @@ Module_Title:
 	and  KEY_DOWN|KEY_UP|KEY_SELECT					; Pressed any of the toggle keys?
 	jr   z, .sel									; If not, we've definitely pressed A or START
 	; Otherwise, toggle the selection
-	ld   a, SFX_CURSORMOVE
-	mPlaySFX
+	mPlaySFX SFX_CURSORMOVE
 	jr   .changeSel
 .sel:
 	; [POI] Disable the invulnerability cheat.

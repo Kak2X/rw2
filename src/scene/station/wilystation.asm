@@ -10,8 +10,7 @@ WilyStation_Sc1:
 	;
 	call WilyCastle_LoadVRAM
 	call StartLCDOperation
-	ld   a, BGM_WILYCASTLE
-	mPlayBGM
+	mPlayBGM BGM_WILYCASTLE
 	
 	; Wait for 2 seconds
 	ld   a, 60*2

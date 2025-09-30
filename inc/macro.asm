@@ -28,15 +28,17 @@ ENDM
 ; =============== mPlayBGM ===============
 ; Plays the specified music track.
 ; IN
-; - A: BGM ID
+; - 1: BGM ID
 MACRO mPlayBGM
+	ld   a, \1
 	ldh  [hBGMSet], a
 ENDM
 
 ; =============== mPlaySFX ===============
 ; Plays the specified sound effect.
 ; IN
-; - A: SFX ID
+; - 1: SFX ID
 MACRO mPlaySFX
+	ld   a, \1
 	ldh  [hSFXSet], a
 ENDM

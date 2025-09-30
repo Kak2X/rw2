@@ -69,8 +69,7 @@ Act_Block_DelayShow:
 	ret  nz
 	; [wGameTime shift = $01/$04]
 	
-	ld   a, SFX_BLOCK			; Play block appear sound
-	mPlaySFX
+	mPlaySFX SFX_BLOCK			; Play block appear sound
 	ld   b, ACTCOLI_PLATFORM	; Make platform tangible
 	call ActS_SetColiType
 	

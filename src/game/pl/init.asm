@@ -143,7 +143,7 @@ Pl_RunInitEv:
 	; The default status bar tilemap we loaded before contains placeholder values.
 	;
 	ld   a, [wPlHealth]		; Redraw health bar
-	ld   c, $00
+	ld   c, BARID_PL
 	call Game_AddBarDrawEv
 	ld   a, [wPlLives]		; Redraw lives indicator
 	call Game_AddLivesDrawEv

@@ -15,8 +15,7 @@ StageSel_BossIntro:
 	call OAM_ClearAll
 	
 	; The stage intro sound plays immediately, there's no separate selection sound.
-	ld   a, BGM_STAGESTART
-	mPlayBGM
+	mPlayBGM BGM_STAGESTART
 	
 	; Flash the palette for 32 frames.
 	; This is enough time to let the boss graphics fully load.

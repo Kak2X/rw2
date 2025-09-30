@@ -18,8 +18,7 @@ Act_GroundExpl:
 ; =============== Act_GroundExpl_Init ===============
 Act_GroundExpl_Init:
 	; Weird sound effect choice
-	ld   a, SFX_ENEMYDEAD
-	mPlaySFX
+	mPlaySFX SFX_ENEMYDEAD
 	; Use sprites $00-$02 at 1/8 speed
 	ld   de, ($00 << 8)|$02
 	ld   c, $08

@@ -318,8 +318,7 @@ Act_Quint_WarpLand:
 	ld   bc, $0400
 	call ActS_SetSpeedY
 	; ...play appropriate sound effect
-	ld   a, SFX_TELEPORTOUT
-	mPlaySFX
+	mPlaySFX SFX_TELEPORTOUT
 	jp   ActS_IncRtnId
 	
 ; =============== Act_Quint_WarpMove ===============

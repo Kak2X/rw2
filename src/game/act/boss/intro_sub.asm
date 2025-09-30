@@ -68,8 +68,7 @@ Act_SharedIntro_Init:
 	
 	; Play boss music.
 	; Every boss, including the final boss, uses the same music.
-	ld   a, BGM_BOSS
-	mPlayBGM
+	mPlayBGM BGM_BOSS
 	ret
 	
 ; =============== Act_BossIntro_InitAnim ===============
@@ -157,8 +156,7 @@ Act_SharedIntro_RefillBar:
 	ld   a, [wBossIntroHealth]
 	and  $07					; Health % 8 != 0?
 	jr   nz, .chkEnd			; If so, skip
-	ld   a, SFX_BOSSBAR
-	mPlaySFX
+	mPlaySFX SFX_BOSSBAR
 .chkEnd:
 	; Wait for the gauge to fully refill
 	ld   a, [wBossIntroHealth]

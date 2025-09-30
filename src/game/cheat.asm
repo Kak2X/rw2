@@ -3,8 +3,7 @@
 Freeze_Do:
 	; The sound used when toggling this is unique to this subroutine,
 	; making it normally unused.
-	ld   a, SFX_FREEZETOGGLE
-	mPlaySFX
+	mPlaySFX SFX_FREEZETOGGLE
 	
 	; Stay here until pressing SELECT to unpause
 .loop:
@@ -14,8 +13,7 @@ Freeze_Do:
 	bit  KEYB_SELECT, a		; Pressed SELECT?
 	jr   z, .loop			; If not, keep waiting
 	
-	ld   a, SFX_FREEZETOGGLE
-	mPlaySFX
+	mPlaySFX SFX_FREEZETOGGLE
 	ret
 	
 ; =============== Game_Unused_RefillCur ===============

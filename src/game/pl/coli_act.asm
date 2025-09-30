@@ -170,8 +170,7 @@ Pl_OnActColi:
 	ld   [wActHurtSlotPtr], a
 	
 	; Play hurt SFX
-	ld   a, SFX_DAMAGED
-	mPlaySFX
+	mPlaySFX SFX_DAMAGED
 	
 	; Stay in the hurt pose for around half a second
 	ld   a, $20
@@ -525,8 +524,7 @@ Pl_OnActColi:
 	set  BARID_LIVES, [hl]
 	
 	; Obtain 2 coins
-	ld   a, SFX_1UP
-	mPlaySFX
+	mPlaySFX SFX_1UP
 	ret
 	
 ; --------------- .ammoLg ---------------
@@ -572,8 +570,7 @@ Pl_OnActColi:
 	ld   [wETanks], a
 	
 	; Play whatever the E-Tank sound is supposed to be
-	ld   a, SFX_ETANK
-	mPlaySFX
+	mPlaySFX SFX_ETANK
 	
 ; --------------- .noItem ---------------
 ; Placeholder entry.
