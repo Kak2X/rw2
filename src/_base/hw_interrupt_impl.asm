@@ -28,6 +28,13 @@ EndOfFrame:
 		ldh  a, [hFrameEnd]
 		or   a
 		jr   nz, .wait
+		push bc
+		push de
+		push hl
+			call SoundInt_Do
+		pop  hl
+		pop  de
+		pop  bc
 	pop  af
 	ret
 	
@@ -494,23 +501,3 @@ LCDCHandler:
 		ldh  [rLCDC], a
 	pop  af
 	reti
-	
-; =============== TimerHandler ===============
-; Timer interrupt, which is reserved to the sound driver.
-TimerHandler:
-	push af
-	push bc
-	push de
-	push hl
-		; Don't alter hROMBank to save on some stack usage
-		ld   a, BANK(Sound_Do) ; BANK $07
-		ld   [MBC1RomBank], a
-		call Sound_Do
-		ldh  a, [hROMBank]
-		ld   [MBC1RomBank], a
-	pop  hl
-	pop  de
-	pop  bc
-	pop  af
-	reti
-	

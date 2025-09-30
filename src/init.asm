@@ -103,12 +103,7 @@ EntryPoint:
 	ld   a, STAT_LYC
 	ldh  [rSTAT], a
 	
-	; Set the lowest possible sound driver speed
-	xor  a
-	ldh  [rTIMA], a
-	ldh  [rTMA], a
-	ld   a, rTAC_ON|rTAC_4096_HZ
-	ldh  [rTAC], a
+	call SoundInt_Init
 	
 	; Done setting up
 	ei

@@ -21,8 +21,8 @@ ENDM
 ; =============== mStopSound ===============
 ; Stops all music and sound effects.
 MACRO mStopSnd
-	ld   a, SND_MUTE		; And kill the level music
-	ldh  [hBGMSet], a
+	ld   c, SND_MUTE		; And kill the level music
+	call SoundInt_ReqPlayId
 ENDM
 
 ; =============== mPlayBGM ===============
@@ -30,8 +30,8 @@ ENDM
 ; IN
 ; - 1: BGM ID
 MACRO mPlayBGM
-	ld   a, \1
-	ldh  [hBGMSet], a
+	ld   c, \1
+	call SoundInt_ReqPlayId
 ENDM
 
 ; =============== mPlaySFX ===============
@@ -39,6 +39,6 @@ ENDM
 ; IN
 ; - 1: SFX ID
 MACRO mPlaySFX
-	ld   a, \1
-	ldh  [hSFXSet], a
+	ld   c, \1
+	call SoundInt_ReqPlayId
 ENDM

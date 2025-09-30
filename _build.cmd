@@ -43,7 +43,6 @@ echo   Build failure.
 echo ==========================
 
 :end
-pause
 exit /b
 
 :inStr

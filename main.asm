@@ -4,22 +4,12 @@
 ; ロックマンワールド２
 ;
 
-INCLUDE "inc/font.asm"
 INCLUDE "inc/hardware.asm"
+INCLUDE "driver/main.asm"
+INCLUDE "inc/font.asm"
 INCLUDE "inc/constants.asm"
 INCLUDE "inc/macro.asm"
 INCLUDE "inc/memory.asm"
-
-MACRO mFillBank
-IF LABEL_JUNK
-Padding_\@:
-ENDC
-IF !SKIP_JUNK
-	REPT $4000
-		db $FF
-	ENDR
-ENDC
-ENDM
 
 ; 
 ; BANK $00 - Main Bank #1
@@ -728,19 +718,6 @@ BlockLayout_Air: INCBIN "src/game/lvl/air/block16.bin"
 BlockLayout_Castle: INCBIN "src/game/lvl/castle/block16.bin"
 BlockLayout_Station: INCBIN "src/game/lvl/station/block16.bin"
 
-
-; 
-; BANK $06 - N/A
-; 
-SECTION "bank06", ROMX, BANK[$06]
-mFillBank
-
-; 
-; BANK $07 - Sound Driver
-; 
-SECTION "bank07", ROMX, BANK[$07]
-INCLUDE "src/sound/bank07.asm"
-
 ; 
 ; BANK $08 - Level & actor graphics
 ; 
@@ -834,21 +811,3 @@ GFX_Space: INCBIN "src/scene/_space/space_gfx.bin"
 GFX_SpaceOBJ: INCBIN "src/scene/_space/space_obj_gfx.bin"
 GFX_HardMan: INCBIN "src/game/act/boss/hardman/hardman_gfx.bin"
 GFX_TopMan: INCBIN "src/game/act/boss/topman/topman_gfx.bin"
-
-; 
-; BANK $0D - N/A
-; 
-SECTION "bank0D", ROMX, BANK[$0D]
-mFillBank
-
-; 
-; BANK $0E - N/A
-; 
-SECTION "bank0E", ROMX, BANK[$0E]
-mFillBank
-
-; 
-; BANK $0F - N/A
-; 
-SECTION "bank0F", ROMX, BANK[$0F]
-mFillBank
