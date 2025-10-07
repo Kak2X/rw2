@@ -1,0 +1,166 @@
+BGM_StageStart:
+	dw BGM_StageStart_Ch1
+	dw BGM_StageStart_Ch2
+	dw BGM_StageStart_Ch3
+	dw BGM_StageStart_Ch4
+
+BGM_StageStart_Ch1:
+	panning $FF
+	timer_speed $D4
+	duty_cycle $00
+	envelope $A3
+	silence $01
+	octave $03
+	note $33
+	note $33
+	octave $04
+	note $33
+	octave $03
+	note $33
+	note $33
+	octave $04
+	note $33
+	octave $03
+	note $33
+	octave $04
+	note $33
+	octave $03
+	note $33
+	note $33
+	octave $04
+	note $33
+	octave $03
+	note $33
+	note $33
+	octave $04
+	note $33
+	octave $03
+	note $33
+	octave $04
+	note $33
+	octave $03
+	note $A3
+	note $A3
+	octave $04
+	note $A3
+	octave $03
+	note $A3
+	note $A3
+	octave $04
+	note $A3
+	octave $03
+	note $A3
+	octave $04
+	note $A3
+	octave $03
+	note $63
+	note $53
+	note $13
+	note $33
+	silence $01
+	chan_stop
+
+BGM_StageStart_Ch2:
+	duty_cycle $C0
+	envelope $A3
+	silence $01
+	octave $04
+	note $1A
+	note $13
+	note $12
+	octave $03
+	note $8A
+	note $AA
+	note $62
+	note $82
+	note $63
+	note $62
+	note $83
+	silence $03
+	note $A2
+	octave $04
+	note $13
+	note $13
+	note $13
+	octave $03
+	note $83
+	note $A3
+	silence $01
+	chan_stop
+
+BGM_StageStart_Ch3:
+	wave_noise_cutoff $E0
+	wave_vol $20
+	silence $01
+	octave $04
+	note $6A
+	note $53
+	note $52
+	note $1A
+	note $3A
+	octave $03
+	note $A2
+	octave $04
+	note $12
+	octave $03
+	note $A3
+	note $A2
+	octave $04
+	note $13
+	silence $03
+	note $32
+	note $53
+	note $63
+	note $53
+	note $13
+	note $33
+	silence $01
+	chan_stop
+
+BGM_StageStart_Ch4:
+	wave_noise_cutoff $01
+	envelope $F1
+	note $54
+	note $54
+	note $54
+	note $54
+	note $54
+	note $54
+	note $54
+	note $54
+	note $03
+	note $03
+	note $53
+	note $03
+	note $03
+	note $53
+	note $03
+	note $03
+	note $03
+	note $03
+	note $53
+	note $03
+	note $03
+	note $53
+	note $03
+	note $03
+	note $53
+	note $53
+	note $03
+	note $53
+	note $03
+	note $53
+	note $03
+	note $53
+	note $54
+	note $54
+	note $54
+	note $54
+	note $04
+	note $04
+	note $04
+	note $04
+	note $00
+	chan_stop
+
+

@@ -739,7 +739,7 @@ mFillBank
 ; BANK $07 - Sound Driver
 ; 
 SECTION "bank07", ROMX, BANK[$07]
-INCLUDE "src/sound/bank07.asm"
+INCLUDE "driver/main.asm"
 
 ; 
 ; BANK $08 - Level & actor graphics

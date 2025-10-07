@@ -575,6 +575,8 @@ DEF SHOTSPR_TP3              EQU $1B ; Top Spin #3
 DEF SHOTSPR_SG               EQU $1C ; Sakugarne (invisible)
 
 ; Sound driver
+DEF SNDSET_NONE              EQU $FF ; Marks that no new track should play
+
 DEF SND_MUTE                 EQU $00
 
 DEF BGM_TITLE                EQU $01
@@ -616,4 +618,4 @@ DEF SFX_BLOCK                EQU $10
 DEF SFX_UFOCRASH             EQU $11
 DEF SFX_CURSORMOVE           EQU $12
 DEF SFX_DAMAGED              EQU $13
-DEF SFX_UNKNOWN2             EQU $14
+DEF SFX_UNUSED2              EQU $14
