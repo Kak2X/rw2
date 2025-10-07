@@ -1,4 +1,7 @@
 INCLUDE "driver/inc/macro.asm"
+PUSHS
+INCLUDE "driver/inc/memory.asm"
+POPS
 ; =============== MAIN ===============
 INCLUDE "driver/driver.asm"
 INCLUDE "driver/sfx/sfx_none.asm"
