@@ -1,5 +1,9 @@
 # build output
 rw2.*
+player.gb
+player.map
+player.o
+player.sym
 
 # provide your own comparision rom
 original.*
