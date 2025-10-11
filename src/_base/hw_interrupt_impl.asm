@@ -28,13 +28,6 @@ EndOfFrame:
 		ldh  a, [hFrameEnd]
 		or   a
 		jr   nz, .wait
-		push bc
-		push de
-		push hl
-			call SoundInt_Do
-		pop  hl
-		pop  de
-		pop  bc
 	pop  af
 	ret
 	
@@ -108,6 +101,17 @@ VBlankHandler:
 	push bc
 	push de
 	push hl
+		call .main
+		; Tie the sound driver to VBlank
+		; When .main returns, it re-enables interrupts, allowing the sound driver to be interrupted if needed.
+		call SoundInt_Do
+	pop  hl
+	pop  de
+	pop  bc
+	pop  af
+	ret	
+
+.main:
 	
 	;
 	; Screen Event handlers ("OBJ/VRAM Transfer events")
@@ -477,11 +481,7 @@ VBlankHandler_UpdateScreen:
 	xor  a
 	ldh  [hFrameEnd], a
 	
-	pop  hl
-	pop  de
-	pop  bc
-	pop  af
-	reti
+	reti					; Re-enable interrupts
 	
 ; =============== LCDCHandler ===============
 ; LCDC interrupt, reserved to handle some of the status bar properties.
