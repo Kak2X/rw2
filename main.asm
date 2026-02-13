@@ -4,7 +4,8 @@
 ; ロックマンワールド２
 ;
 
-DEF VER_JP  EQU REV_VER == 0 ; Japan Revision
+DEF VER_JP EQU 0
+DEF VER_US EQU 1
 
 INCLUDE "inc/font.asm"
 INCLUDE "inc/hardware.asm"
@@ -626,8 +627,14 @@ INCLUDE "src/game/pl/pl_spr.asm"
 ; BANK $04 - Tilemaps
 ; 
 SECTION "bank04", ROMX, BANK[$04]
-TilemapDef_Title: INCLUDE "src/title/title_bg.asm"
+; Game title changed in the US version.
+IF REV_VER == VER_JP
+TilemapDef_Title: INCLUDE "src/title/title_jp_bg.asm"
 	mIncJunk "L0440FE"
+ELSE
+TilemapDef_Title: INCLUDE "src/title/title_us_bg.asm"
+	mIncJunk "us/L044143"
+ENDC
 TilemapDef_StageSel: INCLUDE "src/stagesel/stagesel_bg.asm"
 	mIncJunk "L04512D"
 TilemapDef_GetWpn: INCLUDE "src/getwpn/getwpn_bg.asm"
@@ -788,7 +795,12 @@ GFX_LvlMetal: INCBIN "src/game/lvl/metal/bg_gfx.bin"
 GFX_LvlWood: INCBIN "src/game/lvl/wood/bg_gfx.bin"
 GFX_LvlAir: INCBIN "src/game/lvl/air/bg_gfx.bin"
 GFX_LvlStation: INCBIN "src/game/lvl/station/bg_gfx.bin"
-GFX_Title: INCBIN "src/title/title_gfx.bin"
+; Game title changed in the US version.
+IF REV_VER == VER_JP
+GFX_Title: INCBIN "src/title/title_jp_gfx.bin"
+ELSE
+GFX_Title: INCBIN "src/title/title_us_gfx.bin"
+ENDC
 GFX_Password: INCBIN "src/password/password_gfx.bin"
 GFX_TitleDots: INCBIN "src/title/dots_gfx.bin"
 GFX_TitleCursor: INCBIN "src/title/cursor_gfx.bin"
