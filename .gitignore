@@ -2,7 +2,7 @@
 rw2.*
 
 # provide your own comparision rom
-original.*
+original-*.*
 
 # not necessary
 tempconv.*

@@ -4,6 +4,8 @@
 ; ロックマンワールド２
 ;
 
+DEF VER_JP  EQU REV_VER == 0 ; Japan Revision
+
 INCLUDE "inc/font.asm"
 INCLUDE "inc/hardware.asm"
 INCLUDE "inc/constants.asm"

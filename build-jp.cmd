@@ -1,0 +1,1 @@
+@_build config-jp rw2 original-jp.gb
