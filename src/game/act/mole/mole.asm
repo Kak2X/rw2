@@ -43,6 +43,12 @@ Act_Mole_Init:
 	
 	ld   hl, hActCur+iActX	; HL = Ptr to iActX
 	add  [hl]				; Add it to the offset
+	; Prevent moles from spawning fully offscreen.
+	; This fixes a rare bug that causes the spawned mole to underflow past the despawn column,
+	IF REV_VER == VER_EU
+		cp   $B0
+		ret  nc
+	ENDC
 	ld   [hl], a			; Save back
 	
 	; If the mole would spawn too close to the player, try again next time.

@@ -8,3 +8,6 @@
 	db $E4, $1C, $E4, $00 ; GFXSET_STATION
 	db $E4, $E4, $E4, $00 ; GFXSET_GAMEOVER
 	db $1B, $1C, $E4, $00 ; GFXSET_SPACE
+IF REV_VER == VER_EU
+	db $E4, $E4, $E4, $00 ; GFXSET_SPLASH
+ENDC

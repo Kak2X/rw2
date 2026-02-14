@@ -6,6 +6,7 @@
 
 DEF VER_JP EQU 0
 DEF VER_US EQU 1
+DEF VER_EU EQU 2
 
 INCLUDE "inc/font.asm"
 INCLUDE "inc/hardware.asm"
@@ -47,6 +48,9 @@ INCLUDE "src/scene/castle/init_gfx.asm"
 INCLUDE "src/scene/station/init_gfx.asm"
 INCLUDE "src/gameover/init_gfx.asm"
 INCLUDE "src/scene/_space/init_gfx.asm"
+IF REV_VER == VER_EU
+INCLUDE "src/unused_splash/init_gfx.asm"
+ENDC
 ; =============== BASE SUBROUTINES ===============
 INCLUDE "src/_base/hw_screen.asm"				; Generic VRAM/OAM utilities + tilemap event loader
 INCLUDE "src/_base/util.asm"					; Utility functions (Delay, Poll, Rand, Math)
@@ -116,8 +120,11 @@ INCLUDE "src/game/pause_sub.asm"				; Pause drawing & cursor movement routines
 INCLUDE "src/game/act/gfx_ptr.asm"				; Actor art set definitions
 INCLUDE "src/game/lvl/settings_tbl.asm"		; Level settings
 INCLUDE "src/game/lvl_draw_tbl.asm"			; Table of tilemap pointers for each block
+IF REV_VER == VER_EU
+	mIncJunk "eu/L003CDC"
+ELSE
 	mIncJunk "L003C94"
-
+ENDC
 
 ; 
 ; BANK $01 - Main Bank #2
@@ -185,7 +192,9 @@ TilemapDef_WilyStationEntrance: INCLUDE "src/scene/_space/entrance_bg.asm"
 TilemapDef_Earth: 				INCLUDE "src/scene/ending/earth_bg.asm"
 TilemapDef_Ending_Space: 		INCLUDE "src/scene/ending/ending_space_bg.asm"
 TilemapDef_Credits_Space: 		INCLUDE "src/scene/credits/space_bg.asm"
+IF REV_VER != VER_EU
 	mIncJunk "L016166"
+ENDC
 SETCHARMAP credits
 TilemapDef_Credits_Thank:		INCLUDE "src/scene/credits/thank_bg.asm"
 Credits_StarfieldSprTbl:		INCLUDE "src/scene/credits/starfield_dspr.asm"
@@ -255,7 +264,11 @@ INCLUDE "src/scene/credits/cast_spr/magnetman_spr.asm"
 INCLUDE "src/scene/credits/cast_spr/needleman_spr.asm"
 INCLUDE "src/scene/credits/cast_spr/quint_spr.asm"
 
+IF REV_VER == VER_EU
+	mIncJunk "eu/L016E4B"
+ELSE
 	mIncJunk "L016E46"
+ENDC
 
 ; 
 ; BANK $02 - Actor code
@@ -385,8 +398,11 @@ INCLUDE "src/game/act/boss/topman/shot_spawn.asm"
 INCLUDE "src/game/act/_shot/sub.asm"
 INCLUDE "src/game/act/boss/intro_sub.asm"
 INCLUDE "src/game/act/_bg/bgdraw_sub.asm"
+IF REV_VER == VER_EU
+	mIncJunk "eu/L027FD8"
+ELSE
 	mIncJunk "L027FBA"
-
+ENDC
 ; 
 ; BANK $03 - Actor collision table, Actor & player sprite mappings
 ; 
@@ -571,7 +587,12 @@ INCLUDE "src/game/act/cook/cook_spr.asm"
 INCLUDE "src/game/act/batton/batton_spr.asm"
 INCLUDE "src/game/act/friender/friender_spr.asm"
 INCLUDE "src/game/act/friender/flame_spr.asm"
+; The EU version sets the BG priority flag to this, which doesn't have any effect as Air Man's stage already has that global flag set.
+IF REV_VER == VER_EU
+INCLUDE "src/game/act/goblin/horn_eu_spr.asm"
+ELSE
 INCLUDE "src/game/act/goblin/horn_spr.asm"
+ENDC
 INCLUDE "src/game/act/goblin/puchigoblin_spr.asm"
 INCLUDE "src/game/act/scworm/base_spr.asm"
 INCLUDE "src/game/act/scworm/shot_spr.asm"
@@ -631,9 +652,12 @@ SECTION "bank04", ROMX, BANK[$04]
 IF REV_VER == VER_JP
 TilemapDef_Title: INCLUDE "src/title/title_jp_bg.asm"
 	mIncJunk "L0440FE"
-ELSE
+ELIF REV_VER == VER_US
 TilemapDef_Title: INCLUDE "src/title/title_us_bg.asm"
 	mIncJunk "us/L044143"
+ELSE
+TilemapDef_Title: INCLUDE "src/title/title_eu_bg.asm"
+	mIncJunk "eu/L04412C"
 ENDC
 TilemapDef_StageSel: INCLUDE "src/stagesel/stagesel_bg.asm"
 	mIncJunk "L04512D"
@@ -715,17 +739,30 @@ Lvl_RoomTrsDTbl:
 	
 ; =============== LEVEL LAYOUTS ===============
 LvlLayout_Hard: INCBIN "src/game/lvl/hard/layout.rle"
+IF REV_VER == VER_EU
+LvlLayout_Top: INCBIN "src/game/lvl/top/layout_eu.rle"
+ELSE
 LvlLayout_Top: INCBIN "src/game/lvl/top/layout.rle"
+ENDC
 LvlLayout_Magnet: INCBIN "src/game/lvl/magnet/layout.rle"
+IF REV_VER == VER_EU
+LvlLayout_Needle: INCBIN "src/game/lvl/needle/layout_eu.rle"
+ELSE
 LvlLayout_Needle: INCBIN "src/game/lvl/needle/layout.rle"
+ENDC
 LvlLayout_Crash: INCBIN "src/game/lvl/crash/layout.rle"
 LvlLayout_Metal: INCBIN "src/game/lvl/metal/layout.rle"
 LvlLayout_Wood: INCBIN "src/game/lvl/wood/layout.rle"
 LvlLayout_Air: INCBIN "src/game/lvl/air/layout.rle"
 LvlLayout_Castle: INCBIN "src/game/lvl/castle/layout.rle"
+IF REV_VER == VER_EU
+LvlLayout_Station: INCBIN "src/game/lvl/station/layout_eu.rle"
+	mIncJunk "eu/L057485"
+ELSE
 LvlLayout_Station: INCBIN "src/game/lvl/station/layout.rle"
-
 	mIncJunk "L05748F"
+ENDC
+
 	
 ; =============== 16x16 BLOCK DEFINITIONS ===============
 Lvl_BlockTbl: 
@@ -853,10 +890,16 @@ GFX_HardMan: INCBIN "src/game/act/boss/hardman/hardman_gfx.bin"
 GFX_TopMan: INCBIN "src/game/act/boss/topman/topman_gfx.bin"
 
 ; 
-; BANK $0D - N/A
+; BANK $0D - Fonts
 ; 
 SECTION "bank0D", ROMX, BANK[$0D]
+IF REV_VER == VER_EU
+GFX_Unused_SplashFont: INCBIN "src/font/unused_eu_splashfont_gfx.bin"
+	mIncJunk "eu/L0D4800"
+ELSE
 mFillBank
+ENDC
+
 
 ; 
 ; BANK $0E - N/A

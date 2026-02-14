@@ -39,9 +39,14 @@ Act_ScwormShot_MoveOut:
 	ld   h, $00
 	add  hl, hl					; HL *= 2 (*2)
 	add  hl, hl					; HL *= 2 (*4)
-	push hl
+	IF REV_VER == VER_EU
 		call Rand				; A = Rand()
-	pop  hl
+	ELSE
+		; Not necessary to push/pop hl
+		push hl
+			call Rand
+		pop  hl
+	ENDC
 	and  $0F					; A %= $10
 	ld   e, a					; DE = A
 	ld   d, $00

@@ -31,6 +31,12 @@ WpnS_HasAmmoForShot:
 ; =============== WpnS_UseAmmo ===============
 ; Uses up ammo for a weapon shot.
 WpnS_UseAmmo:
+	IF REV_VER == VER_EU
+		; Ignore if the level is over, as the player has no control.
+		ld   a, [wLvlEnd]
+		or   a
+		ret  nz
+	ENDC
 	push hl
 	push bc
 		; Subtract the cost of a shot to the current ammo.

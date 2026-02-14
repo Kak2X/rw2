@@ -6,15 +6,29 @@ Act_Goblin:
 	ldh  a, [hActCur+iActRtnId]
 	rst  $00 ; DynJump
 	dw Act_Goblin_WaitPl
+IF REV_VER == VER_EU
+	dw Act_Goblin_WaitPl2
+ENDC
 	dw Act_Goblin_SpawnPuchi
 	dw Act_Goblin_SpawnHorns
 
 ; =============== Act_Goblin_WaitPl ===============
 Act_Goblin_WaitPl:
-	; Don't interfere with level scrolling, since showing the body involves writing event data
-	ld   a, [wLvlScrollEvMode]
-	and  a
-	ret  nz
+	; Don't interfere with level scrolling, since showing the body involves writing event data.
+	; The EU version also checks for any existing tilemap events.
+	IF REV_VER == VER_EU
+		xor  a
+		ld   hl, wLvlScrollEvMode
+		or   [hl]
+		ld   hl, wTilemapEv
+		or   [hl]
+		ret  nz
+	ELSE
+		ld   a, [wLvlScrollEvMode]
+		and  a
+		ret  nz
+	ENDC
+
 	
 	; Don't do anything until the player gets within 4 blocks, which is far enough to not let
 	; the player get inside the area where the Goblin is drawn.
@@ -24,6 +38,28 @@ Act_Goblin_WaitPl:
 	
 	; Draw the Goblin and write its blocks to the level layout
 	call Act_Goblin_ShowBody
+	
+	; [BUG] The European version introduces a bug, as for some reason it draws the Goblin a second time when the player is within 3.5 blocks.
+	;       This is pointless, and does not play well at all with the scrolling bug that offsets the actors' spawn position while sliding.
+	IF REV_VER == VER_EU
+		jp   ActS_IncRtnId
+		
+	; =============== Act_Goblin_WaitPl2 ===============
+	Act_Goblin_WaitPl2:
+		; Same logic as Act_Goblin_WaitPl, except with a 3.5 block threshold
+		xor  a
+		ld   hl, wLvlScrollEvMode
+		or   [hl]
+		ld   hl, wTilemapEv
+		or   [hl]
+		ret  nz
+		
+		call ActS_GetPlDistanceX
+		cp   BLOCK_H*3+(BLOCK_H/2)
+		ret  nc
+		
+		call Act_Goblin_ShowBody
+	ENDC
 	
 	; First Petit Goblin spawns on the left
 	xor  a

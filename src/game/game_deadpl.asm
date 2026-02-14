@@ -9,6 +9,12 @@ Module_Game_PlDead:
 	; Draw an empty health bar for the player.
 	;
 	xor  a
+IF REV_VER == VER_EU
+	; In the European version, inputs are zeroed out when dead.
+	; This forces Rush Jet to stop, even if we died while holding UP or DOWN.
+	ldh  [hJoyKeys], a
+	ldh  [hJoyNewKeys], a
+ENDC
 	ld   [wPlHealthInc], a		; Stop health refills, if any (Game_TickTime still called)
 	ld   [wWpnAmmoInc], a		; Stop ammo refills, if any ""
 	ld   [wPlHealthBar], a		; Zero out visible health

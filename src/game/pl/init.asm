@@ -55,12 +55,31 @@ Pl_Init:
 	ld   [wBossIntroHealth], a
 	ld   [wShutterMode], a
 	ld   [wWpnId], a 			; Start with the buster always
+	
+	; [BUG] The European version properly resets weapon-related variables.
+	;       This mainly fixes a bug where dying while the Leaf Shield is active makes it persist after respawning.
+	IF REV_VER == VER_EU
+		ld   [wShot0], a
+		ld   [wShot1], a
+		ld   [wShot2], a
+		ld   [wShot3], a
+		ld   [wPlShootTimer], a
+		ld   [wPlShootType], a
+		ld   [wWpnHaFreezeTimer], a
+		ld   [wWpnNePos], a
+		ld   [wWpnTpActive], a
+		ld   [wWpnSGRide], a
+	ENDC
+	
 	ld   [wWpnHelperWarpRtn], a
 	ld   [wWpnHelperUseTimer], a
 	ld   [wUnused_CF5F], a
 	ld   [wLvlWarpDest], a
-	ld   [wWpnTpActive], a
-	ld   [wWpnSGRide], a
+	; The non-EU one only cleared the absolute minimum, which isn't enough
+	IF REV_VER != VER_EU
+		ld   [wWpnTpActive], a
+		ld   [wWpnSGRide], a
+	ENDC
 	ld   [wStatusBarRedraw], a
 	
 	; Start with full health

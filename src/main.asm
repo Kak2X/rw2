@@ -8,14 +8,18 @@ Game_Main:
 		ldh  [hROMBank], a
 		ld   [MBC1RomBank], a
 	pop  af
-	call Pl_ResetAllProgress
 	
+.init:
+	call Pl_ResetAllProgress
 	call Module_Title				; Wait for response
 	jr   z, Game_Main_ToStageSel	; GAME START selected? If so, jump
 .toPassword:
 	call Module_Password 	; Is the password invalid?
-	jr   c, Game_Main		; If so, return to the title screen
-	
+IF REV_VER == VER_EU
+	jr   c, .init			; If so, return to the title screen
+ELSE
+	jr   c, Game_Main		; (The EU version change doesn't impact anything)
+ENDC
 	; Otherwise, decide where to go to next.
 	
 	; If all 8 bosses are defeated, warp to the pre-Quint room

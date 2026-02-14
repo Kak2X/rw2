@@ -79,15 +79,18 @@ Game_DoRefill:
 	jr   z, .end
 	dec  a
 	ld   [wWpnAmmoInc], a
-	;--
+	
 	; The default weapon has unlimited ammo, no need to redraw it.
-	; [BUG] This is accidentally returning early instead of skipping to .end.
-	;       If player's health is being refilled, it will prevent it from being redrawn
-	;       while ammo is also being refilled.
 	ld   a, [wWpnId]
 	or   a
-	ret  z
-	;--
+	; [BUG] The non-EU versions accidentally return instead of skipping to .end.
+	;       If player's health is being refilled, it will prevent it from being redrawn
+	;       while ammo is also being refilled.
+	IF REV_VER == VER_EU
+		jr   z, .end
+	ELSE
+		ret  z
+	ENDC
 	
 	; Update the weapon's ammo
 	ld   a, [wWpnAmmoCur]
@@ -103,7 +106,11 @@ Game_DoRefill:
 	; Only redraw when crossing a 8 unit threshold
 	xor  c
 	and  $08
-	ret  z
+	IF REV_VER == VER_EU
+		jr   z, .end
+	ELSE
+		ret  z
+	ENDC
 	
 	; Trigger redraw & sfx
 	ld   a, b

@@ -141,7 +141,12 @@ Credits_CastTextPtrTbl:
 	dw Str_Quint
 	
 SETCHARMAP credits
+; [BUG] The original name gets cut off for being too long.
+IF REV_VER == VER_EU
+Str_Bee:           mCastStr $09, "HAVE\n'SU'BEE"
+ELSE
 Str_Bee:           mCastStr $07, "HAVE'SU'BEE"
+ENDC
 Str_Chibee:        mCastStr $08, "CHIBEE"
 Str_Wanaan:        mCastStr $08, "WANAAAN"
 Str_HammerJoe:     mCastStr $08, "HAMMER\nJOE"

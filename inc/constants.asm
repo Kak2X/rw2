@@ -28,6 +28,7 @@ DEF GFXSET_CASTLE            EQU $05 ; Wily Castle cutscene
 DEF GFXSET_STATION           EQU $06 ; Wily Station cutscene
 DEF GFXSET_GAMEOVER          EQU $07 ; Generic font (Game Over screen)
 DEF GFXSET_SPACE             EQU $08 ; Space cutscenes (Wily Station, Ending)
+DEF GFXSET_SPLASH            EQU $09 ; [TCRF] Unimplemented copyright screen
 
 DEF ACTGFX_PLAYER            EQU $00
 DEF ACTGFX_SPACE1            EQU $01

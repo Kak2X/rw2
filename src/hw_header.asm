@@ -23,12 +23,19 @@ IF REV_VER == VER_JP
 ELSE
 	db   $01	; destination code: non-Japanese
 ENDC
+IF REV_VER == VER_EU
+	db   $01	; old license: not SGB capable
+ELSE
 	db   $08	; old license: not SGB capable
+ENDC
 	db   $00	; mask ROM version number
 IF REV_VER == VER_JP
 	db   $B6	; header check
 	dw   $650E	; global check
-ELSE
+ELIF REV_VER == VER_US
 	db   $72	; header check
 	dw   $C4E6	; global check
+ELSE
+	db   $79	; header check
+	dw   $5C79	; global check
 ENDC

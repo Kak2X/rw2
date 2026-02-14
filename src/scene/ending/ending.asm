@@ -606,6 +606,13 @@ EndingSc1_Anim:
 	ld   a, [wScEvEna]
 	and  a				; Tilemap update triggered/in progress?
 	ret  z				; If not, return
+	; The EU version also makes sure another tilemap event somehow isn't in progress.
+	; This really cannot happen as the ending scene is timed to prevent this scenario, but just in case...
+	IF REV_VER == VER_EU
+		ld   a, [wTilemapEv]
+		and  a
+		ret  nz
+	ENDC
 	
 	;
 	; As a large amount of tiles need to be written, this event is processed over multiple frames.

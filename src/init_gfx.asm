@@ -69,4 +69,6 @@ GFXSet_Load:
 	dw LoadGFX_WilyStation ; GFXSET_STATION
 	dw LoadGFX_GameOver    ; GFXSET_GAMEOVER
 	dw LoadGFX_Space       ; GFXSET_SPACE
-	
+IF REV_VER == VER_EU
+	dw LoadGFX_Unused_Splash         ; GFXSET_SPLASH
+ENDC
