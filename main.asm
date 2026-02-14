@@ -14,17 +14,6 @@ INCLUDE "inc/constants.asm"
 INCLUDE "inc/macro.asm"
 INCLUDE "inc/memory.asm"
 
-MACRO mFillBank
-IF LABEL_JUNK
-Padding_\@:
-ENDC
-IF !SKIP_JUNK
-	REPT $4000
-		db $FF
-	ENDR
-ENDC
-ENDM
-
 ; 
 ; BANK $00 - Main Bank #1
 ;
@@ -120,11 +109,6 @@ INCLUDE "src/game/pause_sub.asm"				; Pause drawing & cursor movement routines
 INCLUDE "src/game/act/gfx_ptr.asm"				; Actor art set definitions
 INCLUDE "src/game/lvl/settings_tbl.asm"		; Level settings
 INCLUDE "src/game/lvl_draw_tbl.asm"			; Table of tilemap pointers for each block
-IF REV_VER == VER_EU
-	mIncJunk "eu/L003CDC"
-ELSE
-	mIncJunk "L003C94"
-ENDC
 
 ; 
 ; BANK $01 - Main Bank #2
@@ -264,12 +248,6 @@ INCLUDE "src/scene/credits/cast_spr/magnetman_spr.asm"
 INCLUDE "src/scene/credits/cast_spr/needleman_spr.asm"
 INCLUDE "src/scene/credits/cast_spr/quint_spr.asm"
 
-IF REV_VER == VER_EU
-	mIncJunk "eu/L016E4B"
-ELSE
-	mIncJunk "L016E46"
-ENDC
-
 ; 
 ; BANK $02 - Actor code
 ; 
@@ -398,11 +376,7 @@ INCLUDE "src/game/act/boss/topman/shot_spawn.asm"
 INCLUDE "src/game/act/_shot/sub.asm"
 INCLUDE "src/game/act/boss/intro_sub.asm"
 INCLUDE "src/game/act/_bg/bgdraw_sub.asm"
-IF REV_VER == VER_EU
-	mIncJunk "eu/L027FD8"
-ELSE
-	mIncJunk "L027FBA"
-ENDC
+
 ; 
 ; BANK $03 - Actor collision table, Actor & player sprite mappings
 ; 
@@ -642,8 +616,6 @@ INCLUDE "src/game/act/boss/crashman/shotexpl_spr.asm"
 INCLUDE "src/game/act/wilycastle/groundexpl_spr.asm"
 INCLUDE "src/game/pl/pl_spr.asm"
 
-	mIncJunk "L037908"
-
 ; 
 ; BANK $04 - Tilemaps
 ; 
@@ -666,7 +638,6 @@ TilemapDef_GetWpn: INCLUDE "src/getwpn/getwpn_bg.asm"
 TilemapDef_WilyCastle: INCLUDE "src/scene/castle/wilycastle_bg.asm"
 	mIncJunk "L045513"
 TilemapDef_WilyStation: INCLUDE "src/scene/station/wilystation_bg.asm"
-	mIncJunk "L0456DF"
 
 
 ; 
@@ -782,7 +753,6 @@ BlockLayout_Station: INCBIN "src/game/lvl/station/block16.bin"
 ; BANK $06 - N/A
 ; 
 SECTION "bank06", ROMX, BANK[$06]
-mFillBank
 
 ; 
 ; BANK $07 - Sound Driver
@@ -895,9 +865,6 @@ GFX_TopMan: INCBIN "src/game/act/boss/topman/topman_gfx.bin"
 SECTION "bank0D", ROMX, BANK[$0D]
 IF REV_VER == VER_EU
 GFX_Unused_SplashFont: INCBIN "src/font/unused_eu_splashfont_gfx.bin"
-	mIncJunk "eu/L0D4800"
-ELSE
-mFillBank
 ENDC
 
 
@@ -905,10 +872,8 @@ ENDC
 ; BANK $0E - N/A
 ; 
 SECTION "bank0E", ROMX, BANK[$0E]
-mFillBank
 
 ; 
 ; BANK $0F - N/A
 ; 
 SECTION "bank0F", ROMX, BANK[$0F]
-mFillBank

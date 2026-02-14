@@ -54,5 +54,3 @@ INCLUDE "driver/sfx/sfx_cursor_move.asm"
 INCLUDE "driver/sfx/sfx_damaged.asm"
 INCLUDE "driver/sfx/sfx_unused2.asm"
 INCLUDE "driver/sfx/sfx_silence.asm"
-
-	mIncJunk "L077446"
