@@ -495,7 +495,9 @@ StageSel_MkEmptyPicTilemap:
 	inc  e				; Seek tile to the right
 	dec  b				; Generated all four?
 	jr   nz, .loop		; If not, loop
-	ld   [hl], a		; Write terminator
+	; [BUG] This is missing a "xor  a", so it won't write the required terminator.
+	; By coincidence, there are no ill effects in the unmodified game.
+	ld   [hl], a
 	ret
 	
 ; =============== StageSel_PicPosPtrTbl ===============
