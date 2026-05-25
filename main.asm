@@ -561,7 +561,9 @@ INCLUDE "src/game/act/cook/cook_spr.asm"
 INCLUDE "src/game/act/batton/batton_spr.asm"
 INCLUDE "src/game/act/friender/friender_spr.asm"
 INCLUDE "src/game/act/friender/flame_spr.asm"
-; The EU version sets the BG priority flag to this, which doesn't have any effect as Air Man's stage already has that global flag set.
+; The EU version sets the BG priority flag to this.
+; This normally doesn't have any effect, as Air Man's stage already has 
+; that global flag set... but dying clears that flag to display the explosions always on top.
 IF REV_VER == VER_EU
 INCLUDE "src/game/act/goblin/horn_eu_spr.asm"
 ELSE
