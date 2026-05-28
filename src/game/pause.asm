@@ -142,8 +142,7 @@ Pause_Do:
 		cp   PL_MODE_RM			; Inside Rush Marine?
 		jr   z, .skipDraw		; If so, skip
 		
-		; [POI] The Sakugarne ride state is also skipped, even though it is supported by Pl_DrawSprMap.
-		;       Leftover from an earlier iteration, or just a mistake?
+		; The Sakugarne ride graphics count as weapon GFX, and would get overwritten when the weapon changes.
 		ld   a, [wWpnSGRide]
 		or   a					; Riding sakugarne?
 		jr   nz, .skipDraw		; If so, skip
