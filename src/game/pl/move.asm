@@ -195,6 +195,32 @@ Pl_MoveL_Coli:
 ; =============== Pl_MoveL ===============
 ; Moves the player 1 pixel to the left.
 Pl_MoveL:
+	;
+	; There are a few differences between Pl_MoveL and Pl_MoveR, owing to block boundary crossing woes:
+	;
+	; LvlScroll_DrawEdge* CALL REQUIREMENTS:
+	; The edge of the screen needs to be redrawn when crossing a block boundary, which also spawns any actors on the column.
+	; Redrawing the seam is performed by LvlScroll_DrawEdge*, which must only be called when the scroll position
+	; (and by extension, wPlRelRealX) is aligned to a block boundary ($x0).
+	; However, that position is reached at different points:
+	; - When moving right, it crosses $xF->$x0 (must draw edge after scrolling)
+	; - When moving left, it crosses $x0->$xF (must draw edge *BEFORE* scrolling)
+	;
+	; WHEN TO REDRAW THE EDGE
+	; The screen redraw checks are performed against wPlRelRealX, which doesn't matter for Pl_MoveL but is especially 
+	; important in Pl_MoveR after vertical transitions -- as the screen is already aligned to a block boundary ($x0),
+	; so it would skip drawing the first seam when moving right.
+	;
+	; SCROLL LOCKS
+	; In both, the screen lock checks need to happen after wLvlColPl gets updated.
+	;
+	; - On the left, the screen aligns itself to the left edge of a block.
+	;   Therefore, it will stop scrolling before crossing a block boundary, meaning it won't try to draw a 2nd column to the left.
+	; - On the right, the screen aligns itself to the right edge of a block... which is the left edge of the next block.
+	;   This means the screen needs to cross a block boundary (allow scrolling) but NOT redraw the edge to avoid spawning unwanted actors,
+	;   necessitating two separate screen lock checks. Thankfully, this is consistent with the pre-existing requirement that requires
+	;   LvlScroll_DrawEdgeR to be called after scrolling.
+	;
 
 	;
 	; The player's coordinates in this game directly map to the hardware sprites'
@@ -209,9 +235,10 @@ Pl_MoveL:
 	cp   OBJ_OFFSET_X + 8		; wPlRelX < 8?
 	ret  c						; If so, return
 	
-	;
-	; If we crossed a block boundary, decrement the current column number.
-	;
+	; LvlScroll_DrawEdgeL must be called before scrolling the screen here.
+	; The screen lock guarding it wants the updated wLvlColPl, so here it goes.
+	
+	; If we crossed a block boundary ($x0->$xF), decrement the current column number.
 .chkCross:
 	ld   a, [wPlRelRealX]		; wPlRelRealX--
 	dec  a
@@ -226,13 +253,6 @@ Pl_MoveL:
 	;--
 	;
 	; If the screen isn't locked, redraw the edge of the screen, spawning actors as needed.
-	;
-	; [POI] This being checked here is... odd.
-	;       It only makes sense to perform the redraw when the viewport crosses a block
-	;       boundary, not when the player does it!
-	;       In practice, when the player does, the viewport also does it, so all it serves
-	;       is calling LvlScroll_DrawEdgeL before hScrollX and wLvlColL get updated,
-	;       which is proper behavior (due to actors getting shifted).
 	;
 	
 	; Boss corridors and boss rooms lock the screen.
@@ -356,6 +376,10 @@ Pl_MoveR:
 	; - If the screen is locked, move the player right
 	; - If the screen isn't locked, move the viewport right
 	;
+	
+	; LvlScroll_DrawEdgeR must be called after scrolling the screen here.
+	; Check for screen locks with the "old" column number to allow crossing the block boundary,
+	; otherwise the block would get cut off by 1px.
 	ld   a, [wBossMode]
 	or   a					; In a boss corridor or boss room?	
 	jr   nz, .lock			; If so, skip
@@ -387,12 +411,7 @@ Pl_MoveR:
 	ld   hl, wLvlColL			; Otherwise, move to next base col
 	inc  [hl]
 .chkCross:
-	;
-	; If we crossed a block boundary, increment the current column number.
-	;
-	; Notice how these checks are happening at the end of the subroutine, compared
-	; to Pl_MoveL where they took place at the start.
-	;
+	; If we crossed a block boundary ($xF->$x0), increment the current column number and...
 	ld   a, [wPlRelRealX]		; wPlRelRealX++
 	inc  a
 	ld   [wPlRelRealX], a
@@ -401,13 +420,14 @@ Pl_MoveR:
 	ld   hl, wLvlColPl			; ColNum++
 	inc  [hl]
 	
+	; ...perform *another* screen scroll check, with the updated wLvlColPl.
+	; This prevents the new column from being drawn if the screen is locked,
+	; to avoid spawning unwanted actors.
+	
 	;
-	; If the screen isn't locked, redraw the edge of the screen, spawning actors as needed.
-	;
-	; [POI] The same note from Pl_MoveL applies here, except we're at the end of the subroutine.
-	;       Here, hScrollX and wLvlColL already got updated.
-	; [BUG] That causes an off by one problem when spawning actors. They are already placed at the correct
-	;       location, but due to scrolling happening during the frame, ActS_MoveByScrollX will trigger and move them left.
+	; [BUG] The updated hScrollX and wLvlColL cause an off by one problem when spawning actors.
+	;       They are already placed at the correct location, but due to scrolling happening during the frame,
+	;       ActS_MoveByScrollX will trigger and move them left.
 	;       This inconsistency was worked around in actors like Act_Goblin.
 	;
 	

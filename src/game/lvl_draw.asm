@@ -115,42 +115,40 @@ Lvl_DrawFullScreen:
 	jp   LoadTilemapDef
 	
 	
-DEF EDGECOL = 2                                      ; Offscreen offset
-DEF EDGE_L = BLOCK_H * EDGECOL                       ; LvlScroll_DrawEdgeL
-DEF EDGE_R = SCREEN_GAME_H + BLOCK_H * (EDGECOL - 1) ; LvlScroll_DrawEdgeR | - 1 due to SCREEN_GAME_H contributing
+; =============== LvlScroll_DrawEdge* ===============
+; Set of subroutines that redraw the 2nd offscreen column for either direction
+; and spawn any actor on it.
+;
+; The seam can't be located directly on the 1st column as they don't get drawn in a single frame.
+; As a consequence, routines that draw the entire screen (or draw rows) need to also draw
+; one block off-screen in both directions.
+;
+; These two MUST only be called when hScrollX (or wPlRelRealX) are aligned to a block boundary ($x0).
+;
 
 ; =============== LvlScroll_DrawEdgeL ===============
 ; Redraws the left seam of the screen when scrolling left.
-; Triggered when the viewport passes a block boundary (wLvlColL decremented).
-; It also spawns actors residing in the new column.
 ; See also: LvlScroll_DrawEdgeR
 LvlScroll_DrawEdgeL:
 
 	;
 	; Determine the initial grid offset for the left edge of the screen.
 	;
-	; The seam is at the 2nd column before the left edge of the screen (-2).
-	; It's not the column immediately to the left (-1) as that would make the seam visible;
-	; this affects how subroutines that end up drawing a full screen (ie: Lvl_DrawFullScreen)
-	; as they need to draw 1 block off-screen in both directions due to the seam position.
-	;
 	; See also: ScrEv_LvlScrollH.
 	;
-	
 
 	; X GRID OFFSET
 	; hScrEvOffH = (hScrollX / 16) - 2
 	ldh  a, [hScrollX]
-	sub  EDGE_L				; 2 blocks to the left
+	sub  BLOCK_H*$02		; 2 blocks to the left
 	swap a					; / $10
 	and  $0F				; ""
 	ldh  [hScrEvOffH], a
 	
 	; LEVEL LAYOUT PTR (low byte)
-	; Thanks to the fixed level width of $100 blocks, this is just the
-	; column number - 2.
+	; Thanks to the fixed level width of $100 blocks, this is just the column number - 2.
 	ld   a, [wLvlColL]
-	sub  EDGECOL
+	sub  $02
 	ldh  [hScrEvLvlLayoutPtr_Low], a
 	
 	; Y GRID OFFSET
@@ -170,66 +168,52 @@ LvlScroll_DrawEdgeL:
 	ld   [wLvlScrollEvMode], a
 	
 	;
-	; Spawn the actor if one is defined on the new column.
-	;
+	; Spawn the actor coming from the column scrolling in (left, -2).
+	; All of the actors spawned by scrolling place their origin centered on the column (hence the +8).
+ 	;
 	
-	; The offset to the actor layout data is low byte of the level layout pointer.
-	; This is due to its format, where each column can only have one actor assigned
-	; to it, and levels always are $100 blocks in width, a convenient number.
+	; ACTOR LAYOUT OFFSET
+	; Just the low byte of the level layout pointer, due to the 1 actor/column format.
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
 	ld   l, a
-	; Spawn the actor horizontally centered on the column (hence the +8)
-	ld   b, -EDGE_L + $08
+	; POSITION
+	ld   b, -(BLOCK_H*2) + $08	; Rewind to 2nd column start, add half.
 	call ActS_SpawnColEdge		; Try to spawn if one's in here
 	
 	;
-	; Spawn the actor coming from the other (right) side of the screen, if one is defined.
-	; This is from the same "main" column used by the other routine, LvlScroll_DrawEdgeR.
+	; Spawn the actor coming from the column scrolling out (right, +3).
 	;
 	; The actor that would be spawned really is defined on the opposite column,
-	; but it only spawns when the screen is scrolled away due to actor being
-	; flagged with ACTLB_SPAWNBEHIND.
+	; but it only spawns when the screen is scrolled away due to being flagged with ACTLB_SPAWNBEHIND.
+	;
+	; Somewhat inconsistently, despite the actor being read from the +3 column, it actually spawns in +2,
+	; presumably to reduce the chance of it getting offscreened.
+	; The same quirk is shared with LvlScroll_DrawEdgeR, but the other way around.
 	;
 	
-	; The base actor layout offset points to two columns behind the leftmost border.
-	; To seek to two columns *after* the *rightmost* border...
+	; ACTOR LAYOUT OFFSET
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
-	add  SCREEN_GAME_BLOCKCOUNT_H + EDGECOL * 2	; Width of the screen + (Left edge + Right edge)
+	add  $02 + SCREEN_GAME_BLOCKCOUNT_H + $02	; $02 to wLvlColL, BLOCKCOUNT to right edge, $02 to the target (+3)
 	ld   l, a
-	; The actor position is relative to the screen and not to the left edge,
-	; so it doesn't have to multiply EDGECOL by 2.
-	ld   b, (SCREEN_GAME_H + (EDGECOL * BLOCK_H)) - $08 ; Width of the screen + Right edge (centered to prev block)
+	; POSITION
+	ld   b, SCREEN_GAME_H + BLOCK_H + $08	; To 2nd column after screen right edge. (+2)
 	jp   ActS_SpawnColEdgeBehind
 	
 ; =============== LvlScroll_DrawEdgeR ===============
 ; Redraws the right seam of the screen when scrolling right.
-; Triggered when the viewport passes a block boundary (wLvlColL incremented).
-; It also spawns actors residing in the new column.
 LvlScroll_DrawEdgeR:
-
-	;
-	; Determine the initial grid offset for the right edge of the screen.
-	;
-	; The seam is at the 2nd column after the right edge of the screen (11), for the same reason
-	; mentioned in LvlScroll_DrawEdgeL.
-	;
-	; Effectively this has the same offsets as LvlScroll_DrawEdgeL except the other way around,
-	; so it necessitates a few logic changes.
-	;
 	
 	; X GRID OFFSET
 	; hScrEvOffH = (hScrollX / 16) + 11
 	ldh  a, [hScrollX]
-	add  EDGE_R	; 2 blocks to the right of the right border
+	add  SCREEN_GAME_H + BLOCK_H	; BLOCKCOUNT to 1st col, then +1 for 2nd
 	swap a							; / $10
 	and  $0F						; ""
 	ldh  [hScrEvOffH], a
 	
 	; LEVEL LAYOUT PTR (low byte)
-	; Thanks to the fixed level width of $100 blocks, this is just the
-	; column number + 11.
 	ld   a, [wLvlColL]
-	add  (SCREEN_GAME_BLOCKCOUNT_H - 1) + EDGECOL
+	add  SCREEN_GAME_BLOCKCOUNT_H + $01	; See above
 	ldh  [hScrEvLvlLayoutPtr_Low], a
 	
 	; Y GRID OFFSET
@@ -240,8 +224,8 @@ LvlScroll_DrawEdgeR:
 	ldh  [hScrEvOffV], a
 	
 	; LEVEL LAYOUT PTR (high byte)
-	; Topmost row, so always at $C0xx.
-	ld   a, HIGH(wLvlLayout)
+	
+	ld   a, HIGH(wLvlLayout)		; Topmost row, so always at $C0xx.
 	ldh  [hScrEvLvlLayoutPtr_High], a
 	
 	; Trigger event
@@ -249,29 +233,26 @@ LvlScroll_DrawEdgeR:
 	ld   [wLvlScrollEvMode], a
 	
 	;
-	; Spawn the actor if one is defined on the new column.
-	;
+	; Spawn the actor coming from the column scrolling in (right, +1).
+ 	;
 	
-	; Actor layout offset is the low byte of the level layout ptr, as is
+	; ACTOR LAYOUT OFFSET
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
 	ld   l, a
-	; Horizontally center on the column
-	ld   b, EDGE_R + $08
+	; POSITION
+	ld   b, SCREEN_GAME_H + BLOCK_H + $08 ; SCREEN_GAME_H to 1st offscreen col, then 1 right
 	call ActS_SpawnColEdge
 	
 	;
-	; Spawn the actor coming from the other (left) side of the screen, if one is defined.
-	; This is from the same "main" column used by the other routine, LvlScroll_DrawEdgeL.
+	; Spawn the actor coming from the column scrolling out (left, -3).
 	;
 	
-	; The base actor layout offset points to the 2nd column after the right border.
-	; To seek to two columns *before* the *leftmost* border...
+	; ACTOR LAYOUT OFFSET
 	ldh  a, [hScrEvLvlLayoutPtr_Low]
-	sub  SCREEN_GAME_BLOCKCOUNT_H + EDGECOL * 2
-	; The actor position is relative to the screen and not to the left edge,
-	; so it doesn't have to multiply EDGECOL by 2.
-	ld   l, a	; L = NewCol - 14
-	ld   b, -(EDGECOL * BLOCK_H) + $08
+	sub  $01 + SCREEN_GAME_BLOCKCOUNT_H + $03	; $01 to right edge, BLOCKCOUNT to left edge, $03 to the target (-3)
+	; POSITION
+	ld   l, a
+	ld   b, -(BLOCK_H*2) + $08 				; To 2nd column after screen left edge (-2)
 	jp   ActS_SpawnColEdgeBehind
 	
 ; =============== ScrEv_LvlScrollH ===============
